@@ -1,0 +1,52 @@
+{
+  "id": "vigil",
+  "title": "Vigil",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [
+            {
+              "Reduced": {
+                "amount": {
+                  "MaxHandSize": "Corp"
+                },
+                "by": {
+                  "CardsInHand": "Corp"
+                }
+              }
+            },
+            1
+          ]
+        }
+      },
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, if the Corp has cards in HQ equal to their maximum hand size, draw 1 card."
+    }
+  ],
+  "built_from": 7047,
+  "is_playable": true
+}

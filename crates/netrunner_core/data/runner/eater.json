@@ -1,0 +1,53 @@
+{
+  "id": "eater",
+  "title": "Eater",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 2,
+  "memory_cost": 1,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 subroutine. You cannot access cards for the remainder of this run.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "BreakSubroutines": {
+              "count": {
+                "Fixed": 1
+              }
+            }
+          },
+          {
+            "Prohibit": {
+              "what": "Access",
+              "until": "Run"
+            }
+          }
+        ]
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 7040,
+  "triggers": [],
+  "is_playable": true
+}

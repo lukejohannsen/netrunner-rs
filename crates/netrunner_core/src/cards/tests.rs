@@ -49652,3 +49652,166 @@ mod sansan_stage_6 {
         assert_eq!(state.corp.installed.iter().find(|card| card.card == id("ice_wall")).unwrap().advancement_tokens, 1);
     }
 }
+
+/// SanSan and Order and Chaos Stage 7: MemStrips, Vigil, Data Folding,
+/// Gravedigger, Eater, Cyberdex Virus Suite, Patch and Sub Boost.
+mod sansan_stage_7 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn ice_at_hq(card: &str) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    /// The Corp ends its turn and every window is passed until the Runner's
+    /// action phase begins.
+    fn runners_turn(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (mut state, _) = apply_action(&crate::rules::test_support::clicks_spent(state), registry, PlayerAction::EndTurn).expect("end turn");
+        for _ in 0..20 {
+            if state.phase == GamePhase::Action(Side::Runner) && state.paid_ability_window.is_none() && state.pending_decision.is_none() {
+                break;
+            }
+            let actor = crate::rules::current_actor(&state).expect("someone acts");
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side: actor }).expect("pass").0;
+        }
+        state
+    }
+
+    /// The Corp plays a condition operation onto a piece of ice at HQ.
+    fn host_on(card: &str, ice: &str, registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.corp.hq = vec![id(card)];
+        state.corp.installed = vec![ice_at_hq(ice)];
+        let (played, _) = apply_action(&state, registry, PlayerAction::PlayOperation { card_id: id(card) }).expect("play");
+        let offered: Vec<PlayerAction> = crate::rules::legal_actions_for(&played, registry, Side::Corp).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert_eq!(offered.len(), 1);
+        let (played, _) = apply_action(&played, registry, offered[0].clone()).expect("select");
+        close_all_windows(apply_action(&played, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0, registry).0
+    }
+
+    #[test]
+    fn memstrips_memory_is_only_for_virus_programs() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("memstrips")];
+        let base = crate::rules::memory::memory_balance(&state, &registry);
+        let virus = registry.get(&id("gravedigger")).unwrap();
+        let other = registry.get(&id("corroder")).unwrap();
+        assert_eq!(crate::rules::memory::memory_balance_with(&state, &registry, Some(virus)), base);
+        assert_eq!(crate::rules::memory::memory_balance_with(&state, &registry, Some(other)), base - other.memory_cost.unwrap_or(0) as i32);
+    }
+
+    #[test]
+    fn vigil_draws_when_hq_is_full() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("vigil")];
+        state.runner.stack = vec![id("sure_gamble"); 3];
+        state.corp.hq = vec![id("hedge_fund"); 4];
+        assert_eq!(runners_turn(&state, &registry).runner.grip.len(), 0, "four cards against five");
+        state.corp.hq = vec![id("hedge_fund"); 5];
+        assert_eq!(runners_turn(&state, &registry).runner.grip.len(), 1);
+    }
+
+    #[test]
+    fn data_folding_pays_for_two_unused_mu() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("data_folding")];
+        let credits = state.runner.resources.credits.0;
+        assert_eq!(runners_turn(&state, &registry).runner.resources.credits.0, credits + 1);
+        state.runner.rig.extend(["corroder", "gordian_blade", "datasucker"].map(rig));
+        assert!(crate::rules::memory::memory_balance(&state, &registry) < 2);
+        assert_eq!(runners_turn(&state, &registry).runner.resources.credits.0, credits);
+    }
+
+    #[test]
+    fn gravedigger_digs_up_a_trashed_install_and_mills_r_and_d() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = vec![rig("gravedigger")];
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("pad_campaign"), card: id("pad_campaign"), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() }];
+        state.corp.r_and_d = vec![id("hedge_fund"); 2];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).expect("trash it");
+        let state = close_all_windows(state, &registry).0;
+        assert_eq!(state.runner.rig[0].counters, 1);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("gravedigger"), ability_index: 0 }).expect("[click], hosted virus counter");
+        assert_eq!((state.runner.rig[0].counters, state.corp.r_and_d.len()), (0, 1));
+    }
+
+    #[test]
+    fn eater_breaks_at_the_price_of_the_runs_access() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { base_strength: 2, ..rig("eater") }];
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (running, _) = crate::rules::test_support::continue_run(&running, &registry).expect("approach the ice");
+        let (running, _) = apply_action(&running, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (encountering, _) = apply_action(&running, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("encounter");
+        assert!(!crate::rules::continuous::cannot(&encountering, &registry, crate::dsl::Prohibition::Access));
+        let (broken, _) = apply_action(&encountering, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("eater"), ability_index: 0 })
+            .unwrap_or_else(|e| panic!("{e:?} {:?}", crate::rules::legal_actions_for(&encountering, &registry, Side::Runner)));
+        assert!(crate::rules::continuous::cannot(&broken, &registry, crate::dsl::Prohibition::Access));
+    }
+
+    #[test]
+    fn cyberdex_virus_suite_purges_when_trashed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 3, ..rig("datasucker") }];
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("cyberdex_virus_suite"), card: id("cyberdex_virus_suite"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("cyberdex_virus_suite"), ability_index: 0 }).expect("[trash]: purge");
+        assert_eq!(state.runner.rig[0].counters, 0);
+        assert!(state.corp.installed.is_empty());
+    }
+
+    #[test]
+    fn cyberdex_virus_suite_may_purge_when_accessed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 3, ..rig("datasucker") }];
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("cyberdex_virus_suite"), card: id("cyberdex_virus_suite"), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() }];
+        let (asked, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (purged, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).unwrap_or_else(|e| panic!("{e:?} {:?}", asked.pending_decision));
+        assert_eq!(purged.runner.rig[0].counters, 0);
+    }
+
+    #[test]
+    fn patch_gives_its_host_two_strength() {
+        let registry = registry();
+        let before = crate::rules::continuous::installed_ice_strength(&base_state(), &registry, &id("ice_wall"), fixture_install_id("ice_wall"));
+        let state = host_on("patch", "ice_wall", &registry);
+        assert_eq!(crate::rules::continuous::installed_ice_strength(&state, &registry, &id("ice_wall"), fixture_install_id("ice_wall")), before + 2);
+    }
+
+    #[test]
+    fn sub_boost_makes_its_host_a_barrier_with_one_more_end_the_run() {
+        let registry = registry();
+        let mut bare = base_state();
+        bare.corp.installed = vec![ice_at_hq("enigma")];
+        let printed = crate::rules::continuous::subroutine_count(&bare, &registry, fixture_install_id("enigma"));
+        let state = host_on("sub_boost", "enigma", &registry);
+        assert_eq!(crate::rules::continuous::subroutine_count(&state, &registry, fixture_install_id("enigma")), printed + 1);
+        let own = crate::rules::continuous::own_subroutines(&state, &registry, fixture_install_id("enigma"));
+        assert_eq!(own.granted_after.iter().map(|sub| sub.text.as_str()).collect::<Vec<_>>(), vec!["End the run."]);
+        let mut state = state;
+        state.phase = GamePhase::Action(Side::Runner);
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (running, _) = crate::rules::test_support::continue_run(&running, &registry).expect("approach Enigma");
+        let run = running.active_run.as_ref().expect("approaching");
+        assert!(crate::rules::continuous::ice_types(&running, &registry, &run.ice[run.position]).contains(&crate::dsl::IceType::Barrier));
+    }
+}

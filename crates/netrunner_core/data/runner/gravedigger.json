@@ -1,0 +1,83 @@
+{
+  "id": "gravedigger",
+  "title": "Gravedigger",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "Any",
+      "when": {
+        "All": [
+          "Anyone",
+          {
+            "TrashedFrom": [
+              "Installed"
+            ]
+          },
+          {
+            "Card": {
+              "AnyOf": [
+                {
+                  "CardTypeOneOf": [
+                    "Agenda",
+                    "Asset",
+                    "Upgrade"
+                  ]
+                },
+                "Ice"
+              ]
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever an installed Corp card is trashed, place 1 virus counter on Gravedigger."
+    },
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "Any",
+      "when": {
+        "InstalledCard": "Any"
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever an installed Corp card is trashed, place 1 virus counter on Gravedigger."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 1
+          }
+        ]
+      },
+      "effect": {
+        "Mill": {
+          "deck": "Corp",
+          "amount": {
+            "Fixed": 1
+          }
+        }
+      },
+      "text": "[click], hosted virus counter: The Corp trashes the top card of R&D."
+    }
+  ],
+  "built_from": 7041,
+  "is_playable": true
+}
