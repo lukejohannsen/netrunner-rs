@@ -50491,3 +50491,181 @@ mod sansan_stage_11 {
         assert_eq!(crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[0]), 2);
     }
 }
+
+/// SanSan Stage 12 (Old Hollywood): nine cards, composed.
+mod sansan_stage_12 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice(card: &str, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    fn root(card: &str, server: ServerId, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Root, rezzed, ..Default::default() }
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state
+    }
+
+    fn corp_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state
+    }
+
+    fn select_first_and_confirm(state: &GameState, registry: &CardRegistry, side: Side) -> GameState {
+        let offered: Vec<PlayerAction> = crate::rules::legal_actions_for(state, registry, side).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert!(!offered.is_empty(), "{:?}", state.pending_decision);
+        let (chosen, _) = apply_action(state, registry, offered[0].clone()).expect("select");
+        apply_action(&chosen, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    fn encountering(state: &GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let (mut run, _) = apply_action(state, registry, PlayerAction::InitiateRun { server }).expect("run");
+        for _ in 0..12 {
+            if run.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) {
+                return run;
+            }
+            let action = match &run.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            run = apply_action(&run, registry, action).expect("onward").0;
+        }
+        panic!("never encountered the ice");
+    }
+
+    #[test]
+    fn vanity_project_is_four_points_for_six() {
+        let registry = registry();
+        let card = registry.get(&id("vanity_project")).unwrap();
+        assert_eq!((card.advancement_requirement, card.agenda_points), (Some(6), Some(4)));
+    }
+
+    #[test]
+    fn explode_a_palooza_offers_the_corp_five_credits_as_it_is_accessed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.r_and_d = vec![id("explode_a_palooza")];
+        let before = state.corp.resources.credits;
+        let (state, _) = run_to_completion(state, &registry, ServerId::RnD);
+        let (state, _) = close_all_windows(state, &registry);
+        let (gained, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("gain 5");
+        assert_eq!(gained.corp.resources.credits, Credits(before.0 + 5));
+    }
+
+    #[test]
+    fn award_bait_places_two_counters_on_a_card_the_corp_can_advance() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.r_and_d = vec![id("award_bait")];
+        state.corp.installed = vec![root("hostile_takeover", ServerId::Remote(0), false), root("pad_campaign", ServerId::Remote(1), true)];
+        let (state, _) = run_to_completion(state, &registry, ServerId::RnD);
+        let (state, _) = close_all_windows(state, &registry);
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("place 2");
+        let done = select_first_and_confirm(&asked, &registry, Side::Corp);
+        let tokens: Vec<u32> = done.corp.installed.iter().map(|card| card.advancement_tokens).collect();
+        assert_eq!(tokens, vec![2, 0], "only the agenda can be advanced");
+    }
+
+    #[test]
+    fn hollywood_renovation_places_one_on_another_card_and_two_from_six() {
+        let registry = registry();
+        for (before, placed) in [(3, 1), (5, 2)] {
+            let mut state = corp_turn();
+            state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: before, ..root("hollywood_renovation", ServerId::Remote(0), true) }, root("hostile_takeover", ServerId::Remote(1), false)];
+            let (asked, _) = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: fixture_install_id("hollywood_renovation") }).expect("advance");
+            let (asked, _) = close_all_windows(asked, &registry);
+            let (asked, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("place");
+            let done = select_first_and_confirm(&asked, &registry, Side::Corp);
+            assert_eq!(done.corp.installed[1].advancement_tokens, placed, "from {before}");
+        }
+    }
+
+    #[test]
+    fn early_premiere_pays_one_to_advance_a_root_card_as_the_turn_begins() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![root("early_premiere", ServerId::Remote(0), true), root("hostile_takeover", ServerId::Remote(1), false)];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = pass_until_settled(state, &registry);
+        assert!(state.pending_paid_choice.is_some(), "{:?}", state.phase);
+        let credits = state.corp.resources.credits;
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 1");
+        let done = select_first_and_confirm(&asked, &registry, Side::Corp);
+        assert_eq!(done.corp.resources.credits, Credits(credits.0 - 1));
+        assert_eq!(done.corp.installed[1].advancement_tokens, 1);
+    }
+
+    #[test]
+    fn back_channels_pays_three_per_counter_and_trashes_the_card() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.hq = vec![id("back_channels")];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 2, ..root("hostile_takeover", ServerId::Remote(0), false) }, ice("ice_wall", ServerId::Remote(0))];
+        let credits = state.corp.resources.credits;
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("back_channels") }).expect("play");
+        let done = select_first_and_confirm(&asked, &registry, Side::Corp);
+        assert_eq!(done.corp.resources.credits, Credits(credits.0 + 6));
+        assert_eq!(done.corp.installed.len(), 1, "the ice was never offered and the agenda is gone");
+    }
+
+    #[test]
+    fn ronald_five_takes_a_click_when_the_runner_trashes_it() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(5);
+        state.corp.installed = vec![root("ronald_five", ServerId::Remote(0), true)];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (state, _) = close_all_windows(state, &registry);
+        let clicks = state.runner.resources.clicks;
+        let (trashed, _) = apply_action(&state, &registry, PlayerAction::TrashAccessedCard { card_id: id("ronald_five") }).expect("pay 3 to trash");
+        let (trashed, _) = close_all_windows(trashed, &registry);
+        assert_eq!(trashed.runner.resources.clicks, Clicks(clicks.0 - 1));
+    }
+
+    #[test]
+    fn enforcer_breaks_for_a_click_and_hits_a_console() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("the_gauntlet")];
+        state.corp.installed = vec![ice("enforcer_1_0", ServerId::Hq)];
+        let met = encountering(&state, &registry, ServerId::Hq);
+        let clicks = met.runner.resources.clicks;
+        let (broke, _) = apply_action(&met, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("enforcer_1_0"), ability_index: 0 }).expect("lose [click]: break 1");
+        assert_eq!(broke.runner.resources.clicks, Clicks(clicks.0 - 1));
+        assert!(registry.get(&id("enforcer_1_0")).unwrap().rez_alternatives.iter().all(|alternative| alternative.cost == Some(crate::dsl::Cost::Forfeit(1))), "rezzed only by forfeiting an agenda");
+    }
+
+    #[test]
+    fn trope_grows_and_shuffles_that_many_cards_back() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.heap = vec![id("sure_gamble"), id("easy_mark"), id("corroder")];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 2, ..rig("trope") }];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("trope"), ability_index: 0 }).expect("[click], remove Trope");
+        let mut state = asked;
+        for pick in 0..2 {
+            let offered: Vec<PlayerAction> = crate::rules::legal_actions_for(&state, &registry, Side::Runner).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+            state = apply_action(&state, &registry, offered[pick].clone()).expect("select").0;
+        }
+        let (done, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert_eq!((done.runner.heap.len(), done.runner.stack.len()), (1, 2));
+        assert!(done.runner.removed_from_game.contains(&id("trope")));
+    }
+}

@@ -293,22 +293,13 @@ pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Old Hollywood* (`old_hollywood`): tranche F7 of the FFG plan.
 pub(crate) const OH_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("trope", "Trope"),
     ("film_critic", "Film Critic"),
     ("paparazzi", "Paparazzi"),
-    ("ronald_five", "Ronald Five"),
-    ("enforcer_1_0", "Enforcer 1.0"),
     ("its_a_trap", "It's a Trap!"),
     ("an_offer_you_cant_refuse", "An Offer You Can’t Refuse"),
     ("haarpsichord_studios_entertainment_unleashed", "Haarpsichord Studios: Entertainment Unleashed"),
-    ("award_bait", "Award Bait"),
-    ("explode_a_palooza", "Explode-a-palooza"),
-    ("early_premiere", "Early Premiere"),
     ("casting_call", "Casting Call"),
     ("old_hollywood_grid", "Old Hollywood Grid"),
-    ("hollywood_renovation", "Hollywood Renovation"),
-    ("back_channels", "Back Channels"),
-    ("vanity_project", "Vanity Project"),
 ];
 
 /// *The Universe of Tomorrow* (`the_universe_of_tomorrow`): tranche F7 of the FFG plan.
@@ -840,7 +831,6 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sundew", "Sundew"),
     ("tsurugi", "Tsurugi"),
     ("spark_agency_worldswide_reach", "Spark Agency: Worldswide Reach"),
-    ("explode_a_palooza", "Explode-a-palooza"),
     ("marked_accounts", "Marked Accounts"),
     ("product_placement", "Product Placement"),
     ("blue_sun_powering_the_future", "Blue Sun: Powering the Future"),

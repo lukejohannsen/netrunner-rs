@@ -1,0 +1,12 @@
+{
+  "id": "vanity_project",
+  "title": "Vanity Project",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 6,
+  "agenda_points": 4,
+  "triggers": [],
+  "built_from": 8100,
+  "is_playable": true
+}

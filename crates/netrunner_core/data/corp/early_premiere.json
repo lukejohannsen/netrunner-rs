@@ -1,0 +1,53 @@
+{
+  "id": "early_premiere",
+  "title": "Early Premiere",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Credits": 1
+            },
+            "if_paid": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnInstalled",
+                "filter": {
+                  "All": [
+                    "Advanceable",
+                    {
+                      "Not": "Ice"
+                    }
+                  ]
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "PlaceAdvancementCounters": {
+                    "Fixed": 1
+                  }
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "When your turn begins, you may pay 1[credit]. If you do, place 1 advancement counter on a card you can advance in the root of a server."
+          }
+        }
+      ],
+      "text": "When your turn begins, you may pay 1[credit]. If you do, place 1 advancement counter on a card you can advance in the root of a server."
+    }
+  ],
+  "built_from": 8095,
+  "is_playable": true
+}

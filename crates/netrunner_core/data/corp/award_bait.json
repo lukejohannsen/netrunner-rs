@@ -1,0 +1,77 @@
+{
+  "id": "award_bait",
+  "title": "Award Bait",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this agenda in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnInstalled",
+                  "filter": "Advanceable",
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PlaceAdvancementCounters": {
+                      "Fixed": 2
+                    }
+                  }
+                }
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnInstalled",
+                  "filter": "Advanceable",
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PlaceAdvancementCounters": {
+                      "Fixed": 1
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may place up to 2 advancement counters on 1 installed card you can advance — 2",
+              "you may place up to 2 advancement counters on 1 installed card you can advance — 1",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When the Runner accesses this agenda, you may place up to 2 advancement counters on 1 installed card you can advance."
+    }
+  ],
+  "built_from": 8093,
+  "is_playable": true
+}
