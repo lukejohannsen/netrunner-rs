@@ -307,19 +307,9 @@ pub(crate) const UOT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("surfer", "Surfer"),
     ("ddos", "DDoS"),
     ("bookmark", "Bookmark"),
-    ("davinci", "DaVinci"),
-    ("cybernetics_court", "Cybernetics Court"),
-    ("team_sponsorship", "Team Sponsorship"),
     ("chronos_protocol_selective_mind_mapping", "Chronos Protocol: Selective Mind-mapping"),
-    ("ancestral_imager", "Ancestral Imager"),
     ("genetics_pavilion", "Genetics Pavilion"),
-    ("franchise_city", "Franchise City"),
-    ("product_placement", "Product Placement"),
     ("worlds_plaza", "Worlds Plaza"),
-    ("public_support", "Public Support"),
-    ("tour_guide", "Tour Guide"),
-    ("expo_grid", "Expo Grid"),
-    ("the_future_is_now", "The Future is Now"),
 ];
 
 /// *Order and Chaos* (`order_and_chaos`): tranche F7 of the FFG plan.
@@ -832,8 +822,6 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("tsurugi", "Tsurugi"),
     ("spark_agency_worldswide_reach", "Spark Agency: Worldswide Reach"),
     ("marked_accounts", "Marked Accounts"),
-    ("product_placement", "Product Placement"),
     ("blue_sun_powering_the_future", "Blue Sun: Powering the Future"),
-    ("public_support", "Public Support"),
     ("oversight_ai", "Oversight AI"),
 ];

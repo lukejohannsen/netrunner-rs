@@ -1,0 +1,27 @@
+{
+  "id": "ancestral_imager",
+  "title": "Ancestral Imager",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnRunEnded",
+      "subject": "Any",
+      "when": "JackedOut",
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever the Runner jacks out, do 1 net damage."
+    }
+  ],
+  "built_from": 8112,
+  "is_playable": true
+}

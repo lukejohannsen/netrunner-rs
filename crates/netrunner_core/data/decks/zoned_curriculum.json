@@ -3,7 +3,7 @@
   "name": "Zoned Curriculum",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Azmari EdTech: Shaping the Future, Kitara's NBN identity, which names a card type as each of the Corp's turns ends and gains 2[credit] the first time each turn the Runner plays or installs a card of the type last named. On Paid Content's list, an NBN deck with nothing outside the faction it needs. Eternal-legal only. Kitara Stage 16. Red Sand Stage 3b: two Biased Reporting for two Sweeps Week. FFG F6 Stage 5: two Special Offer, two Turnpike and two Resistor for two Pop-up Window, two Loot Box and two Matrix Analyzer, each kept by Paid Content. FFG F6 Stage 6: two Remote Data Farm, two Puppet Master and 15 Minutes for two Project Beale, two Bellona and a License Acquisition, the same eleven points, each kept by other decks.",
+  "description": "Not a published list: built so the sweeps reach Azmari EdTech: Shaping the Future, Kitara's NBN identity, which names a card type as each of the Corp's turns ends and gains 2[credit] the first time each turn the Runner plays or installs a card of the type last named. On Paid Content's list, an NBN deck with nothing outside the faction it needs. Eternal-legal only. Kitara Stage 16. Red Sand Stage 3b: two Biased Reporting for two Sweeps Week. FFG F6 Stage 5: two Special Offer, two Turnpike and two Resistor for two Pop-up Window, two Loot Box and two Matrix Analyzer, each kept by Paid Content. FFG F6 Stage 6: two Remote Data Farm, two Puppet Master and 15 Minutes for two Project Beale, two Bellona and a License Acquisition, the same eleven points, each kept by other decks. FFG F7 Stage 13 swapped The Powers That Be for Franchise City.",
   "style": [
     "fast-advance"
   ],
@@ -20,10 +20,6 @@
     {
       "card": "wraparound",
       "count": 2
-    },
-    {
-      "card": "the_powers_that_be",
-      "count": 1
     },
     {
       "card": "kingmaking",
@@ -107,6 +103,10 @@
     },
     {
       "card": "15_minutes",
+      "count": 1
+    },
+    {
+      "card": "franchise_city",
       "count": 1
     }
   ]

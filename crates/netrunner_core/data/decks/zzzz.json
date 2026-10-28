@@ -3,7 +3,7 @@
   "name": "Zzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Cybernetics Division: Humanity Upgraded's deck, built in SanSan Stage 10 so the sweeps reach a Corp whose identity takes a card from both players' maximum hand size. On Endless Loop's frame, which keeps every card; in for its cards here: Self-Destruct Chips for a Megaprix Qualifier, point for point, Ryon Knight and Oaktown Grid for Game Changer, Lab Dog and Quicksand for Divert Power, and Little Engine and Clairvoyant Monitor for a Pulse and an Echo. Eternal-legal. SanSan Stage 11 swapped two Vaporframe Fabricator and two BASS-CH1R180G4, each kept by four other decks, for two Pachinko, an Exposé and a Test Ground. SanSan Stage 12 swapped a Caveat Emptor, a Vulnerability Audit and an Elivagar Bifurcation, kept by other decks, for an Early Premiere, a Vanity Project (the same four points) and an Enforcer 1.0.",
+  "description": "Not a published list: Cybernetics Division: Humanity Upgraded's deck, built in SanSan Stage 10 so the sweeps reach a Corp whose identity takes a card from both players' maximum hand size. On Endless Loop's frame, which keeps every card; in for its cards here: Self-Destruct Chips for a Megaprix Qualifier, point for point, Ryon Knight and Oaktown Grid for Game Changer, Lab Dog and Quicksand for Divert Power, and Little Engine and Clairvoyant Monitor for a Pulse and an Echo. Eternal-legal. SanSan Stage 11 swapped two Vaporframe Fabricator and two BASS-CH1R180G4, each kept by four other decks, for two Pachinko, an Exposé and a Test Ground. SanSan Stage 12 swapped a Caveat Emptor, a Vulnerability Audit and an Elivagar Bifurcation, kept by other decks, for an Early Premiere, a Vanity Project (the same four points) and an Enforcer 1.0. FFG F7 Stage 13 swapped Tyr, both Trieste Model Bioroids and Caveat Emptor for Cybernetics Court, two Team Sponsorships and Product Placement.",
   "style": [
     "glacier"
   ],
@@ -14,15 +14,7 @@
       "count": 1
     },
     {
-      "card": "caveat_emptor",
-      "count": 1
-    },
-    {
       "card": "biotic_labor",
-      "count": 2
-    },
-    {
-      "card": "trieste_model_bioroids",
       "count": 2
     },
     {
@@ -64,10 +56,6 @@
     {
       "card": "next_bronze",
       "count": 2
-    },
-    {
-      "card": "tyr",
-      "count": 1
     },
     {
       "card": "megaprix_qualifier",
@@ -143,6 +131,18 @@
     },
     {
       "card": "enforcer_1_0",
+      "count": 1
+    },
+    {
+      "card": "cybernetics_court",
+      "count": 1
+    },
+    {
+      "card": "team_sponsorship",
+      "count": 2
+    },
+    {
+      "card": "product_placement",
       "count": 1
     }
   ]

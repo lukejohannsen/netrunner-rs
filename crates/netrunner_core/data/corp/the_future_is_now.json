@@ -1,0 +1,32 @@
+{
+  "id": "the_future_is_now",
+  "title": "The Future is Now",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": "Any",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": true,
+            "destination": "OwnHq"
+          }
+        }
+      ],
+      "text": "When you score The Future is Now, search R&D for a card and add it to HQ. Shuffle R&D."
+    }
+  ],
+  "built_from": 8120,
+  "is_playable": true
+}
