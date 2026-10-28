@@ -1,0 +1,24 @@
+{
+  "id": "oaktown_grid",
+  "title": "Oaktown Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "trash_cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "TrashCost": {
+          "per": 3
+        }
+      },
+      "applies_to": {
+        "RootOfThisServer": "Any"
+      },
+      "text": "The trash cost of each card in the root of this server is increased by 3."
+    }
+  ],
+  "built_from": 8053,
+  "triggers": [],
+  "is_playable": true
+}

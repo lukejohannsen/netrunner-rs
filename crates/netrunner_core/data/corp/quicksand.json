@@ -1,0 +1,42 @@
+{
+  "id": "quicksand",
+  "title": "Quicksand",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 3,
+  "strength": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "This",
+      "text": "Quicksand has +1 strength for each power counter on it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When the Runner encounters Quicksand, place 1 power counter on Quicksand."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 8060,
+  "is_playable": true
+}

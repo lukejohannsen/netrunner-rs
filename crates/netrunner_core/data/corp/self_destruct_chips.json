@@ -1,0 +1,25 @@
+{
+  "id": "self_destruct_chips",
+  "title": "Self-Destruct Chips",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "text": "The Runner's maximum hand size is reduced by 1."
+    }
+  ],
+  "built_from": 8051,
+  "triggers": [],
+  "is_playable": true
+}

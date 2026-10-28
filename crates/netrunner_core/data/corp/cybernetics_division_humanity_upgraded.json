@@ -1,0 +1,33 @@
+{
+  "id": "cybernetics_division_humanity_upgraded",
+  "title": "Cybernetics Division: Humanity Upgraded",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 40,
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": -1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Each player's maximum hand size is reduced by 1."
+    },
+    {
+      "kind": {
+        "HandSize": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "text": "Each player's maximum hand size is reduced by 1."
+    }
+  ],
+  "built_from": 8050,
+  "triggers": [],
+  "is_playable": true
+}

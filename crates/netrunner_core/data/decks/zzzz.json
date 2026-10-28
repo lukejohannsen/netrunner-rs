@@ -1,0 +1,133 @@
+{
+  "id": "zzzz",
+  "name": "Zzzz",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: Cybernetics Division: Humanity Upgraded's deck, built in SanSan Stage 10 so the sweeps reach a Corp whose identity takes a card from both players' maximum hand size. On Endless Loop's frame, which keeps every card; in for its cards here: Self-Destruct Chips for a Megaprix Qualifier, point for point, Ryon Knight and Oaktown Grid for Game Changer, Lab Dog and Quicksand for Divert Power, and Little Engine and Clairvoyant Monitor for a Pulse and an Echo. Eternal-legal.",
+  "style": [
+    "glacier"
+  ],
+  "identity": "cybernetics_division_humanity_upgraded",
+  "cards": [
+    {
+      "card": "pulse",
+      "count": 1
+    },
+    {
+      "card": "caveat_emptor",
+      "count": 2
+    },
+    {
+      "card": "biotic_labor",
+      "count": 2
+    },
+    {
+      "card": "trieste_model_bioroids",
+      "count": 2
+    },
+    {
+      "card": "echo",
+      "count": 1
+    },
+    {
+      "card": "vaporframe_fabricator",
+      "count": 2
+    },
+    {
+      "card": "vulnerability_audit",
+      "count": 2
+    },
+    {
+      "card": "bloop",
+      "count": 2
+    },
+    {
+      "card": "elivagar_bifurcation",
+      "count": 2
+    },
+    {
+      "card": "refuge_campaign",
+      "count": 2
+    },
+    {
+      "card": "project_vitruvius",
+      "count": 2
+    },
+    {
+      "card": "wave",
+      "count": 2
+    },
+    {
+      "card": "next_silver",
+      "count": 2
+    },
+    {
+      "card": "bass_ch1r180g4",
+      "count": 2
+    },
+    {
+      "card": "cerebral_overwriter",
+      "count": 2
+    },
+    {
+      "card": "next_bronze",
+      "count": 2
+    },
+    {
+      "card": "tyr",
+      "count": 1
+    },
+    {
+      "card": "megaprix_qualifier",
+      "count": 2
+    },
+    {
+      "card": "project_vacheron",
+      "count": 2
+    },
+    {
+      "card": "black_level_clearance",
+      "count": 2
+    },
+    {
+      "card": "brain_taping_warehouse",
+      "count": 1
+    },
+    {
+      "card": "next_gold",
+      "count": 1
+    },
+    {
+      "card": "turing",
+      "count": 1
+    },
+    {
+      "card": "self_destruct_chips",
+      "count": 1
+    },
+    {
+      "card": "ryon_knight",
+      "count": 1
+    },
+    {
+      "card": "oaktown_grid",
+      "count": 1
+    },
+    {
+      "card": "lab_dog",
+      "count": 1
+    },
+    {
+      "card": "quicksand",
+      "count": 1
+    },
+    {
+      "card": "little_engine",
+      "count": 1
+    },
+    {
+      "card": "clairvoyant_monitor",
+      "count": 1
+    }
+  ]
+}

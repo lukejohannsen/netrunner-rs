@@ -1417,6 +1417,21 @@ fn move_to_archives(
     Ok(announced)
 }
 
+/// The card being accessed, and whether the Runner is at its decision
+/// (`AccessPhase::PendingChoice`) rather than inside its access triggers.
+/// The phase is only that decision when it names the card being accessed:
+/// while the next card's triggers resolve, the phase still holds the card
+/// before it, and reading it there trashed the previous card a second
+/// time and finished the breach under the trigger (Edward Kim on the last
+/// card of an R&D breach after a passed Semak-samun, 256-seed view sweep,
+/// seed 224).
+fn accessed_and_at_decision(access: &AccessState) -> Result<(CardId, bool), RulesError> {
+    match (&access.phase, &access.currently_accessing) {
+        (AccessPhase::PendingChoice { card_id, .. }, accessing) if accessing.as_ref().is_none_or(|accessing| accessing == card_id) => Ok((card_id.clone(), true)),
+        (_, accessing) => Ok((accessing.clone().ok_or(RulesError::NotInAccessPhase)?, false)),
+    }
+}
+
 /// Resolves `Effect::TrashCurrentlyAccessedCard` — trashes whatever card is
 /// currently pending in `AccessPhase::PendingChoice`, skipping its
 /// `trash_cost` entirely (unlike `resolve_trash`, which charges it). e.g.
@@ -1438,10 +1453,7 @@ pub fn trash_currently_accessed_card_without_cost(
         return Err(RulesError::NotInAccessPhase);
     }
     let access = run.access_state.as_ref().ok_or(RulesError::NotInAccessPhase)?;
-    let (card_id, at_decision) = match &access.phase {
-        AccessPhase::PendingChoice { card_id, .. } => (card_id.clone(), true),
-        _ => (access.currently_accessing.clone().ok_or(RulesError::NotInAccessPhase)?, false),
-    };
+    let (card_id, at_decision) = accessed_and_at_decision(access)?;
     let server = access.server;
     let install = access.pending_install;
     if accessing_in_the_discard_pile(state) {
@@ -1519,10 +1531,7 @@ pub(crate) fn move_currently_accessed_card(state: &mut GameState, registry: &Car
         return Err(RulesError::NotInAccessPhase);
     }
     let access = run.access_state.as_ref().ok_or(RulesError::NotInAccessPhase)?;
-    let (card_id, at_decision) = match &access.phase {
-        AccessPhase::PendingChoice { card_id, .. } => (card_id.clone(), true),
-        _ => (access.currently_accessing.clone().ok_or(RulesError::NotInAccessPhase)?, false),
-    };
+    let (card_id, at_decision) = accessed_and_at_decision(access)?;
     let (server, install) = (access.server, access.pending_install);
     let host_card = match to {
         AccessedTo::Hosted(host) => Some(state.find_rig_install(host).map(|installed| installed.card.clone()).ok_or(RulesError::InstallNotFound(host))?),
