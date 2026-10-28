@@ -639,6 +639,10 @@ mod tests {
             ("zyrian", &neither),
             ("zyzomys", &neither),
             ("zzyzx", &neither),
+            // FFG F7 Stage 6: Argus Security's and Titan Transnational's
+            // decks, on Family Business' and Zugzwang's lists.
+            ("zyzzyvid", &neither),
+            ("zzz", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.

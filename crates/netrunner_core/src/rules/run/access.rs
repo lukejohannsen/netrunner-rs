@@ -630,6 +630,11 @@ fn left_its_place(events: &[GameEvent], card_id: &CardId) -> bool {
             GameEvent::AgendaAddedToScoreArea { card, .. } => card == card_id,
             // Stolen by a card's text as it was accessed (Whistleblower).
             GameEvent::AgendaStolen { card, .. } => card == card_id,
+            // Trashed at no cost by a card's text as it was accessed (By
+            // Any Means, Edward Kim): left unnoticed, an agenda trashed so
+            // was still offered to steal, and was both in Archives and in
+            // the Runner's score area (256-seed view sweep, seed 199).
+            GameEvent::CardTrashedFromAccess { card, .. } => card == card_id,
             _ => false,
         })
 }

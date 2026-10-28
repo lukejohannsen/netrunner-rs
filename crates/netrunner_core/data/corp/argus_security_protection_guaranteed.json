@@ -1,0 +1,41 @@
+{
+  "id": "argus_security_protection_guaranteed",
+  "title": "Argus Security: Protection Guaranteed",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "GiveTags": {
+                  "Fixed": 1
+                }
+              },
+              {
+                "DealDamage": [
+                  "Meat",
+                  2
+                ]
+              }
+            ],
+            "texts": [
+              "take 1 tag",
+              "suffer 2 meat damage"
+            ]
+          }
+        }
+      ],
+      "text": "Whenever the Runner steals an agenda, they must take 1 tag or suffer 2 meat damage."
+    }
+  ],
+  "built_from": 7001,
+  "is_playable": true
+}

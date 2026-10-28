@@ -34248,6 +34248,24 @@ mod kitara_stage_6a {
         assert_eq!(done.runner.grip.len(), 2, "1 meat damage");
     }
 
+    /// An agenda trashed as it is accessed is not also stolen: the access
+    /// ends with the trash (256-seed view sweep, seed 199, where the
+    /// steal was still offered and the agenda sat in Archives and in the
+    /// Runner's score area at once).
+    #[test]
+    fn by_any_means_trashes_an_agenda_it_accesses_and_offers_no_steal() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.corp.hq = vec![id("hostile_takeover")];
+        let played = play(&state, &registry, "by_any_means").expect("play");
+        let (running, _) = apply_action(&played, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (done, _) = pass_until_settled(reach_the_server(running, &registry), &registry);
+        assert!(done.corp.archives.iter().any(|card| card.card == id("hostile_takeover")));
+        assert!(done.runner.scored_agendas.is_empty(), "not stolen as well");
+        assert!(done.active_run.is_none());
+    }
+
     #[test]
     fn falsified_credentials_pays_5_when_the_named_type_is_exposed() {
         let registry = registry();
@@ -49335,9 +49353,8 @@ mod sansan_stage_4 {
         let (state, _) = close_all_windows(state, &registry);
         assert!(state.corp.hq.is_empty(), "trashed: {:?}", state.pending_decision);
         assert!(state.corp.archives.iter().any(|card| card.card == id("hedge_fund")));
-        let (state, _) = apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: id("hedge_fund") }).expect("the access ends");
-        let (mut state, _) = close_all_windows(state, &registry);
-        assert!(state.active_run.is_none());
+        assert!(state.active_run.is_none(), "trashed, the access ends: nothing is left to steal or pass");
+        let mut state = state;
         state.corp.hq = vec![id("hedge_fund")];
         let (state, _) = run_to_completion(state, &registry, ServerId::Hq);
         let (state, _) = close_all_windows(state, &registry);
@@ -49505,5 +49522,133 @@ mod sansan_stage_5 {
         state.corp.installed = vec![ice("searchlight", ServerId::Hq, true, 2)];
         let state = let_subroutines_fire(state, &registry);
         assert_eq!(state.active_trace.as_ref().map(|trace| trace.base_strength), Some(2), "Trace[X], X the advancement tokens");
+    }
+}
+
+/// SanSan Stage 6 (Order and Chaos): Weyland's agendas, an operation, an
+/// asset and two identities.
+mod sansan_stage_6 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn root(card: &str, advancement_tokens: u32, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed, advancement_tokens, ..Default::default() }
+    }
+
+    fn ice_at_hq(card: &str) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    fn score(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        close_all_windows(apply_action(state, registry, PlayerAction::ScoreAgenda { target: fixture_install_id(card) }).expect("score").0, registry).0
+    }
+
+    fn use_scored(state: &GameState, registry: &CardRegistry) -> Result<GameState, crate::rules::RulesError> {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: state.corp.scored_agendas[0].install_id, ability_index: 0 }).map(|(state, _)| state)
+    }
+
+    /// The one card selection the Corp is offered, chosen.
+    fn choose_the_one(state: &GameState, registry: &CardRegistry) -> GameState {
+        let offered: Vec<PlayerAction> = crate::rules::legal_actions_for(state, registry, Side::Corp).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert_eq!(offered.len(), 1, "{:?}", state.pending_decision);
+        let (state, _) = apply_action(state, registry, offered[0].clone()).expect("select");
+        close_all_windows(apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0, registry).0
+    }
+
+    #[test]
+    fn government_takeover_gains_three_for_a_click() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![root("government_takeover", 9, false)];
+        let state = score(&state, &registry, "government_takeover");
+        assert_eq!(state.corp.resources.agenda_points, AgendaPoints(6));
+        let (credits, clicks) = (state.corp.resources.credits.0, state.corp.resources.clicks.0);
+        let state = use_scored(&state, &registry).expect("[click]: Gain 3[credit]");
+        assert_eq!((state.corp.resources.credits.0, state.corp.resources.clicks.0), (credits + 3, clicks - 1));
+    }
+
+    #[test]
+    fn high_risk_investment_gains_what_the_runner_has() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.resources.credits = Credits(7);
+        state.corp.installed = vec![root("high_risk_investment", 5, false)];
+        let state = score(&state, &registry, "high_risk_investment");
+        let credits = state.corp.resources.credits.0;
+        let state = use_scored(&state, &registry).expect("[click], hosted agenda counter");
+        assert_eq!((state.corp.resources.credits.0, state.corp.scored_agendas[0].agenda_counters), (credits + 7, 0));
+        assert!(use_scored(&state, &registry).is_err(), "no counter left");
+    }
+
+    #[test]
+    fn firmware_updates_advances_a_piece_of_ice_once_a_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![root("firmware_updates", 3, false), ice_at_hq("ice_wall")];
+        let state = score(&state, &registry, "firmware_updates");
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 3);
+        let state = choose_the_one(&use_scored(&state, &registry).expect("hosted agenda counter"), &registry);
+        assert_eq!(state.corp.installed.iter().find(|card| card.card == id("ice_wall")).unwrap().advancement_tokens, 1);
+        assert!(use_scored(&state, &registry).is_err(), "once per turn");
+    }
+
+    #[test]
+    fn traffic_accident_needs_two_tags() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("traffic_accident")];
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.runner.tags = 1;
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("traffic_accident") }).is_err());
+        state.runner.tags = 2;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("traffic_accident") }).expect("play");
+        assert_eq!(state.runner.grip.len(), 3);
+    }
+
+    #[test]
+    fn titan_transnational_may_place_an_agenda_counter_on_what_it_scores() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("titan_transnational_investing_in_your_future"));
+        state.corp.installed = vec![root("government_takeover", 9, false)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: fixture_install_id("government_takeover") }).expect("score");
+        let asked = close_all_windows(asked, &registry).0;
+        let mut counters = Vec::new();
+        for option_index in [0, 1] {
+            let (answered, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index }).unwrap_or_else(|e| panic!("{e:?} {:?}", asked.pending_decision));
+            counters.push(close_all_windows(answered, &registry).0.corp.scored_agendas[0].agenda_counters);
+        }
+        assert_eq!(counters, vec![1, 0]);
+    }
+
+    #[test]
+    fn argus_security_makes_a_thief_take_a_tag_or_two_meat_damage() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.identity = Some(id("argus_security_protection_guaranteed"));
+        state.corp.installed = vec![root("firmware_updates", 0, false)];
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (stolen, _) = apply_action(&state, &registry, PlayerAction::StealAgenda { card_id: id("firmware_updates") }).unwrap_or_else(|e| panic!("{e:?} {:?}", crate::rules::legal_actions_for(&state, &registry, Side::Runner)));
+        let stolen = close_all_windows(stolen, &registry).0;
+        let (tagged, _) = apply_action(&stolen, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take 1 tag");
+        assert_eq!(tagged.runner.tags, 1);
+        let (hurt, _) = apply_action(&stolen, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("suffer 2 meat damage");
+        assert_eq!(hurt.runner.grip.len(), 1);
+    }
+
+    #[test]
+    fn space_camp_may_advance_a_card_when_accessed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![root("space_camp", 0, false), ice_at_hq("ice_wall")];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let state = choose_the_one(&state, &registry);
+        assert_eq!(state.corp.installed.iter().find(|card| card.card == id("ice_wall")).unwrap().advancement_tokens, 1);
     }
 }

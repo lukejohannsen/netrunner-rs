@@ -1,0 +1,45 @@
+{
+  "id": "space_camp",
+  "title": "Space Camp",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 3,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this asset in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Advanceable",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PlaceAdvancementCounters": {
+                "Fixed": 1
+              }
+            }
+          }
+        }
+      ],
+      "text": "When the Runner accesses this asset, you may place 1 advancement counter on an installed card you can advance."
+    }
+  ],
+  "built_from": 7010,
+  "is_playable": true
+}
