@@ -1,0 +1,33 @@
+{
+  "id": "pachinko",
+  "title": "Pachinko",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 1,
+  "strength": 4,
+  "subroutines": [
+    {
+      "text": "End the run if the Runner is tagged.",
+      "effect": {
+        "EffectIf": {
+          "condition": "IsTagged",
+          "effect": "EndTheRun"
+        }
+      }
+    },
+    {
+      "text": "End the run if the Runner is tagged.",
+      "effect": {
+        "EffectIf": {
+          "condition": "IsTagged",
+          "effect": "EndTheRun"
+        }
+      }
+    }
+  ],
+  "built_from": 8076,
+  "triggers": [],
+  "is_playable": true
+}

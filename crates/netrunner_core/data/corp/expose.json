@@ -1,0 +1,22 @@
+{
+  "id": "expose",
+  "title": "Exposé",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 2,
+  "advancement_requirement": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[trash]: Remove 1 bad publicity for each hosted advancement counter.",
+      "cost": "TrashSelf",
+      "effect": {
+        "RemoveBadPublicity": "HostedAdvancementTokens"
+      }
+    }
+  ],
+  "built_from": 8075,
+  "is_playable": true
+}

@@ -1,0 +1,27 @@
+{
+  "id": "armand_geist_walker_tech_lord",
+  "title": "Armand \"Geist\" Walker: Tech Lord",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 1,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnAbilityUsed",
+      "subject": "Any",
+      "when": "TrashAbility",
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever you use a [trash] ability, draw 1 card."
+    }
+  ],
+  "built_from": 8063,
+  "is_playable": true
+}

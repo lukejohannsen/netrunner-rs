@@ -50304,3 +50304,190 @@ mod sansan_stage_10 {
         assert!(matched.active_run.is_some());
     }
 }
+
+/// SanSan Stage 11 (The Underway): ten cards, composed.
+mod sansan_stage_11 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice(card: &str, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    fn root(card: &str, server: ServerId, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Root, rezzed, ..Default::default() }
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn corp_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state
+    }
+
+    fn encountering(state: &GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let (mut run, _) = apply_action(state, registry, PlayerAction::InitiateRun { server }).expect("run");
+        for _ in 0..12 {
+            if run.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) {
+                return run;
+            }
+            let action = match &run.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            run = apply_action(&run, registry, action).expect("onward").0;
+        }
+        panic!("never encountered the ice");
+    }
+
+    fn fire(state: &GameState, registry: &CardRegistry) -> GameState {
+        let mut state = state.clone();
+        for _ in 0..4 {
+            let Some(window) = &state.paid_ability_window else { return state };
+            let side = window.active_priority;
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        state
+    }
+
+    fn select_first_and_confirm(state: &GameState, registry: &CardRegistry, side: Side) -> GameState {
+        let offered: Vec<PlayerAction> = crate::rules::legal_actions_for(state, registry, side).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert!(!offered.is_empty(), "{:?}", state.pending_decision);
+        let (chosen, _) = apply_action(state, registry, offered[0].clone()).expect("select");
+        apply_action(&chosen, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    #[test]
+    fn pachinko_ends_the_run_only_on_a_tagged_runner_and_spiderweb_always() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("pachinko", ServerId::Hq)];
+        assert!(fire(&encountering(&state, &registry, ServerId::Hq), &registry).active_run.is_some(), "untagged");
+        state.runner.tags = 1;
+        assert!(fire(&encountering(&state, &registry, ServerId::Hq), &registry).active_run.is_none(), "tagged");
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("spiderweb", ServerId::Hq)];
+        assert!(fire(&encountering(&state, &registry, ServerId::Hq), &registry).active_run.is_none());
+    }
+
+    #[test]
+    fn expose_removes_a_bad_publicity_per_hosted_counter() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.bad_publicity = 3;
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 2, ..root("expose", ServerId::Remote(0), true) }];
+        let (used, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("expose"), ability_index: 0 }).expect("[trash]");
+        assert_eq!(used.corp.bad_publicity, 1);
+        assert!(used.corp.installed.is_empty());
+    }
+
+    #[test]
+    fn test_ground_derezzes_a_card_per_advancement_token() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 1, ..root("test_ground", ServerId::Remote(0), true) }, ice("ice_wall", ServerId::Hq), ice("enigma", ServerId::RnD)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("test_ground"), ability_index: 0 }).expect("[trash]");
+        let done = select_first_and_confirm(&asked, &registry, Side::Corp);
+        assert_eq!(done.corp.installed.iter().filter(|card| card.rezzed).count(), 1, "one of the two ice derezzed");
+        assert!(!done.corp.installed.iter().any(|card| card.card == id("test_ground")));
+    }
+
+    #[test]
+    fn contract_killer_needs_two_counters_and_does_two_meat_damage() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 1, ..root("contract_killer", ServerId::Remote(0), true) }];
+        let kill = PlayerAction::ActivateAbility { target: fixture_install_id("contract_killer"), ability_index: 0 };
+        assert!(apply_action(&state, &registry, kill.clone()).is_err(), "one counter");
+        state.corp.installed[0].advancement_tokens = 2;
+        let (asked, _) = apply_action(&state, &registry, kill).expect("[click], [trash]");
+        let (done, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("do 2 meat damage");
+        let (done, _) = close_all_windows(done, &registry);
+        assert_eq!(done.runner.grip.len(), 1);
+        assert_eq!(done.corp.resources.clicks, Clicks(2));
+    }
+
+    #[test]
+    fn underway_renovation_mills_one_then_two_from_four_counters() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.resources.credits = Credits(5);
+        state.runner.stack = vec![id("sure_gamble"); 5];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 2, ..root("underway_renovation", ServerId::Remote(0), true) }];
+        let advance = PlayerAction::AdvanceCard { target: fixture_install_id("underway_renovation") };
+        let (once, _) = apply_action(&state, &registry, advance.clone()).expect("advance to 3");
+        let (once, _) = close_all_windows(once, &registry);
+        assert_eq!(once.runner.heap.len(), 1);
+        let (twice, _) = apply_action(&once, &registry, advance).expect("advance to 4");
+        let (twice, _) = close_all_windows(twice, &registry);
+        assert_eq!(twice.runner.heap.len(), 3);
+    }
+
+    #[test]
+    fn armand_geist_walker_draws_whenever_a_trash_ability_is_used() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("armand_geist_walker_tech_lord"));
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.stack = vec![id("sure_gamble")];
+        state.runner.rig = vec![rig("all_nighter")];
+        let (used, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("all_nighter"), ability_index: 0 }).expect("[click], [trash]");
+        let (used, _) = close_all_windows(used, &registry);
+        assert_eq!(used.runner.grip, vec![id("sure_gamble")]);
+    }
+
+    #[test]
+    fn hyperdriver_may_leave_the_game_for_three_clicks_as_the_turn_begins() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("hyperdriver")];
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = pass_until_settled(state, &registry);
+        let before = state.runner.resources.clicks;
+        let (taken, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("remove it");
+        assert_eq!(taken.runner.resources.clicks, Clicks(before.0 + 3));
+        assert!(taken.runner.rig.is_empty());
+        assert!(taken.runner.removed_from_game.contains(&id("hyperdriver")));
+    }
+
+    #[test]
+    fn faust_trashes_from_the_grip_for_strength() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble"); 2];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { base_strength: 2, ..rig("faust") }];
+        state.corp.installed = vec![ice("ice_wall", ServerId::Hq)];
+        let met = encountering(&state, &registry, ServerId::Hq);
+        let (boosted, _) = apply_action(&met, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("faust"), ability_index: 1 }).expect("trash a card from the grip");
+        assert_eq!(boosted.runner.grip.len(), 1);
+        assert_eq!(crate::rules::continuous::breaker_strength(&boosted, &registry, &boosted.runner.rig[0]), 4);
+    }
+
+    #[test]
+    fn shiv_costs_no_memory_at_two_link_and_counts_the_icebreakers() {
+        let registry = registry();
+        let mut state = base_state();
+        let shiv = registry.get(&id("shiv")).unwrap();
+        state.runner.identity = Some(id("noise_hacker_extraordinaire"));
+        let base = crate::rules::memory::memory_balance(&state, &registry);
+        assert_eq!(crate::rules::memory::memory_balance_with(&state, &registry, Some(shiv)), base - 1);
+        state.runner.identity = Some(id("sunny_lebeau_security_specialist"));
+        assert_eq!(crate::rules::memory::memory_balance_with(&state, &registry, Some(shiv)), base);
+        state.runner.rig = vec![rig("shiv"), rig("corroder")];
+        assert_eq!(crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[0]), 2);
+    }
+}
