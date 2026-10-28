@@ -1,0 +1,50 @@
+{
+  "id": "explode_a_palooza",
+  "title": "Explode-a-palooza",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this agenda in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GainCredits": [
+                  "Corp",
+                  5
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may gain 5[credit]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When the Runner accesses this agenda, you may gain 5[credit]."
+    }
+  ],
+  "built_from": 8094,
+  "is_playable": true
+}

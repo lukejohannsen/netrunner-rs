@@ -1,0 +1,113 @@
+{
+  "id": "hollywood_renovation",
+  "title": "Hollywood Renovation",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "installs_faceup": true,
+  "triggers": [
+    {
+      "trigger": "OnAdvance",
+      "subject": "This",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "AmountAtLeast": [
+                  "HostedAdvancementTokens",
+                  6
+                ]
+              }
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnInstalled",
+                      "filter": {
+                        "All": [
+                          "Advanceable",
+                          "NotSourceCard"
+                        ]
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "PlaceAdvancementCounters": {
+                          "Fixed": 1
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "you may place 1 advancement token on another card that can be advanced",
+                  ""
+                ]
+              }
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                "HostedAdvancementTokens",
+                6
+              ]
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnInstalled",
+                      "filter": {
+                        "All": [
+                          "Advanceable",
+                          "NotSourceCard"
+                        ]
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "PlaceAdvancementCounters": {
+                          "Fixed": 2
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "or 2 advancement tokens instead if there are 6 or more advancement tokens on Hollywood Renovation",
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever you advance Hollywood Renovation, you may place 1 advancement token on another card that can be advanced (or 2 advancement tokens instead if there are 6 or more advancement tokens on Hollywood Renovation)."
+    }
+  ],
+  "built_from": 8098,
+  "is_playable": true
+}

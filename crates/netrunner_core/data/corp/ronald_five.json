@@ -1,0 +1,39 @@
+{
+  "id": "ronald_five",
+  "title": "Ronald Five",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "trash_cost": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "Any",
+      "effects": [
+        {
+          "LoseClicks": 1
+        }
+      ],
+      "text": "Whenever the Runner trashes a Corp card (including this asset), they lose [click]."
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "Any",
+      "when": {
+        "OwnedBy": {
+          "owner": "Corp",
+          "whose": "Runner"
+        }
+      },
+      "effects": [
+        {
+          "LoseClicks": 1
+        }
+      ],
+      "text": "Whenever the Runner trashes a Corp card (including this asset), they lose [click]."
+    }
+  ],
+  "built_from": 8088,
+  "is_playable": true
+}

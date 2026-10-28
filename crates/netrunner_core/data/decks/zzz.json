@@ -3,7 +3,7 @@
   "name": "Zzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Titan Transnational: Investing In Your Future, Order and Chaos's Weyland identity, who may place an agenda counter on every agenda it scores. Zugzwang's list, its identity swapped, with two New Construction and a Transport Monopoly for a Government Takeover and two Space Camp, six points for six, and a Hostile Takeover for a Firmware Updates, which Zugzwang keeps. Named to sort after every other Corp deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 6. Patch, Sub Boost and Cyberdex Virus Suite in for Formicary and Oduduwa (SanSan Stage 7). Negotiator and Capital Investors in for Masvingo (SanSan Stage 8). SanSan Stage 11 swapped a Watchtower for a Spiderweb and a Hostile Takeover for an Underway Renovation, both kept elsewhere.",
+  "description": "Not a published list: built so the sweeps reach Titan Transnational: Investing In Your Future, Order and Chaos's Weyland identity, who may place an agenda counter on every agenda it scores. Zugzwang's list, its identity swapped, with two New Construction and a Transport Monopoly for a Government Takeover and two Space Camp, six points for six, and a Hostile Takeover for a Firmware Updates, which Zugzwang keeps. Named to sort after every other Corp deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 6. Patch, Sub Boost and Cyberdex Virus Suite in for Formicary and Oduduwa (SanSan Stage 7). Negotiator and Capital Investors in for Masvingo (SanSan Stage 8). SanSan Stage 11 swapped a Watchtower for a Spiderweb and a Hostile Takeover for an Underway Renovation, both kept elsewhere. SanSan Stage 12 swapped a Meteor Mining and a Greenmail, kept by other decks, for a Hollywood Renovation (the same three points) and a Ronald Five.",
   "style": [
     "traps"
   ],
@@ -19,10 +19,6 @@
     },
     {
       "card": "off_the_books",
-      "count": 1
-    },
-    {
-      "card": "greenmail",
       "count": 1
     },
     {
@@ -43,7 +39,7 @@
     },
     {
       "card": "meteor_mining",
-      "count": 2
+      "count": 1
     },
     {
       "card": "mass_commercialization",
@@ -131,6 +127,14 @@
     },
     {
       "card": "underway_renovation",
+      "count": 1
+    },
+    {
+      "card": "hollywood_renovation",
+      "count": 1
+    },
+    {
+      "card": "ronald_five",
       "count": 1
     }
   ]

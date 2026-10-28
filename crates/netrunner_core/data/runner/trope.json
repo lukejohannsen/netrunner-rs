@@ -1,0 +1,49 @@
+{
+  "id": "trope",
+  "title": "Trope",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When your turn begins, place 1 power counter on Trope."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "RemoveSelfFromGame"
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnHeap",
+          "filter": "Any",
+          "min": 0,
+          "max": 0,
+          "reveal": false,
+          "shuffle_after": true,
+          "destination": "OwnStack",
+          "count": "HostedCounters"
+        }
+      },
+      "text": "[click], remove Trope from the game: Shuffle 1 card from your heap into your stack for each power counter on Trope."
+    }
+  ],
+  "built_from": 8081,
+  "is_playable": true
+}
