@@ -1,0 +1,23 @@
+{
+  "id": "predictive_algorithm",
+  "title": "Predictive Algorithm",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "continuous": [
+    {
+      "kind": {
+        "StealCost": {
+          "Credits": 2
+        }
+      },
+      "applies_to": {
+        "Stealing": "Any"
+      },
+      "text": "As an additional cost to steal an agenda, the Runner must pay 2[credit]."
+    }
+  ],
+  "built_from": 8017,
+  "triggers": [],
+  "is_playable": true
+}

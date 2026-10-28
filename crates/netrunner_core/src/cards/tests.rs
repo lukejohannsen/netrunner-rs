@@ -49815,3 +49815,186 @@ mod sansan_stage_7 {
         assert!(crate::rules::continuous::ice_types(&running, &registry, &run.ice[run.position]).contains(&crate::dsl::IceType::Barrier));
     }
 }
+
+/// SanSan and The Valley Stage 8: Bandwidth, Brain-Taping Warehouse,
+/// Capital Investors, Cortex Lock, Negotiator, NEXT Gold, Predictive
+/// Algorithm and Tech Startup.
+mod sansan_stage_8 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn ice_at_hq(card: &str) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    fn root(card: &str, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    /// A run on HQ, driven until the Runner is encountering its outermost
+    /// ice and nobody has passed in the encounter's window.
+    fn encountering(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (mut run, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        for _ in 0..12 {
+            if run.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) {
+                return run;
+            }
+            let action = match &run.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            run = apply_action(&run, registry, action).expect("onward").0;
+        }
+        panic!("never encountered the ice");
+    }
+
+    /// Both players pass the encounter's window and the subroutines fire,
+    /// up to the first thing they park.
+    fn fire(state: &GameState, registry: &CardRegistry) -> GameState {
+        let mut state = state.clone();
+        for _ in 0..4 {
+            let Some(window) = &state.paid_ability_window else { return state };
+            let side = window.active_priority;
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        state
+    }
+
+    #[test]
+    fn bandwidth_tags_and_takes_the_tag_back_if_the_run_succeeds() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("bandwidth")];
+        let fired = fire(&encountering(&state, &registry), &registry);
+        assert_eq!(fired.runner.tags, 1);
+        let mut done = fired;
+        for _ in 0..12 {
+            if done.active_run.is_none() {
+                break;
+            }
+            let action = match &done.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None if done.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::Success) => PlayerAction::CompleteRun,
+                None => PlayerAction::ContinueRun,
+            };
+            done = apply_action(&done, &registry, action).unwrap_or_else(|e| panic!("{e:?} {:?}", crate::rules::legal_actions_for(&done, &registry, Side::Runner))).0;
+        }
+        assert_eq!(done.runner.tags, 0, "the run was successful");
+    }
+
+    #[test]
+    fn brain_taping_warehouse_lowers_a_bioroids_rez_by_the_runners_clicks() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(3);
+        let mut bioroid = ice_at_hq("eli_1_0");
+        bioroid.rezzed = false;
+        let mut other = ice_at_hq("ice_wall");
+        other.rezzed = false;
+        other.install_id = InstallId(77);
+        state.corp.installed = vec![bioroid, other, root("brain_taping_warehouse", true)];
+        assert_eq!(crate::rules::continuous::rez_cost_delta(&state, &registry, fixture_install_id("eli_1_0")), -3);
+        assert_eq!(crate::rules::continuous::rez_cost_delta(&state, &registry, InstallId(77)), 0);
+    }
+
+    #[test]
+    fn capital_investors_gains_two_for_a_click() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![root("capital_investors", true)];
+        let credits = state.corp.resources.credits.0;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("capital_investors"), ability_index: 0 }).expect("[click]: Gain 2[credit]");
+        assert_eq!(state.corp.resources.credits.0, credits + 2);
+    }
+
+    #[test]
+    fn cortex_lock_does_a_net_damage_per_unused_mu() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("cortex_lock")];
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.runner.rig = vec![rig("corroder")];
+        let unused = crate::rules::memory::memory_balance(&state, &registry);
+        assert!(unused > 0);
+        let fired = fire(&encountering(&state, &registry), &registry);
+        assert_eq!(fired.runner.grip.len(), 5 - unused as usize);
+    }
+
+    #[test]
+    fn negotiator_can_be_broken_by_the_runner_for_two_credits() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(5);
+        state.corp.installed = vec![ice_at_hq("negotiator")];
+        let at = encountering(&state, &registry);
+        let (broken, _) = apply_action(&at, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("negotiator"), ability_index: 0 })
+            .unwrap_or_else(|e| panic!("{e:?} {:?}", crate::rules::legal_actions_for(&at, &registry, Side::Runner)));
+        assert_eq!(broken.runner.resources.credits, Credits(3));
+    }
+
+    #[test]
+    fn next_gold_does_x_net_damage_for_each_rezzed_next_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        let mut bronze = ice_at_hq("next_bronze");
+        bronze.install_id = InstallId(78);
+        state.corp.installed = vec![ice_at_hq("next_gold"), bronze];
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        let fired = fire(&encountering(&state, &registry), &registry);
+        assert_eq!(fired.runner.grip.len(), 3, "two rezzed NEXT ice");
+    }
+
+    #[test]
+    fn predictive_algorithm_taxes_a_steal_two_credits() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("predictive_algorithm")];
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("predictive_algorithm") }).expect("play the current");
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(5);
+        state.corp.installed = vec![root("hostile_takeover", false)];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (stolen, _) = apply_action(&state, &registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).unwrap_or_else(|e| panic!("{e:?} {:?}", crate::rules::legal_actions_for(&state, &registry, Side::Runner)));
+        assert_eq!(stolen.runner.resources.credits, Credits(3));
+    }
+
+    #[test]
+    fn tech_startup_trades_itself_for_an_asset_from_r_and_d() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![root("tech_startup", true)];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("pad_campaign"), id("hedge_fund")];
+        let (mut state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
+        for _ in 0..20 {
+            if state.pending_paid_choice.is_some() {
+                break;
+            }
+            let actor = crate::rules::current_actor(&state).expect("someone acts");
+            state = apply_action(&state, &registry, PlayerAction::PassPriority { side: actor }).expect("pass").0;
+        }
+        let (paid, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("trash Tech Startup");
+        let offered: Vec<PlayerAction> = crate::rules::legal_actions_for(&paid, &registry, Side::Corp).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert_eq!(offered.len(), 1, "PAD Campaign, the one asset");
+        let (chosen, _) = apply_action(&paid, &registry, offered[0].clone()).expect("select");
+        let (installing, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let installed = crate::rules::legal_actions_for(&installing, &registry, Side::Corp);
+        let (done, _) = apply_action(&installing, &registry, installed[0].clone()).unwrap_or_else(|e| panic!("{e:?} {installed:?}"));
+        assert!(done.corp.installed.iter().any(|card| card.card == id("pad_campaign")), "{:?}", done.corp.installed);
+        assert!(!done.corp.installed.iter().any(|card| card.card == id("tech_startup")));
+        assert_eq!(done.corp.r_and_d.len(), 1, "one card installed and one drawn as the turn began");
+    }
+}

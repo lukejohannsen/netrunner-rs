@@ -3,7 +3,7 @@
   "name": "Zzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Titan Transnational: Investing In Your Future, Order and Chaos's Weyland identity, who may place an agenda counter on every agenda it scores. Zugzwang's list, its identity swapped, with two New Construction and a Transport Monopoly for a Government Takeover and two Space Camp, six points for six, and a Hostile Takeover for a Firmware Updates, which Zugzwang keeps. Named to sort after every other Corp deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 6. Patch, Sub Boost and Cyberdex Virus Suite in for Formicary and Oduduwa (SanSan Stage 7).",
+  "description": "Not a published list: built so the sweeps reach Titan Transnational: Investing In Your Future, Order and Chaos's Weyland identity, who may place an agenda counter on every agenda it scores. Zugzwang's list, its identity swapped, with two New Construction and a Transport Monopoly for a Government Takeover and two Space Camp, six points for six, and a Hostile Takeover for a Firmware Updates, which Zugzwang keeps. Named to sort after every other Corp deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 6. Patch, Sub Boost and Cyberdex Virus Suite in for Formicary and Oduduwa (SanSan Stage 7). Negotiator and Capital Investors in for Masvingo (SanSan Stage 8).",
   "style": [
     "traps"
   ],
@@ -31,10 +31,6 @@
     },
     {
       "card": "divested_trust",
-      "count": 2
-    },
-    {
-      "card": "masvingo",
       "count": 2
     },
     {
@@ -123,6 +119,14 @@
     },
     {
       "card": "cyberdex_virus_suite",
+      "count": 1
+    },
+    {
+      "card": "negotiator",
+      "count": 1
+    },
+    {
+      "card": "capital_investors",
       "count": 1
     }
   ]

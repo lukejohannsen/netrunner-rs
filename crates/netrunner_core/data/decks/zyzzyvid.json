@@ -3,7 +3,7 @@
   "name": "Zyzzyvid",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Argus Security: Protection Guaranteed, Order and Chaos's Weyland identity, whose Runner takes a tag or 2 meat damage for every agenda stolen. Family Business' list, its identity swapped, with a Hostile Takeover for a Firmware Updates and a Graft for a High-Risk Investment, point for point; a Hunter Seeker and a Door to Door for two Traffic Accident; and a Sandburg for a Space Camp, which Family Business keeps. Named to sort after every other Corp deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 6.",
+  "description": "Not a published list: built so the sweeps reach Argus Security: Protection Guaranteed, Order and Chaos's Weyland identity, whose Runner takes a tag or 2 meat damage for every agenda stolen. Family Business' list, its identity swapped, with a Hostile Takeover for a Firmware Updates and a Graft for a High-Risk Investment, point for point; a Hunter Seeker and a Door to Door for two Traffic Accident; and a Sandburg for a Space Camp, which Family Business keeps. Named to sort after every other Corp deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 6. Predictive Algorithm and Bandwidth in for Shipment from Kaguya and Oduduwa (SanSan Stage 8).",
   "style": [
     "traps"
   ],
@@ -34,10 +34,6 @@
       "count": 2
     },
     {
-      "card": "shipment_from_kaguya",
-      "count": 1
-    },
-    {
       "card": "oberth_protocol",
       "count": 2
     },
@@ -47,10 +43,6 @@
     },
     {
       "card": "masvingo",
-      "count": 1
-    },
-    {
-      "card": "oduduwa",
       "count": 1
     },
     {
@@ -167,6 +159,14 @@
     },
     {
       "card": "space_camp",
+      "count": 1
+    },
+    {
+      "card": "predictive_algorithm",
+      "count": 1
+    },
+    {
+      "card": "bandwidth",
       "count": 1
     }
   ]

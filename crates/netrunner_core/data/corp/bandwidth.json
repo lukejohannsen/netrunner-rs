@@ -1,0 +1,38 @@
+{
+  "id": "bandwidth",
+  "title": "Bandwidth",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 0,
+  "strength": 5,
+  "subroutines": [
+    {
+      "text": "Give the Runner 1 tag. If this run is successful, the Runner removes 1 tag.",
+      "effect": {
+        "Sequence": [
+          {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          },
+          {
+            "LaterThisTurn": {
+              "when": "OnSuccessfulRun",
+              "this_run": true,
+              "effect": {
+                "RemoveTags": {
+                  "Fixed": 1
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 8016,
+  "triggers": [],
+  "is_playable": true
+}

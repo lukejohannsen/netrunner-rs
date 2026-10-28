@@ -250,17 +250,9 @@ pub(crate) const VAL_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("spike", "Spike"),
     ("gene_conditioning_shoppe", "Gene Conditioning Shoppe"),
     ("traffic_jam", "Traffic Jam"),
-    ("brain_taping_warehouse", "Brain-Taping Warehouse"),
-    ("next_gold", "NEXT Gold"),
     ("jinteki_biotech_life_imagined", "Jinteki Biotech: Life Imagined"),
     ("genetic_resequencing", "Genetic Resequencing"),
-    ("cortex_lock", "Cortex Lock"),
     ("valley_grid", "Valley Grid"),
-    ("bandwidth", "Bandwidth"),
-    ("predictive_algorithm", "Predictive Algorithm"),
-    ("capital_investors", "Capital Investors"),
-    ("negotiator", "Negotiator"),
-    ("tech_startup", "Tech Startup"),
 ];
 
 /// *Breaker Bay* (`breaker_bay`): tranche F7 of the FFG plan.

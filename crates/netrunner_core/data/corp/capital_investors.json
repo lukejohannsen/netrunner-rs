@@ -1,0 +1,26 @@
+{
+  "id": "capital_investors",
+  "title": "Capital Investors",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 2,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          2
+        ]
+      },
+      "text": "[click]: Gain 2[credit]."
+    }
+  ],
+  "built_from": 8018,
+  "triggers": [],
+  "is_playable": true
+}

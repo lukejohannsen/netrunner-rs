@@ -1,0 +1,27 @@
+{
+  "id": "brain_taping_warehouse",
+  "title": "Brain-Taping Warehouse",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "trash_cost": 4,
+  "continuous": [
+    {
+      "kind": {
+        "RezCost": {
+          "per": -1,
+          "of": "ClicksRemaining"
+        }
+      },
+      "applies_to": {
+        "Ice": {
+          "HasSubtype": "Bioroid"
+        }
+      },
+      "text": "The rez cost of bioroid ice is lowered by 1 for each unspent click the Runner has."
+    }
+  ],
+  "built_from": 8010,
+  "triggers": [],
+  "is_playable": true
+}
