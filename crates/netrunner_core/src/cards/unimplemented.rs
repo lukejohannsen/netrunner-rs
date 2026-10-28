@@ -277,15 +277,7 @@ pub(crate) const CC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("titanium_ribs", "Titanium Ribs"),
     ("crowbar", "Crowbar"),
     ("analog_dreamers", "Analog Dreamers"),
-    ("cybernetics_division_humanity_upgraded", "Cybernetics Division: Humanity Upgraded"),
-    ("self_destruct_chips", "Self-Destruct Chips"),
-    ("lab_dog", "Lab Dog"),
-    ("oaktown_grid", "Oaktown Grid"),
-    ("ryon_knight", "Ryon Knight"),
-    ("clairvoyant_monitor", "Clairvoyant Monitor"),
     ("lockdown", "Lockdown"),
-    ("little_engine", "Little Engine"),
-    ("quicksand", "Quicksand"),
 ];
 
 /// *The Underway* (`the_underway`): tranche F7 of the FFG plan.

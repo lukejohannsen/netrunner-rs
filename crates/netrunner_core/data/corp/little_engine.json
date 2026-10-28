@@ -1,0 +1,32 @@
+{
+  "id": "little_engine",
+  "title": "Little Engine",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 5,
+  "strength": 7,
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "The Runner gains 5[credit].",
+      "effect": {
+        "GainCredits": [
+          "Runner",
+          5
+        ]
+      }
+    }
+  ],
+  "built_from": 8057,
+  "triggers": [],
+  "is_playable": true
+}

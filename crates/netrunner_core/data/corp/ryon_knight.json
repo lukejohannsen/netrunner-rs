@@ -1,0 +1,37 @@
+{
+  "id": "ryon_knight",
+  "title": "Ryon Knight",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 3,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": {
+        "And": [
+          "RunAgainstThisServer",
+          {
+            "Not": {
+              "AmountAtLeast": [
+                "ClicksRemaining",
+                1
+              ]
+            }
+          }
+        ]
+      },
+      "effect": {
+        "DealDamage": [
+          "Brain",
+          1
+        ]
+      },
+      "text": "[trash]: Do 1 core damage. Use this ability only during a run against this server and only if the Runner has no unspent [click]."
+    }
+  ],
+  "built_from": 8054,
+  "triggers": [],
+  "is_playable": true
+}
