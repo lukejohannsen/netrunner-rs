@@ -1,0 +1,45 @@
+{
+  "id": "hyperdriver",
+  "title": "Hyperdriver",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "RemoveFromGame": "ThisCard"
+                  },
+                  {
+                    "GainClicks": [
+                      "Runner",
+                      3
+                    ]
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may remove Hyperdriver from the game and gain [click][click][click]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may remove Hyperdriver from the game and gain [click][click][click]."
+    }
+  ],
+  "built_from": 8070,
+  "is_playable": true
+}

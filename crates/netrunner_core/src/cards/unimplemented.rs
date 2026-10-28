@@ -282,22 +282,12 @@ pub(crate) const CC_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Underway* (`the_underway`): tranche F7 of the FFG plan.
 pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("faust", "Faust"),
     ("street_peddler", "Street Peddler"),
-    ("armand_geist_walker_tech_lord", "Armand \"Geist\" Walker: Tech Lord"),
-    ("shiv", "Shiv"),
     ("gang_sign", "Gang Sign"),
     ("muertos_gang_member", "Muertos Gang Member"),
-    ("hyperdriver", "Hyperdriver"),
-    ("test_ground", "Test Ground"),
     ("defective_brainchips", "Defective Brainchips"),
     ("allele_repression", "Allele Repression"),
     ("marcus_batty", "Marcus Batty"),
-    ("expose", "Exposé"),
-    ("pachinko", "Pachinko"),
-    ("underway_renovation", "Underway Renovation"),
-    ("contract_killer", "Contract Killer"),
-    ("spiderweb", "Spiderweb"),
     ("underway_grid", "Underway Grid"),
 ];
 
@@ -854,8 +844,6 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("marked_accounts", "Marked Accounts"),
     ("product_placement", "Product Placement"),
     ("blue_sun_powering_the_future", "Blue Sun: Powering the Future"),
-    ("contract_killer", "Contract Killer"),
     ("public_support", "Public Support"),
-    ("spiderweb", "Spiderweb"),
     ("oversight_ai", "Oversight AI"),
 ];

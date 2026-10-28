@@ -1,0 +1,145 @@
+{
+  "id": "zzyzzy",
+  "name": "Zzyzzy",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Armand \"Geist\" Walker: Tech Lord, The Underway's Criminal identity, who draws a card whenever the Runner uses a [trash] ability. Hit List's list, its identity swapped, with two Shiv, a Faust and a Hyperdriver for two Puffer, a Tapwrm and a Reaver, each kept by Hit List. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only. SanSan Stage 11.",
+  "style": [
+    "pressure"
+  ],
+  "identity": "armand_geist_walker_tech_lord",
+  "cards": [
+    {
+      "card": "wake_implant_v2a_jrj",
+      "count": 2
+    },
+    {
+      "card": "poison_vial",
+      "count": 1
+    },
+    {
+      "card": "tremolo",
+      "count": 1
+    },
+    {
+      "card": "jeitinho",
+      "count": 1
+    },
+    {
+      "card": "peacock",
+      "count": 1
+    },
+    {
+      "card": "pheromones",
+      "count": 1
+    },
+    {
+      "card": "saci",
+      "count": 2
+    },
+    {
+      "card": "inside_job",
+      "count": 2
+    },
+    {
+      "card": "asmund_pudlat",
+      "count": 2
+    },
+    {
+      "card": "matryoshka",
+      "count": 2
+    },
+    {
+      "card": "femme_fatale",
+      "count": 2
+    },
+    {
+      "card": "hq_interface",
+      "count": 2
+    },
+    {
+      "card": "fall_guy",
+      "count": 2
+    },
+    {
+      "card": "lemuria_codecracker",
+      "count": 2
+    },
+    {
+      "card": "cats_cradle",
+      "count": 2
+    },
+    {
+      "card": "networking",
+      "count": 2
+    },
+    {
+      "card": "prognostic_q_loop",
+      "count": 1
+    },
+    {
+      "card": "afterimage",
+      "count": 2
+    },
+    {
+      "card": "easy_mark",
+      "count": 1
+    },
+    {
+      "card": "special_order",
+      "count": 1
+    },
+    {
+      "card": "tycoon",
+      "count": 2
+    },
+    {
+      "card": "faerie",
+      "count": 2
+    },
+    {
+      "card": "data_dealer",
+      "count": 2
+    },
+    {
+      "card": "corporate_grant",
+      "count": 2
+    },
+    {
+      "card": "officer_frank",
+      "count": 1
+    },
+    {
+      "card": "first_responders",
+      "count": 1
+    },
+    {
+      "card": "the_gauntlet",
+      "count": 1
+    },
+    {
+      "card": "polyhistor",
+      "count": 1
+    },
+    {
+      "card": "citadel_sanctuary",
+      "count": 1
+    },
+    {
+      "card": "rolodex",
+      "count": 1
+    },
+    {
+      "card": "shiv",
+      "count": 2
+    },
+    {
+      "card": "faust",
+      "count": 1
+    },
+    {
+      "card": "hyperdriver",
+      "count": 1
+    }
+  ]
+}

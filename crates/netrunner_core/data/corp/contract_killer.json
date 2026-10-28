@@ -1,0 +1,63 @@
+{
+  "id": "contract_killer",
+  "title": "Contract Killer",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 3,
+  "advancement_requirement": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[click], [trash]: Trash a connection or do 2 meat damage.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedAdvancementTokens",
+          2
+        ]
+      },
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OpponentInstalled",
+                "filter": {
+                  "HasSubtype": "Connection"
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OpponentDiscard"
+              }
+            },
+            {
+              "DealDamage": [
+                "Meat",
+                2
+              ]
+            }
+          ],
+          "texts": [
+            "Trash a connection",
+            "do 2 meat damage"
+          ]
+        }
+      }
+    }
+  ],
+  "built_from": 8078,
+  "is_playable": true
+}

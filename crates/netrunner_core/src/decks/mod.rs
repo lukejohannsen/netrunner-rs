@@ -644,6 +644,7 @@ mod tests {
             ("zyzzyvid", &neither),
             ("zzz", &neither),
             ("zzzz", &neither),
+            ("zzyzzy", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.

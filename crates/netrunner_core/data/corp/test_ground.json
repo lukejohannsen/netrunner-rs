@@ -1,0 +1,38 @@
+{
+  "id": "test_ground",
+  "title": "Test Ground",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 2,
+  "advancement_requirement": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[trash]: Derez 1 card for each advancement token on Test Ground.",
+      "cost": "TrashSelf",
+      "effect": {
+        "Repeat": {
+          "times": "HostedAdvancementTokens",
+          "effect": {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnInstalled",
+              "filter": "Rezzed",
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "DerezCard": "ThisCard"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 8071,
+  "is_playable": true
+}

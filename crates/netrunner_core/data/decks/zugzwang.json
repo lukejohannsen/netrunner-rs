@@ -3,7 +3,7 @@
   "name": "Zugzwang",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Jemison Astronautics: Sacrifice. Audacity. Success., Red Sand's Weyland identity, which places advancement counters on an installed card whenever the Corp forfeits an agenda, one more than the agenda's points. On Family Business's list, with its two Hostile Architecture, two Wake Up Call and two Death and Taxes given to the cards that forfeit: two Quarantine System, two Success and two Sacrifice. Eternal-legal only: Red Sand is in neither Startup nor Standard. Red Sand Stage 8. Red Sand Stage 9: two Tithonium for two Battlement, two Signal Jamming for two Fractal Threat Matrix, and two Net Analytics for the GRNDL Refinery and the Elizabeth Mills. Red Sand Stage 10 Red Planet Couriers (Red Sand Stage 15) FFG F6 Stage 6: two New Construction for two Broad Daylight, kept by Family Business and Yield Curve. Mumbad Stage 8 swapped two Priority Construction for two Dedication Ceremony. Mumbad Stage 9 swapped two Drudge Work and a Watchtower for two Zealous Judge and a Surat City Grid. SanSan Stage 5: Builder, a code gate that advances the ice beside it, for its Ice Wall, which other decks keep.",
+  "description": "Not a published list: built so the sweeps reach Jemison Astronautics: Sacrifice. Audacity. Success., Red Sand's Weyland identity, which places advancement counters on an installed card whenever the Corp forfeits an agenda, one more than the agenda's points. On Family Business's list, with its two Hostile Architecture, two Wake Up Call and two Death and Taxes given to the cards that forfeit: two Quarantine System, two Success and two Sacrifice. Eternal-legal only: Red Sand is in neither Startup nor Standard. Red Sand Stage 8. Red Sand Stage 9: two Tithonium for two Battlement, two Signal Jamming for two Fractal Threat Matrix, and two Net Analytics for the GRNDL Refinery and the Elizabeth Mills. Red Sand Stage 10 Red Planet Couriers (Red Sand Stage 15) FFG F6 Stage 6: two New Construction for two Broad Daylight, kept by Family Business and Yield Curve. Mumbad Stage 8 swapped two Priority Construction for two Dedication Ceremony. Mumbad Stage 9 swapped two Drudge Work and a Watchtower for two Zealous Judge and a Surat City Grid. SanSan Stage 5: Builder, a code gate that advances the ice beside it, for its Ice Wall, which other decks keep. SanSan Stage 11 swapped a Masvingo, which two other decks carry, for a Contract Killer.",
   "style": [
     "traps"
   ],
@@ -43,7 +43,7 @@
     },
     {
       "card": "masvingo",
-      "count": 2
+      "count": 1
     },
     {
       "card": "oduduwa",
@@ -115,6 +115,10 @@
     },
     {
       "card": "builder",
+      "count": 1
+    },
+    {
+      "card": "contract_killer",
       "count": 1
     }
   ]

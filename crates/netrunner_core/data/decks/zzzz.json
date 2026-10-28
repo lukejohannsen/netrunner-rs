@@ -3,7 +3,7 @@
   "name": "Zzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Cybernetics Division: Humanity Upgraded's deck, built in SanSan Stage 10 so the sweeps reach a Corp whose identity takes a card from both players' maximum hand size. On Endless Loop's frame, which keeps every card; in for its cards here: Self-Destruct Chips for a Megaprix Qualifier, point for point, Ryon Knight and Oaktown Grid for Game Changer, Lab Dog and Quicksand for Divert Power, and Little Engine and Clairvoyant Monitor for a Pulse and an Echo. Eternal-legal.",
+  "description": "Not a published list: Cybernetics Division: Humanity Upgraded's deck, built in SanSan Stage 10 so the sweeps reach a Corp whose identity takes a card from both players' maximum hand size. On Endless Loop's frame, which keeps every card; in for its cards here: Self-Destruct Chips for a Megaprix Qualifier, point for point, Ryon Knight and Oaktown Grid for Game Changer, Lab Dog and Quicksand for Divert Power, and Little Engine and Clairvoyant Monitor for a Pulse and an Echo. Eternal-legal. SanSan Stage 11 swapped two Vaporframe Fabricator and two BASS-CH1R180G4, each kept by four other decks, for two Pachinko, an Exposé and a Test Ground.",
   "style": [
     "glacier"
   ],
@@ -28,10 +28,6 @@
     {
       "card": "echo",
       "count": 1
-    },
-    {
-      "card": "vaporframe_fabricator",
-      "count": 2
     },
     {
       "card": "vulnerability_audit",
@@ -59,10 +55,6 @@
     },
     {
       "card": "next_silver",
-      "count": 2
-    },
-    {
-      "card": "bass_ch1r180g4",
       "count": 2
     },
     {
@@ -127,6 +119,18 @@
     },
     {
       "card": "clairvoyant_monitor",
+      "count": 1
+    },
+    {
+      "card": "pachinko",
+      "count": 2
+    },
+    {
+      "card": "expose",
+      "count": 1
+    },
+    {
+      "card": "test_ground",
       "count": 1
     }
   ]

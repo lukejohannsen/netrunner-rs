@@ -1,0 +1,27 @@
+{
+  "id": "spiderweb",
+  "title": "Spiderweb",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 4,
+  "strength": 2,
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 8079,
+  "triggers": [],
+  "is_playable": true
+}
