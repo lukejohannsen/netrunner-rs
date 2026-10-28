@@ -1,0 +1,62 @@
+{
+  "id": "next_gold",
+  "title": "NEXT Gold",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 8,
+  "strength": 4,
+  "subroutines": [
+    {
+      "text": "Do X net damage.",
+      "effect": {
+        "DealDamageAmount": [
+          "Net",
+          {
+            "CorpInstalls": {
+              "All": [
+                "Ice",
+                "Rezzed",
+                {
+                  "HasSubtype": "NEXT"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "Trash X programs.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "CardType": "Program"
+          },
+          "min": 0,
+          "max": 0,
+          "count": {
+            "CorpInstalls": {
+              "All": [
+                "Ice",
+                "Rezzed",
+                {
+                  "HasSubtype": "NEXT"
+                }
+              ]
+            }
+          },
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    }
+  ],
+  "built_from": 8011,
+  "triggers": [],
+  "is_playable": true
+}

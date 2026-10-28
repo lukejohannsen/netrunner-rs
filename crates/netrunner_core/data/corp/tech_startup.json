@@ -1,0 +1,46 @@
+{
+  "id": "tech_startup",
+  "title": "Tech Startup",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": "TrashSelf",
+            "if_paid": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnRAndD",
+                "filter": {
+                  "CardType": "Asset"
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": true,
+                "shuffle_after": true,
+                "then": {
+                  "PromptInstallCorpCard": {
+                    "origin_zone": "OwnRAndD"
+                  }
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash Tech Startup. If you do, search R&D for an asset, reveal it, and install it"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may trash Tech Startup. If you do, search R&D for an asset, reveal it, and install it. Shuffle R&D."
+    }
+  ],
+  "built_from": 8020,
+  "is_playable": true
+}

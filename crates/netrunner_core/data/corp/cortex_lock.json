@@ -1,0 +1,24 @@
+{
+  "id": "cortex_lock",
+  "title": "Cortex Lock",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 2,
+  "strength": 4,
+  "subroutines": [
+    {
+      "text": "Do 1 net damage for each unused MU the Runner has.",
+      "effect": {
+        "DealDamageAmount": [
+          "Net",
+          "UnusedMemory"
+        ]
+      }
+    }
+  ],
+  "built_from": 8014,
+  "triggers": [],
+  "is_playable": true
+}
