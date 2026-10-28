@@ -1,0 +1,41 @@
+{
+  "id": "tour_guide",
+  "title": "Tour Guide",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 2,
+  "strength": 0,
+  "triggers": [],
+  "subroutines": [],
+  "continuous": [
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "End the run.",
+            "effect": "EndTheRun"
+          },
+          "count": {
+            "per": 1,
+            "of": {
+              "CorpInstalls": {
+                "All": [
+                  "Rezzed",
+                  {
+                    "CardType": "Asset"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "This ice gains \"[subroutine] End the run.\" for each rezzed asset."
+    }
+  ],
+  "built_from": 8118,
+  "is_playable": true
+}

@@ -50669,3 +50669,213 @@ mod sansan_stage_12 {
         assert!(done.runner.removed_from_game.contains(&id("trope")));
     }
 }
+
+mod sansan_stage_13 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice(card: &str, server: ServerId, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    fn root(card: &str, server: ServerId, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Root, rezzed, ..Default::default() }
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state
+    }
+
+    fn corp_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state
+    }
+
+    fn select_first_and_confirm(state: &GameState, registry: &CardRegistry, side: Side) -> GameState {
+        let offered: Vec<PlayerAction> = crate::rules::legal_actions_for(state, registry, side).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert_eq!(offered.len(), 1, "{:?}", state.pending_decision);
+        let (chosen, _) = apply_action(state, registry, offered[0].clone()).expect("select");
+        apply_action(&chosen, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    fn corp_turn_begins(state: GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), registry, PlayerAction::EndTurn).expect("end turn");
+        pass_until_settled(state, registry).0
+    }
+
+    fn in_corp_score_area(state: &GameState, card: &str) -> bool {
+        state.corp.scored_agendas.iter().any(|agenda| agenda.card == id(card))
+    }
+
+    #[test]
+    fn ancestral_imager_does_net_damage_when_the_runner_jacks_out() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("ancestral_imager"))];
+        state.corp.installed = vec![ice("ice_wall", ServerId::Hq, false)];
+        let (mut run, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        for _ in 0..12 {
+            if crate::rules::legal_actions_for(&run, &registry, Side::Runner).contains(&PlayerAction::JackOut) {
+                break;
+            }
+            let action = match &run.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            run = apply_action(&run, &registry, action).expect("onward").0;
+        }
+        let (jacked, _) = apply_action(&run, &registry, PlayerAction::JackOut).expect("jack out");
+        let (jacked, _) = close_all_windows(jacked, &registry);
+        assert_eq!(jacked.runner.grip.len(), 2, "1 net damage");
+    }
+
+    #[test]
+    fn cybernetics_court_raises_the_corps_hand_size_by_four() {
+        let registry = registry();
+        let mut state = corp_turn();
+        let before = crate::rules::continuous::hand_size(&state, &registry, Side::Corp);
+        state.corp.installed = vec![root("cybernetics_court", ServerId::Remote(0), true)];
+        assert_eq!(crate::rules::continuous::hand_size(&state, &registry, Side::Corp), before + 4);
+    }
+
+    #[test]
+    fn davinci_counts_successful_runs_and_installs_a_card_that_cheap_for_free() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 1, ..rig("davinci") }];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Archives);
+        let (mut state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.rig[0].counters, 2, "a successful run");
+        state.active_run = None;
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("corroder"), id("gordian_blade")];
+        let credits = state.runner.resources.credits;
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("davinci"), ability_index: 0 }).expect("[trash]");
+        let done = select_first_and_confirm(&asked, &registry, Side::Runner);
+        let (done, _) = close_all_windows(done, &registry);
+        assert_eq!(done.runner.grip, vec![id("gordian_blade")], "a 4[c] breaker was never offered");
+        assert!(done.runner.rig.iter().any(|card| card.card == id("corroder")));
+        assert!(done.runner.heap.contains(&id("davinci")));
+        assert_eq!(done.runner.resources.credits, credits, "ignoring the install cost");
+    }
+
+    #[test]
+    fn expo_grid_pays_one_only_with_a_rezzed_asset_in_its_root() {
+        let registry = registry();
+        for (asset_rezzed, gained) in [(true, 1), (false, 0)] {
+            let mut state = runner_turn();
+            state.corp.r_and_d = vec![id("hedge_fund"); 3];
+            state.corp.installed = vec![root("expo_grid", ServerId::Remote(0), true), root("cybernetics_court", ServerId::Remote(0), asset_rezzed)];
+            let credits = state.corp.resources.credits;
+            let state = corp_turn_begins(state, &registry);
+            assert_eq!(state.corp.resources.credits, Credits(credits.0 + gained), "rezzed: {asset_rezzed}");
+        }
+    }
+
+    #[test]
+    fn franchise_city_scores_itself_when_the_runner_accesses_an_agenda() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.r_and_d = vec![id("hostile_takeover")];
+        state.corp.installed = vec![root("franchise_city", ServerId::Remote(0), true)];
+        let (state, _) = run_to_completion(state, &registry, ServerId::RnD);
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(in_corp_score_area(&state, "franchise_city"), "{:?}", state.pending_decision);
+        assert!(state.corp.installed.is_empty());
+    }
+
+    #[test]
+    fn product_placement_pays_two_when_accessed_anywhere_but_archives() {
+        let registry = registry();
+        for (server, gained) in [(ServerId::Hq, 2), (ServerId::Archives, 0)] {
+            let mut state = runner_turn();
+            if server == ServerId::Hq {
+                state.corp.hq = vec![id("product_placement")];
+            } else {
+                state.corp.archives = vec![crate::rules::ArchivedCard::facedown(id("product_placement"))];
+            }
+            let credits = state.corp.resources.credits;
+            let (state, _) = run_to_completion(state, &registry, server);
+            let (state, _) = close_all_windows(state, &registry);
+            assert_eq!(state.corp.resources.credits, Credits(credits.0 + gained), "{server:?}");
+        }
+    }
+
+    #[test]
+    fn public_support_scores_itself_when_its_last_counter_goes() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.corp.installed = vec![crate::rules::InstalledCard { counters: 2, ..root("public_support", ServerId::Remote(0), true) }];
+        let state = corp_turn_begins(state, &registry);
+        assert_eq!(state.corp.installed[0].counters, 1);
+        let mut state = state;
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        let state = corp_turn_begins(state, &registry);
+        assert!(in_corp_score_area(&state, "public_support"), "no power counters left");
+        assert!(state.corp.installed.is_empty());
+    }
+
+    #[test]
+    fn team_sponsorship_installs_from_hq_for_free_when_an_agenda_is_scored() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.resources.credits = Credits(0);
+        state.corp.hq = vec![id("ice_wall")];
+        state.corp.installed = vec![root("team_sponsorship", ServerId::Remote(0), true), crate::rules::InstalledCard { advancement_tokens: 3, ..root("ancestral_imager", ServerId::Remote(1), false) }];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: fixture_install_id("ancestral_imager") }).expect("score");
+        let (scored, _) = close_all_windows(scored, &registry);
+        let (asked, _) = apply_action(&scored, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("from HQ");
+        let picked = select_first_and_confirm(&asked, &registry, Side::Corp);
+        let credits = picked.corp.resources.credits;
+        let (done, _) = apply_action(&picked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("install");
+        assert!(done.corp.installed.iter().any(|card| card.card == id("ice_wall") && card.server == ServerId::Remote(0)));
+        assert_eq!(done.corp.resources.credits, credits, "ignoring the install cost");
+    }
+
+    #[test]
+    fn the_future_is_now_searches_r_and_d_for_a_card_when_scored() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.r_and_d = vec![id("ice_wall")];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, ..root("the_future_is_now", ServerId::Remote(0), false) }];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: fixture_install_id("the_future_is_now") }).expect("score");
+        let (scored, _) = close_all_windows(scored, &registry);
+        let done = select_first_and_confirm(&scored, &registry, Side::Corp);
+        assert_eq!((done.corp.hq.clone(), done.corp.r_and_d.len()), (vec![id("ice_wall")], 0));
+    }
+
+    #[test]
+    fn tour_guide_gains_an_end_the_run_for_each_rezzed_asset() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("tour_guide", ServerId::Hq, true), root("pad_campaign", ServerId::Remote(0), true), root("adonis_campaign", ServerId::Remote(1), true), root("sundew", ServerId::Remote(2), false)];
+        let (mut run, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        for _ in 0..12 {
+            if run.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) {
+                break;
+            }
+            let action = match &run.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            run = apply_action(&run, &registry, action).expect("onward").0;
+        }
+        let encounter = run.active_run.as_ref().expect("encountering");
+        assert_eq!(encounter.ice[encounter.position].subroutines.len(), 2, "two rezzed assets; the unrezzed one does not count");
+    }
+}

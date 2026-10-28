@@ -1,0 +1,90 @@
+{
+  "id": "team_sponsorship",
+  "title": "Team Sponsorship",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnHq",
+                  "filter": {
+                    "AnyOf": [
+                      "Ice",
+                      {
+                        "CardTypeOneOf": [
+                          "Agenda",
+                          "Asset",
+                          "Upgrade"
+                        ]
+                      }
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PromptInstallCorpCard": {
+                      "origin_zone": "OwnHq",
+                      "ignore_costs": true
+                    }
+                  }
+                }
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnArchives",
+                  "filter": {
+                    "AnyOf": [
+                      "Ice",
+                      {
+                        "CardTypeOneOf": [
+                          "Agenda",
+                          "Asset",
+                          "Upgrade"
+                        ]
+                      }
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PromptInstallCorpCard": {
+                      "origin_zone": "OwnArchives",
+                      "ignore_costs": true
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may install a card from Archives or HQ, ignoring the install cost — from HQ",
+              "you may install a card from Archives or HQ, ignoring the install cost — from Archives",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you score an agenda, you may install a card from Archives or HQ, ignoring the install cost."
+    }
+  ],
+  "built_from": 8110,
+  "is_playable": true
+}

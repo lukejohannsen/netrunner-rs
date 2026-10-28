@@ -1,0 +1,39 @@
+{
+  "id": "franchise_city",
+  "title": "Franchise City",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "trash_cost": 2,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing an agenda in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "CardType": "Agenda"
+        }
+      },
+      "effects": [
+        {
+          "AddToScoreAreaAsAgenda": {
+            "points": 1
+          }
+        }
+      ],
+      "text": "When the Runner accesses an agenda, add this asset to your score area as an agenda worth 1 agenda point."
+    }
+  ],
+  "built_from": 8114,
+  "is_playable": true
+}

@@ -1,0 +1,51 @@
+{
+  "id": "public_support",
+  "title": "Public Support",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 4,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ],
+      "text": "Place 3 power counters on Public Support when it is rezzed."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RemoveCounters": {
+            "Fixed": 1
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "AmountAtLeast": [
+                  "HostedCounters",
+                  1
+                ]
+              }
+            },
+            "effect": {
+              "AddToScoreAreaAsAgenda": {
+                "points": 1
+              }
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, remove 1 power counter from Public Support."
+    }
+  ],
+  "built_from": 25129,
+  "is_playable": true
+}

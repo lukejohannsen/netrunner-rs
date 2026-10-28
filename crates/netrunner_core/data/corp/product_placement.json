@@ -1,0 +1,40 @@
+{
+  "id": "product_placement",
+  "title": "Product Placement",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 2,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this upgrade in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": {
+        "Not": {
+          "AccessingIn": "Archives"
+        }
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        }
+      ],
+      "text": "When the Runner accesses this upgrade anywhere except in Archives, gain 2[credit]."
+    }
+  ],
+  "built_from": 25120,
+  "is_playable": true
+}

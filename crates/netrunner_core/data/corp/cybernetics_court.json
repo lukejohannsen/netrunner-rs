@@ -1,0 +1,23 @@
+{
+  "id": "cybernetics_court",
+  "title": "Cybernetics Court",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 5,
+  "triggers": [],
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": 4
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your maximum hand size is increased by 4."
+    }
+  ],
+  "built_from": 8109,
+  "is_playable": true
+}

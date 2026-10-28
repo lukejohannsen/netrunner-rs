@@ -1,0 +1,40 @@
+{
+  "id": "expo_grid",
+  "title": "Expo Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "CorpInstalls": {
+              "All": [
+                "InRootOfThisServer",
+                "Rezzed",
+                {
+                  "CardType": "Asset"
+                }
+              ]
+            }
+          },
+          1
+        ]
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, gain 1[credit] if there is a rezzed asset installed in the root of this server."
+    }
+  ],
+  "built_from": 8119,
+  "is_playable": true
+}
