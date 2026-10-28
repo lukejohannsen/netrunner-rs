@@ -1,0 +1,37 @@
+{
+  "id": "titan_transnational_investing_in_your_future",
+  "title": "Titan Transnational: Investing In Your Future",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "AddCounters": 1
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may place 1 agenda counter on it",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you score an agenda, you may place 1 agenda counter on it."
+    }
+  ],
+  "built_from": 7003,
+  "is_playable": true
+}

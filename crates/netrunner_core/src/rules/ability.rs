@@ -2625,6 +2625,16 @@ pub fn evaluate_effect(
         }
 
         Effect::PresentChoice { chooser, options, texts } => {
+            // A choice whose every option begins with a run is refused
+            // where a run may not begin, as `PromptChooseServer` is: parked,
+            // it is a decision no option can resolve. Omar Keung's "[click]:
+            // Make a run on Archives" offers its two redirects as a choice,
+            // and after Excalibur's "cannot make another run this turn" the
+            // choice was parked and the game stalled (256-seed view sweep,
+            // seed 160).
+            if !options.is_empty() && options.iter().all(starts_a_run) {
+                run::check_run_may_begin(state, registry)?;
+            }
             // The moment a trigger heard is not on the parked decision, so
             // what an option reads off it is read now (`Effect::filled`).
             let options = match ctx.triggering_event {
@@ -6792,6 +6802,16 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::MoreThan(..)
         | EffectRequirement::NoActionTakenThisTurn
         | EffectRequirement::PlayedFromArchives => {}
+    }
+}
+
+/// Whether `effect` begins by starting a run: a run, or a sequence whose
+/// first step does.
+fn starts_a_run(effect: &Effect) -> bool {
+    match effect {
+        Effect::InitiateRun(_) => true,
+        Effect::Sequence(steps) => steps.first().is_some_and(starts_a_run),
+        _ => false,
     }
 }
 

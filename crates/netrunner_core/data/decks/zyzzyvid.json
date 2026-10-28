@@ -1,0 +1,173 @@
+{
+  "id": "zyzzyvid",
+  "name": "Zyzzyvid",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Argus Security: Protection Guaranteed, Order and Chaos's Weyland identity, whose Runner takes a tag or 2 meat damage for every agenda stolen. Family Business' list, its identity swapped, with a Hostile Takeover for a Firmware Updates and a Graft for a High-Risk Investment, point for point; a Hunter Seeker and a Door to Door for two Traffic Accident; and a Sandburg for a Space Camp, which Family Business keeps. Named to sort after every other Corp deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 6.",
+  "style": [
+    "traps"
+  ],
+  "identity": "argus_security_protection_guaranteed",
+  "cards": [
+    {
+      "card": "above_the_law",
+      "count": 1
+    },
+    {
+      "card": "off_the_books",
+      "count": 1
+    },
+    {
+      "card": "blockchain",
+      "count": 1
+    },
+    {
+      "card": "superdeep_borehole",
+      "count": 1
+    },
+    {
+      "card": "broad_daylight",
+      "count": 1
+    },
+    {
+      "card": "divested_trust",
+      "count": 2
+    },
+    {
+      "card": "shipment_from_kaguya",
+      "count": 1
+    },
+    {
+      "card": "oberth_protocol",
+      "count": 2
+    },
+    {
+      "card": "formicary",
+      "count": 1
+    },
+    {
+      "card": "masvingo",
+      "count": 1
+    },
+    {
+      "card": "oduduwa",
+      "count": 1
+    },
+    {
+      "card": "wake_up_call",
+      "count": 1
+    },
+    {
+      "card": "death_and_taxes",
+      "count": 1
+    },
+    {
+      "card": "battlement",
+      "count": 1
+    },
+    {
+      "card": "watchtower",
+      "count": 1
+    },
+    {
+      "card": "meteor_mining",
+      "count": 2
+    },
+    {
+      "card": "priority_construction",
+      "count": 1
+    },
+    {
+      "card": "scarcity_of_resources",
+      "count": 1
+    },
+    {
+      "card": "financial_collapse",
+      "count": 1
+    },
+    {
+      "card": "prisec",
+      "count": 1
+    },
+    {
+      "card": "tribunal",
+      "count": 1
+    },
+    {
+      "card": "crisis_management",
+      "count": 1
+    },
+    {
+      "card": "liquidation",
+      "count": 1
+    },
+    {
+      "card": "stock_buy_back",
+      "count": 1
+    },
+    {
+      "card": "show_of_force",
+      "count": 1
+    },
+    {
+      "card": "best_defense",
+      "count": 1
+    },
+    {
+      "card": "enforced_curfew",
+      "count": 1
+    },
+    {
+      "card": "preemptive_action",
+      "count": 1
+    },
+    {
+      "card": "illicit_sales",
+      "count": 1
+    },
+    {
+      "card": "mr_stone",
+      "count": 1
+    },
+    {
+      "card": "hailstorm",
+      "count": 2
+    },
+    {
+      "card": "bloodletter",
+      "count": 1
+    },
+    {
+      "card": "k_p_lynn",
+      "count": 1
+    },
+    {
+      "card": "chief_slee",
+      "count": 1
+    },
+    {
+      "card": "bryan_stinson",
+      "count": 1
+    },
+    {
+      "card": "wormhole",
+      "count": 1
+    },
+    {
+      "card": "firmware_updates",
+      "count": 1
+    },
+    {
+      "card": "high_risk_investment",
+      "count": 1
+    },
+    {
+      "card": "traffic_accident",
+      "count": 2
+    },
+    {
+      "card": "space_camp",
+      "count": 1
+    }
+  ]
+}

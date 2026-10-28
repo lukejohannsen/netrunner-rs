@@ -366,20 +366,13 @@ pub(crate) const UOT_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Order and Chaos* (`order_and_chaos`): tranche F7 of the FFG plan.
 pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("argus_security_protection_guaranteed", "Argus Security: Protection Guaranteed"),
     ("gagarin_deep_space_expanding_the_horizon", "Gagarin Deep Space: Expanding the Horizon"),
-    ("titan_transnational_investing_in_your_future", "Titan Transnational: Investing In Your Future"),
-    ("firmware_updates", "Firmware Updates"),
     ("glenn_station", "Glenn Station"),
-    ("government_takeover", "Government Takeover"),
-    ("high_risk_investment", "High-Risk Investment"),
     ("constellation_protocol", "Constellation Protocol"),
     ("mark_yale", "Mark Yale"),
-    ("space_camp", "Space Camp"),
     ("the_board", "The Board"),
     ("housekeeping", "Housekeeping"),
     ("patch", "Patch"),
-    ("traffic_accident", "Traffic Accident"),
     ("satellite_grid", "Satellite Grid"),
     ("the_twins", "The Twins"),
     ("sub_boost", "Sub Boost"),

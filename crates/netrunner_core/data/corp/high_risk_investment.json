@@ -1,0 +1,47 @@
+{
+  "id": "high_risk_investment",
+  "title": "High-Risk Investment",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 1
+          }
+        ]
+      },
+      "effect": {
+        "GainCreditsAmount": [
+          "Corp",
+          {
+            "Credits": "Runner"
+          }
+        ]
+      },
+      "text": "[click], hosted agenda counter: Gain 1[credit] for each credit in the Runner's credit pool."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Place 1 agenda counter on High-Risk Investment when you score it."
+    }
+  ],
+  "built_from": 7007,
+  "is_playable": true
+}

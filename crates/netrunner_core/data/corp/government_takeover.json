@@ -1,0 +1,28 @@
+{
+  "id": "government_takeover",
+  "title": "Government Takeover",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "unique": true,
+  "advancement_requirement": 9,
+  "agenda_points": 6,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          3
+        ]
+      },
+      "text": "[click]: Gain 3[credit]."
+    }
+  ],
+  "triggers": [],
+  "built_from": 7006,
+  "is_playable": true
+}

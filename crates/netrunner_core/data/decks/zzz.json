@@ -1,0 +1,125 @@
+{
+  "id": "zzz",
+  "name": "Zzz",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Titan Transnational: Investing In Your Future, Order and Chaos's Weyland identity, who may place an agenda counter on every agenda it scores. Zugzwang's list, its identity swapped, with two New Construction and a Transport Monopoly for a Government Takeover and two Space Camp, six points for six, and a Hostile Takeover for a Firmware Updates, which Zugzwang keeps. Named to sort after every other Corp deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 6.",
+  "style": [
+    "traps"
+  ],
+  "identity": "titan_transnational_investing_in_your_future",
+  "cards": [
+    {
+      "card": "hostile_takeover",
+      "count": 2
+    },
+    {
+      "card": "above_the_law",
+      "count": 1
+    },
+    {
+      "card": "off_the_books",
+      "count": 1
+    },
+    {
+      "card": "greenmail",
+      "count": 1
+    },
+    {
+      "card": "quarantine_system",
+      "count": 2
+    },
+    {
+      "card": "divested_trust",
+      "count": 2
+    },
+    {
+      "card": "formicary",
+      "count": 2
+    },
+    {
+      "card": "masvingo",
+      "count": 2
+    },
+    {
+      "card": "oduduwa",
+      "count": 1
+    },
+    {
+      "card": "success",
+      "count": 2
+    },
+    {
+      "card": "sacrifice",
+      "count": 2
+    },
+    {
+      "card": "watchtower",
+      "count": 1
+    },
+    {
+      "card": "meteor_mining",
+      "count": 2
+    },
+    {
+      "card": "mass_commercialization",
+      "count": 1
+    },
+    {
+      "card": "tithonium",
+      "count": 2
+    },
+    {
+      "card": "signal_jamming",
+      "count": 2
+    },
+    {
+      "card": "net_analytics",
+      "count": 2
+    },
+    {
+      "card": "helheim_servers",
+      "count": 2
+    },
+    {
+      "card": "rolling_brownout",
+      "count": 2
+    },
+    {
+      "card": "khondi_plaza",
+      "count": 1
+    },
+    {
+      "card": "red_planet_couriers",
+      "count": 2
+    },
+    {
+      "card": "dedication_ceremony",
+      "count": 2
+    },
+    {
+      "card": "zealous_judge",
+      "count": 2
+    },
+    {
+      "card": "surat_city_grid",
+      "count": 1
+    },
+    {
+      "card": "builder",
+      "count": 1
+    },
+    {
+      "card": "government_takeover",
+      "count": 1
+    },
+    {
+      "card": "space_camp",
+      "count": 2
+    },
+    {
+      "card": "firmware_updates",
+      "count": 1
+    }
+  ]
+}
