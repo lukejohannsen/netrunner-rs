@@ -1,0 +1,29 @@
+{
+  "id": "data_folding",
+  "title": "Data Folding",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "AmountAtLeast": [
+          "UnusedMemory",
+          2
+        ]
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, gain 1[credit] if you have 2 or more unused MU."
+    }
+  ],
+  "built_from": 7055,
+  "is_playable": true
+}

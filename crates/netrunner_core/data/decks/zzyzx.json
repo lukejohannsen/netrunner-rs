@@ -3,7 +3,7 @@
   "name": "Zzyzx",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Valencia Estevez: The Angel of Cayambe, Order and Chaos's Anarch identity, who gives the Corp 1 bad publicity before either player draws. Zealotry's list, its identity swapped, with a Hippo for a Net-Ready Eyes, a strength a run for 2 meat damage installing it, which Zealotry keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4.",
+  "description": "Not a published list: built so the sweeps reach Valencia Estevez: The Angel of Cayambe, Order and Chaos's Anarch identity, who gives the Corp 1 bad publicity before either player draws. Zealotry's list, its identity swapped, with a Hippo for a Net-Ready Eyes, a strength a run for 2 meat damage installing it, which Zealotry keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. Eater, Gravedigger, MemStrips, Data Folding and Vigil in for Yog.0, Djinn and Knobkierie (SanSan Stage 7).",
   "style": [
     "rig",
     "dismantle"
@@ -27,10 +27,6 @@
       "count": 2
     },
     {
-      "card": "yog_0",
-      "count": 2
-    },
-    {
       "card": "grimoire",
       "count": 1
     },
@@ -40,10 +36,6 @@
     },
     {
       "card": "deja_vu",
-      "count": 2
-    },
-    {
-      "card": "djinn",
       "count": 2
     },
     {
@@ -65,10 +57,6 @@
     {
       "card": "musaazi",
       "count": 2
-    },
-    {
-      "card": "knobkierie",
-      "count": 1
     },
     {
       "card": "plague",
@@ -128,6 +116,26 @@
     },
     {
       "card": "net_ready_eyes",
+      "count": 1
+    },
+    {
+      "card": "eater",
+      "count": 1
+    },
+    {
+      "card": "gravedigger",
+      "count": 1
+    },
+    {
+      "card": "memstrips",
+      "count": 1
+    },
+    {
+      "card": "data_folding",
+      "count": 1
+    },
+    {
+      "card": "vigil",
       "count": 1
     }
   ]

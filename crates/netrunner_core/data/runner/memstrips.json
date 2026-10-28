@@ -1,0 +1,33 @@
+{
+  "id": "memstrips",
+  "title": "MemStrips",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "MemoryOnlyFor": {
+          "amount": {
+            "per": 3
+          },
+          "only": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              {
+                "HasSubtype": "Virus"
+              }
+            ]
+          }
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+3[mu] Use the MU on MemStrips only for virus programs."
+    }
+  ],
+  "built_from": 7046,
+  "triggers": [],
+  "is_playable": true
+}

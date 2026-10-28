@@ -1,0 +1,77 @@
+{
+  "id": "sub_boost",
+  "title": "Sub Boost",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "play_requirement": {
+    "ZoneHasAtLeast": {
+      "zone": "OwnInstalled",
+      "count": 1,
+      "filter": {
+        "All": [
+          "Ice",
+          "Rezzed"
+        ]
+      }
+    }
+  },
+  "continuous": [
+    {
+      "kind": {
+        "GainSubtype": "Barrier"
+      },
+      "applies_to": "Host",
+      "text": "Host ice gains barrier"
+    },
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "End the run.",
+            "effect": "EndTheRun"
+          },
+          "count": {
+            "per": 1
+          },
+          "before": false
+        }
+      },
+      "applies_to": "Host",
+      "text": "gains '[subroutine] End the run.' after its other subroutines."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                "Ice",
+                "Rezzed"
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "HostThisAsCondition": {
+                "condition": 0,
+                "host": 0
+              }
+            }
+          }
+        }
+      ],
+      "text": "Host this operation on a rezzed piece of ice as a condition counter"
+    }
+  ],
+  "built_from": 7025,
+  "is_playable": true
+}
