@@ -1,0 +1,83 @@
+{
+  "id": "shannon_claire",
+  "title": "Shannon Claire",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 3,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnRAndD",
+          "filter": {
+            "BottomOfZone": 1
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnHq"
+        }
+      },
+      "text": "[click]: Draw 1 card from the bottom of R&D."
+    },
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnRAndD",
+                "filter": {
+                  "CardType": "Agenda"
+                },
+                "min": 0,
+                "max": 1,
+                "reveal": true,
+                "shuffle_after": true,
+                "then": {
+                  "AddToDeck": "Bottom"
+                }
+              }
+            },
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnArchives",
+                "filter": {
+                  "CardType": "Agenda"
+                },
+                "min": 0,
+                "max": 1,
+                "reveal": true,
+                "shuffle_after": false,
+                "then": {
+                  "AddToDeck": "Bottom"
+                }
+              }
+            }
+          ],
+          "texts": [
+            "Search R&D or Archives for an agenda — R&D",
+            "Search R&D or Archives for an agenda — Archives"
+          ]
+        }
+      },
+      "text": "[trash]: Search R&D or Archives for an agenda and reveal it. Shuffle the rest of R&D if you searched it. Add the agenda to the bottom of R&D."
+    }
+  ],
+  "built_from": 9010,
+  "is_playable": true
+}

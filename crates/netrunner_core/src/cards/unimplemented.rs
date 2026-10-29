@@ -222,7 +222,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sync_everything_everywhere", "SYNC: Everything, Everywhere"),
     ("spark_agency_worldswide_reach", "Spark Agency: Worldswide Reach"),
     ("rebranding_team", "Rebranding Team"),
-    ("shannon_claire", "Shannon Claire"),
     ("archangel", "Archangel"),
     ("tl_dr", "TL;DR"),
     ("24_7_news_cycle", "24/7 News Cycle"),
@@ -249,7 +248,6 @@ pub(crate) const VAL_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("gene_conditioning_shoppe", "Gene Conditioning Shoppe"),
     ("traffic_jam", "Traffic Jam"),
     ("jinteki_biotech_life_imagined", "Jinteki Biotech: Life Imagined"),
-    ("genetic_resequencing", "Genetic Resequencing"),
     ("valley_grid", "Valley Grid"),
 ];
 

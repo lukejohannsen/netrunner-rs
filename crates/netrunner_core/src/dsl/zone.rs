@@ -455,6 +455,12 @@ pub enum CardFilter {
     /// re-finds the card by) the whole of R&D. The top of R&D and of the
     /// stack is the *end* of the `Vec` — see `zone_card_ids`.
     TopOfZone(u32),
+    /// One of the bottom `u32` cards of the zone being selected from —
+    /// Shannon Claire's "Draw 1 card from the bottom of R&D". The bottom
+    /// is the *start* of the `Vec`. Composition didn't work: `TopOfZone`
+    /// counts from the other end, and `NthFromTop` would need the deck's
+    /// size as an amount read as the selection is offered.
+    BottomOfZone(u32),
     /// The one card `n` from the top of the zone, the top being 1 — Top
     /// Hat's "choose 1 of the top 5 cards in R&D and access it", the
     /// Runner choosing a position (`Effect::ChooseNumber`, written in as
@@ -907,6 +913,7 @@ impl CardFilter {
                 | CardFilter::Advanced
                 | CardFilter::Unadvanced
                 | CardFilter::TopOfZone(_)
+                | CardFilter::BottomOfZone(_)
                 | CardFilter::TopOf(_)
                 | CardFilter::NthFromTop(_)
                 | CardFilter::HostsCounters(crate::dsl::CounterKind::Virus)
@@ -1078,7 +1085,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // requirement are instance-level.
         CardFilter::PlayableOperation => card.card_type == CardType::Operation,
         // Purely instance-level: where the card sits in its zone.
-        CardFilter::TopOfZone(_) | CardFilter::TopOf(_) | CardFilter::NthFromTop(_) | CardFilter::Revealed => true,
+        CardFilter::TopOfZone(_) | CardFilter::BottomOfZone(_) | CardFilter::TopOf(_) | CardFilter::NthFromTop(_) | CardFilter::Revealed => true,
         CardFilter::IceOfType(ice_type) => card.is_ice_of_type(*ice_type),
         CardFilter::InstallableRunnerCardWithDiscount(_) => card_matches_filter(card, &CardFilter::InstallableRunnerCard),
         // Instance-level, not definition-level — see the variant's doc
