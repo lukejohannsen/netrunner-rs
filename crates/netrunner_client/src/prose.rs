@@ -512,6 +512,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::SwapInstalledIce(..) => "swap two pieces of ice".to_string(),
         Effect::SwapThisWithSelectedFromGrip => "swap this card with the chosen card from the grip".to_string(),
+        Effect::SwapScoredAgenda { that_agenda: Some(_), .. } => "swap that agenda with an agenda in the Corp's score area".to_string(),
         Effect::SwapScoredAgenda { .. } => "swap an agenda in your score area with an agenda in the Runner's score area".to_string(),
         Effect::SwapDeckCardWithHq { .. } => "swap the card chosen in R&D with the card chosen in HQ".to_string(),
         Effect::InstallFromZoneIgnoringCost { .. } => "install a card, ignoring its cost".to_string(),

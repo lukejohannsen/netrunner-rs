@@ -924,7 +924,24 @@ pub fn evaluate_effect(
             crate::rules::engine::swap_rig_card_with_grip_card(state, registry, outgoing, &incoming)
         }
 
-        Effect::SwapScoredAgenda { yours: None } => {
+        Effect::SwapScoredAgenda { yours: None, that_agenda: Some(that_agenda) } => {
+            // Nothing chosen ("you may") is a selection confirmed empty,
+            // which runs its `then` with no agenda of the Corp's to name.
+            let Some(corp) = ctx.acting_install.and_then(|corps| state.corp.scored_agendas.iter().position(|scored| scored.install_id == corps)) else {
+                return Ok(Vec::new());
+            };
+            // The copy just stolen is the last of its name in the Runner's
+            // score area, and it may be gone already (another card's
+            // reaction to the same steal): then there is nothing to swap.
+            let CardFilter::AmongCards(stolen) = that_agenda else { return Ok(Vec::new()) };
+            let Some(runner) = state.runner.scored_agendas.iter().rposition(|scored| stolen.contains(&scored.card) && scored.as_agenda.is_none()) else {
+                return Ok(Vec::new());
+            };
+            std::mem::swap(&mut state.corp.scored_agendas[corp], &mut state.runner.scored_agendas[runner]);
+            Ok(Vec::new())
+        }
+
+        Effect::SwapScoredAgenda { yours: None, that_agenda: None } => {
             let yours = ctx.acting_install.ok_or(RulesError::MissingActingCardContext)?;
             let theirs = Effect::PromptChooseCards {
                 side: Side::Corp,
@@ -935,14 +952,14 @@ pub fn evaluate_effect(
                 reveal: false,
                 shuffle_after: false,
                 destination: None,
-                then: Some(Box::new(Effect::SwapScoredAgenda { yours: Some(yours) })),
+                then: Some(Box::new(Effect::SwapScoredAgenda { yours: Some(yours), that_agenda: None })),
                 count: None,
                 up_to: None,
             };
             evaluate_effect(state, &theirs, ctx, registry)
         }
 
-        Effect::SwapScoredAgenda { yours: Some(yours) } => {
+        Effect::SwapScoredAgenda { yours: Some(yours), .. } => {
             let theirs = ctx.acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
             let corp = state.corp.scored_agendas.iter().position(|scored| scored.install_id == *yours).ok_or(RulesError::MissingActingCardContext)?;
             let runner = state.runner.scored_agendas.iter().position(|scored| scored.card == theirs).ok_or(RulesError::MissingActingCardContext)?;

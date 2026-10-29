@@ -1,0 +1,46 @@
+{
+  "id": "turntable",
+  "title": "Turntable",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OpponentScoreArea",
+            "filter": "Any",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "SwapScoredAgenda": {
+                "that_agenda": "ThatCard"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever you steal an agenda, you may swap that agenda with an agenda in the Corp's score area."
+    }
+  ],
+  "built_from": 8043,
+  "is_playable": true
+}
