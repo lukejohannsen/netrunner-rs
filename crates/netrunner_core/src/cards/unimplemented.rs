@@ -260,7 +260,6 @@ pub(crate) const BB_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("research_grant", "Research Grant"),
     ("recruiting_trip", "Recruiting Trip"),
     ("blacklist", "Blacklist"),
-    ("student_loans", "Student Loans"),
 ];
 
 /// *Chrome City* (`chrome_city`): tranche F7 of the FFG plan.
@@ -286,7 +285,6 @@ pub(crate) const OH_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("film_critic", "Film Critic"),
     ("its_a_trap", "It's a Trap!"),
     ("an_offer_you_cant_refuse", "An Offer You Can’t Refuse"),
-    ("haarpsichord_studios_entertainment_unleashed", "Haarpsichord Studios: Entertainment Unleashed"),
     ("casting_call", "Casting Call"),
     ("old_hollywood_grid", "Old Hollywood Grid"),
 ];

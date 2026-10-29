@@ -1,0 +1,24 @@
+{
+  "id": "student_loans",
+  "title": "Student Loans",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "PlayCost": {
+          "per": 2
+        }
+      },
+      "applies_to": {
+        "OpponentPlaying": "CopyInHeap"
+      },
+      "text": "As an additional cost to play an event, if there is a copy of that event in the heap, the Runner must pay 2[credit]."
+    }
+  ],
+  "triggers": [],
+  "built_from": 8038,
+  "is_playable": true
+}

@@ -51256,3 +51256,68 @@ mod sansan_stage_17 {
         assert_eq!(requirement(&played, InstallId(91)), Some(3), "no copy of Project Atlas scored");
     }
 }
+
+mod sansan_stage_18 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state
+    }
+
+    /// Runs HQ and steals what is offered until the run is over.
+    fn run_hq_stealing(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (mut state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        for _ in 0..30 {
+            state = close_all_windows(state, registry).0;
+            let legal = crate::rules::legal_actions_for(&state, registry, Side::Runner);
+            let next = legal
+                .iter()
+                .find(|action| matches!(action, PlayerAction::StealAgenda { .. }))
+                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::PassAccessedCard { .. } | PlayerAction::ContinueRun | PlayerAction::CompleteRun)))
+                .cloned();
+            let Some(action) = next.filter(|_| state.active_run.is_some()) else { break };
+            state = apply_action(&state, registry, action).expect("onward").0;
+        }
+        state
+    }
+
+    #[test]
+    fn haarpsichord_studios_lets_the_runner_steal_one_agenda_each_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.identity = Some(id("haarpsichord_studios_entertainment_unleashed"));
+        state.corp.hq = vec![id("hostile_takeover")];
+        let cannot = |state: &GameState| crate::rules::continuous::cannot(state, &registry, crate::dsl::Prohibition::StealOrTrashAgendas);
+        assert!(!cannot(&state));
+        let first = run_hq_stealing(&state, &registry);
+        assert_eq!(first.runner.scored_agendas.len(), 1, "the first steal");
+        assert!(cannot(&first), "no second this turn");
+
+        let mut second = first.clone();
+        second.corp.hq = vec![id("project_atlas")];
+        let second = run_hq_stealing(&second, &registry);
+        assert_eq!(second.runner.scored_agendas.len(), 1, "not stolen");
+        assert_eq!(second.corp.hq, vec![id("project_atlas")]);
+    }
+
+    #[test]
+    fn student_loans_charges_two_for_an_event_with_a_copy_in_the_heap() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("student_loans"), card: id("student_loans"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() }];
+        state.runner.grip = vec![id("sure_gamble")];
+        let (fresh, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }).expect("Sure Gamble");
+        assert_eq!(fresh.runner.resources.credits, Credits(14), "no copy in the heap: 10 - 5 + 9");
+        state.runner.heap = vec![id("sure_gamble")];
+        let (taxed, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }).expect("Sure Gamble");
+        assert_eq!(taxed.runner.resources.credits, Credits(12), "a copy in the heap: 2 more");
+    }
+}

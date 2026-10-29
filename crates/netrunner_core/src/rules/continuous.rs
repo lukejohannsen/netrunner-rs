@@ -270,7 +270,10 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
             card.side == source.side && matches!(card.card_type, CardType::Event | CardType::Operation) && card_matches_filter(card, filter)
         }
         (Scope::OpponentPlaying(filter), Target::Card(card)) => {
-            card.side != source.side && matches!(card.card_type, CardType::Event | CardType::Operation) && card_matches_filter(card, filter)
+            card.side != source.side
+                && matches!(card.card_type, CardType::Event | CardType::Operation)
+                && card_matches_filter(card, filter)
+                && (*filter != crate::dsl::CardFilter::CopyInHeap || state.runner.heap.contains(&card.id))
         }
         (Scope::Stealing(filter), Target::Card(card)) => card.card_type == CardType::Agenda && card_matches_filter(card, filter),
         // Only a Corp card is accessed, whichever side's card asks: Demolisher's
@@ -1171,12 +1174,16 @@ pub fn standing_prohibitions<'a>(state: &'a GameState, registry: &'a CardRegistr
 /// Recall). An access asks this, of the card accessed. A steal or trash of
 /// an agenda is also what `StealOrTrashAgendas` forbids (Pinhole
 /// Threading), so the four sites that ask about a steal or a trash need no
-/// second question.
+/// second question. Standing ones are asked too: Haarpsichord Studios'
+/// "The Runner cannot steal more than one agenda each turn" is a
+/// `StealOrTrashAgendas` its identity declares while the turn has had a
+/// steal.
 pub fn cannot_about(state: &GameState, registry: &CardRegistry, what: Prohibition, card: &CardId) -> bool {
-    lingering::prohibits_about(state, what, card)
+    let holds = |what: Prohibition| lingering::prohibits_about(state, what, card) || !standing_prohibitions(state, registry, what).is_empty();
+    holds(what)
         || (what == Prohibition::StealOrTrash
             && registry.get(card).is_some_and(|definition| definition.card_type == crate::dsl::CardType::Agenda)
-            && lingering::prohibits_about(state, Prohibition::StealOrTrashAgendas, card))
+            && holds(Prohibition::StealOrTrashAgendas))
 }
 
 /// [`cannot`] about one install: also what binds only it (Warm

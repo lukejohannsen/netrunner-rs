@@ -1,0 +1,30 @@
+{
+  "id": "haarpsichord_studios_entertainment_unleashed",
+  "title": "Haarpsichord Studios: Entertainment Unleashed",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "StealOrTrashAgendas"
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "while": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurn": "OnAgendaStolen"
+          },
+          1
+        ]
+      },
+      "text": "The Runner cannot steal more than one agenda each turn."
+    }
+  ],
+  "triggers": [],
+  "built_from": 8092,
+  "is_playable": true
+}
