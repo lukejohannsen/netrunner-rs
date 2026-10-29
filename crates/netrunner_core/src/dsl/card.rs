@@ -2168,6 +2168,8 @@ impl CardDefinition {
                 }
                 (ContinuousKind::StealCost(_), Scope::Stealing(_) | Scope::StealingFromThisServer) => {}
                 (ContinuousKind::RemoteServerLimit(_), Scope::Controller) => {}
+                (ContinuousKind::DrawsEachTurnAtMost(_), Scope::Player(Side::Runner)) => {}
+                (ContinuousKind::DrawsEachTurnAtMost(_), _) => return misfit("DrawsEachTurnAtMost", "a limit on draws is about the Runner drawing (`Player(Runner)`)"),
                 (ContinuousKind::BidAtMost(_), Scope::Player(_)) => {}
                 (ContinuousKind::BidAtMost(_), _) => return misfit("BidAtMost", "a limit on a bid is about the player bidding (`Player`)"),
                 (ContinuousKind::RemoteServerLimit(_), _) => return misfit("RemoteServerLimit", "a limit on remote servers is its controller's"),

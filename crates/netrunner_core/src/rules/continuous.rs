@@ -368,6 +368,19 @@ pub(crate) fn bid_limit(state: &GameState, registry: &CardRegistry, side: Side) 
     limit
 }
 
+/// The most cards the Runner may draw during each of their turns (Genetics
+/// Pavilion: `ContinuousKind::DrawsEachTurnAtMost`), or `None` with no
+/// limit.
+pub(crate) fn runner_draw_limit(state: &GameState, registry: &CardRegistry) -> Option<u32> {
+    let mut limit: Option<u32> = None;
+    for_each_applying(state, registry, Target::Bound(Side::Runner), |kind| matches!(kind, ContinuousKind::DrawsEachTurnAtMost(_)), |effect, _, _| {
+        if let ContinuousKind::DrawsEachTurnAtMost(most) = effect.kind {
+            limit = Some(limit.map_or(most, |limit| limit.min(most)));
+        }
+    });
+    limit
+}
+
 /// Every "cannot access more than N cards other than this one" standing on
 /// the run against `server` (`ContinuousKind::AccessOthersAtMost`): the
 /// number, the card that says it, and its install while it is still on

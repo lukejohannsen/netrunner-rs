@@ -289,7 +289,6 @@ pub(crate) const UOT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("surfer", "Surfer"),
     ("bookmark", "Bookmark"),
     ("chronos_protocol_selective_mind_mapping", "Chronos Protocol: Selective Mind-mapping"),
-    ("genetics_pavilion", "Genetics Pavilion"),
     ("worlds_plaza", "Worlds Plaza"),
 ];
 

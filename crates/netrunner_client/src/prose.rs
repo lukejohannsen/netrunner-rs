@@ -1082,6 +1082,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::DamageDone { kind, by } => format!("does {} {} damage whenever it would do some", signed(by), damage_word(kind)),
         ContinuousKind::Link(number) => format!("gets {} link", signed(number)),
         ContinuousKind::TraceBase(number) => format!("gets {} base trace strength", signed(number)),
+        ContinuousKind::DrawsEachTurnAtMost(most) => format!("the Runner cannot draw more than {} during each of their turns", plural(*most, "card", "cards")),
         ContinuousKind::BidAtMost(most) => format!("cannot spend more than {most} [credit] secretly in a psi game"),
         ContinuousKind::Tags(number) => format!("is considered to have {} tags", signed(number)),
         ContinuousKind::InstallCost(number) => format!("costs {} to install", signed(number)),
