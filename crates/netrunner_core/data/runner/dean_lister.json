@@ -10,6 +10,7 @@
     {
       "trigger": "Paid",
       "cost": "TrashSelf",
+      "requirement": "DuringRun",
       "effect": {
         "PromptChooseCards": {
           "side": "Runner",

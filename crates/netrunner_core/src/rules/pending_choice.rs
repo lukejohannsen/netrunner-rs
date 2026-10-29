@@ -515,8 +515,7 @@ fn instance_matches_filter(
         // Any zone an operation can be played from: HQ (Humanoid
         // Resources), Archives (Plutus) or R&D (Consulting Visit). The zone
         // the selection reads decides which, and `can_play_operation` is
-        // told, because playing from Archives removes the card from the
-        // game afterwards.
+        // told, because each zone holds its cards differently.
         CardFilter::PlayableOperation => {
             let card = match zone {
                 CardZoneRef::OwnHq => state.corp.hq.get(position).cloned(),

@@ -1,0 +1,148 @@
+{
+  "id": "new_angeles_sol_your_news",
+  "title": "New Angeles Sol: Your News",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnHq",
+                  "filter": {
+                    "All": [
+                      "PlayableOperation",
+                      {
+                        "HasSubtype": "Current"
+                      }
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PlayOperation": {
+                      "from": "OwnHq"
+                    }
+                  }
+                }
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnArchives",
+                  "filter": {
+                    "All": [
+                      "PlayableOperation",
+                      {
+                        "HasSubtype": "Current"
+                      }
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PlayOperation": {
+                      "from": "OwnArchives"
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may play 1 current from HQ or Archives (paying its play cost) — from HQ",
+              "you may play 1 current from HQ or Archives (paying its play cost) — from Archives",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever an agenda is scored or stolen, you may play 1 current from HQ or Archives (paying its play cost)."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnHq",
+                  "filter": {
+                    "All": [
+                      "PlayableOperation",
+                      {
+                        "HasSubtype": "Current"
+                      }
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PlayOperation": {
+                      "from": "OwnHq"
+                    }
+                  }
+                }
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnArchives",
+                  "filter": {
+                    "All": [
+                      "PlayableOperation",
+                      {
+                        "HasSubtype": "Current"
+                      }
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PlayOperation": {
+                      "from": "OwnArchives"
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may play 1 current from HQ or Archives (paying its play cost) — from HQ",
+              "you may play 1 current from HQ or Archives (paying its play cost) — from Archives",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever an agenda is scored or stolen, you may play 1 current from HQ or Archives (paying its play cost)."
+    }
+  ],
+  "built_from": 9002,
+  "is_playable": true
+}

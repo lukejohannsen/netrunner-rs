@@ -45,7 +45,8 @@
             "shuffle_after": false,
             "then": {
               "PlayOperation": {
-                "from": "OwnArchives"
+                "from": "OwnArchives",
+                "remove_from_game": true
               }
             }
           }

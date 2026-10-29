@@ -3232,14 +3232,14 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
-        Effect::PlayOperation { from: crate::dsl::CardZoneRef::OwnHeap, ignoring_costs } => {
+        Effect::PlayOperation { from: crate::dsl::CardZoneRef::OwnHeap, ignoring_costs, .. } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             if !crate::rules::engine::can_play_event_from_heap(state, registry, &card_id, *ignoring_costs) {
                 return Ok(Vec::new());
             }
             crate::rules::engine::play_event_card(state, registry, card_id, true, *ignoring_costs)
         }
-        Effect::PlayOperation { from, ignoring_costs } => {
+        Effect::PlayOperation { from, ignoring_costs, remove_from_game } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             let from = crate::rules::engine::OperationOrigin::of(from).ok_or(RulesError::UnresolvedCardTarget)?;
             // Lenient, like every other "you may" here: an operation whose
@@ -3249,7 +3249,7 @@ pub fn evaluate_effect(
             if !crate::rules::engine::can_play_operation(state, registry, &card_id, from, *ignoring_costs) {
                 return Ok(Vec::new());
             }
-            crate::rules::engine::play_operation_card(state, registry, card_id, from, *ignoring_costs)
+            crate::rules::engine::play_operation_card(state, registry, card_id, from, *ignoring_costs, *remove_from_game)
         }
 
         Effect::RezInstalled { install, pay_cost, discount } => {
