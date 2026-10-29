@@ -1,0 +1,23 @@
+{
+  "id": "ddos",
+  "title": "DDoS",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "Prohibit": {
+          "what": "RezOutermostIce",
+          "until": "Turn"
+        }
+      },
+      "text": "[trash]: The Corp cannot rez the outermost piece of ice during a run on any server this turn."
+    }
+  ],
+  "built_from": 8103,
+  "is_playable": true
+}

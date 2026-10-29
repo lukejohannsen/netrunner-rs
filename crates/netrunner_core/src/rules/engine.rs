@@ -1263,6 +1263,13 @@ pub(crate) fn rez_install(
     if continuous::cannot_install(next, registry, Prohibition::Rez, ice) {
         return Err(RulesError::RezRestricted { card: ice_id });
     }
+    // DDoS's "The Corp cannot rez the outermost piece of ice during a run":
+    // which piece is outermost is the run's, asked now.
+    if next.active_run.as_ref().is_some_and(|run| run.ice.first().is_some_and(|outermost| outermost.install_id == ice))
+        && continuous::cannot(next, registry, Prohibition::RezOutermostIce)
+    {
+        return Err(RulesError::RezRestricted { card: ice_id });
+    }
     let card_def = registry.get(&ice_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(ice_id.clone()))?;
     if !pay_cost || card_def.rez_alternatives.is_empty() {
         return rez_priced(next, registry, ice, pay_cost, discount);

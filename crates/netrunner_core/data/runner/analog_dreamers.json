@@ -1,0 +1,72 @@
+{
+  "id": "analog_dreamers",
+  "title": "Analog Dreamers",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "InitiateRun": "RnD"
+          },
+          {
+            "SetAccessReplacement": {
+              "server": "RnD",
+              "optional": true,
+              "effect": {
+                "EffectIf": {
+                  "condition": {
+                    "ZoneHasAtLeast": {
+                      "zone": "OpponentInstalled",
+                      "count": 1,
+                      "filter": {
+                        "All": [
+                          "Unrezzed",
+                          "Unadvanced",
+                          {
+                            "Not": "Ice"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "effect": {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OpponentInstalled",
+                      "filter": {
+                        "All": [
+                          "Unrezzed",
+                          "Unadvanced",
+                          {
+                            "Not": "Ice"
+                          }
+                        ]
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": true,
+                      "destination": "OpponentDeck"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "text": "[click]: Run R&D. If successful, instead of breaching R&D, you may choose 1 unrezzed non-ice card with no advancement counters on it. The Corp shuffles that card into R&D."
+    }
+  ],
+  "built_from": 8048,
+  "is_playable": true
+}

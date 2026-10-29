@@ -51321,3 +51321,136 @@ mod sansan_stage_18 {
         assert_eq!(taxed.runner.resources.credits, Credits(12), "a copy in the heap: 2 more");
     }
 }
+
+mod sansan_stage_19 {
+    use super::*;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn corp_card(card: &str, server: ServerId, slot: InstallSlot) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot, rezzed: false, ..Default::default() }
+    }
+
+    #[test]
+    fn ddos_keeps_the_outermost_ice_unrezzed_for_the_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("ddos")];
+        // Outermost first: Enigma is approached first.
+        state.corp.installed = vec![corp_card("enigma", ServerId::Hq, InstallSlot::Ice), corp_card("ice_wall", ServerId::Hq, InstallSlot::Ice)];
+        state.corp.resources.credits = Credits(10);
+        let rez_outermost = |state: &GameState| {
+            let (running, _) = apply_action(state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+            let (approached, _) = crate::rules::test_support::continue_run(&running, &registry).expect("approach the outermost ice");
+            let outermost = approached.active_run.as_ref().unwrap().ice[0].install_id;
+            assert_eq!(outermost, fixture_install_id("enigma"));
+            apply_action(&approached, &registry, PlayerAction::RezIce { ice: outermost })
+        };
+        assert!(rez_outermost(&state).is_ok(), "without DDoS, the rez is the Corp's");
+
+        let (used, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("ddos"), ability_index: 0 }).expect("[trash]");
+        let (used, _) = close_all_windows(used, &registry);
+        assert!(used.runner.rig.is_empty() && used.runner.heap.contains(&id("ddos")), "trashed to pay");
+        assert!(crate::rules::continuous::cannot(&used, &registry, crate::dsl::Prohibition::RezOutermostIce));
+        assert!(matches!(rez_outermost(&used), Err(RulesError::RezRestricted { .. })), "not the outermost piece");
+    }
+
+    #[test]
+    fn its_a_trap_does_two_net_damage_when_exposed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("infiltration"), id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        state.corp.installed = vec![corp_card("its_a_trap", ServerId::Hq, InstallSlot::Ice)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("infiltration") }).expect("Infiltration");
+        let (choosing, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("expose 1 card");
+        let (toggled, _) = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("It's a Trap!");
+        let (exposed, _) = apply_action(&toggled, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let (exposed, _) = pass_until_settled(exposed, &registry);
+        assert_eq!(exposed.runner.grip.len(), 1, "2 net damage");
+    }
+
+    #[test]
+    fn its_a_trap_trashes_a_runner_card_then_itself() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("corroder")];
+        let mut trap = corp_card("its_a_trap", ServerId::Hq, InstallSlot::Ice);
+        trap.rezzed = true;
+        state.corp.installed = vec![trap];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        let (state, _) = pass_until_settled(state, &registry);
+        let pick = crate::rules::legal_actions_for(&state, &registry, Side::Runner).into_iter().find(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).expect("choose a card");
+        let (state, _) = apply_action(&state, &registry, pick).expect("Corroder");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert!(state.runner.rig.is_empty() && state.runner.heap.contains(&id("corroder")));
+        assert!(state.corp.installed.is_empty(), "the ice trashed itself");
+        assert!(state.corp.archives.iter().any(|archived| archived.card == id("its_a_trap")));
+    }
+
+    #[test]
+    fn paige_piper_sends_copies_of_the_first_install_to_the_heap() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("paige_piper"), id("daily_casts")];
+        state.runner.stack = vec![id("paige_piper"), id("sure_gamble"), id("daily_casts"), id("paige_piper")];
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("paige_piper"), host: None }).expect("Paige Piper");
+        let mut asked = close_all_windows(installed, &registry).0;
+        let toggles: Vec<PlayerAction> = crate::rules::legal_actions_for(&asked, &registry, Side::Runner).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert_eq!(toggles.len(), 2, "the two copies of Paige Piper in the stack: {toggles:?}");
+        for toggle in toggles {
+            asked = apply_action(&asked, &registry, toggle).expect("pick").0;
+        }
+        let (searched, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let (searched, _) = close_all_windows(searched, &registry);
+        assert_eq!(searched.runner.heap, vec![id("paige_piper"), id("paige_piper")]);
+        assert_eq!(searched.runner.stack.len(), 2);
+
+        let (second, _) = apply_action(&searched, &registry, PlayerAction::InstallResource { card_id: id("daily_casts"), host: None }).expect("Daily Casts");
+        let (second, _) = close_all_windows(second, &registry);
+        assert!(second.pending_decision.is_none(), "not the first install this turn: {:?}", second.pending_decision);
+        assert!(second.runner.stack.contains(&id("daily_casts")));
+    }
+
+    #[test]
+    fn analog_dreamers_shuffles_an_unrezzed_card_into_rnd_instead_of_breaching() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("analog_dreamers")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let mut advanced = corp_card("hostile_takeover", ServerId::Remote(1), InstallSlot::Root);
+        advanced.advancement_tokens = 1;
+        state.corp.installed = vec![corp_card("pad_campaign", ServerId::Remote(0), InstallSlot::Root), advanced];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("analog_dreamers"), ability_index: 0 }).expect("[click]: run R&D");
+        let (there, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let (success, _) = apply_action(&there, &registry, PlayerAction::CompleteRun).expect("successful");
+        assert!(matches!(success.pending_decision, Some(PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "you may: {:?}", success.pending_decision);
+        let (asked, _) = apply_action(&success, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("instead of breaching");
+        let toggles: Vec<PlayerAction> = crate::rules::legal_actions_for(&asked, &registry, Side::Runner).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert_eq!(toggles.len(), 1, "PAD Campaign: the advanced agenda is not offered");
+        let (picked, _) = apply_action(&asked, &registry, toggles[0].clone()).expect("pick");
+        let (done, events) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let (done, _) = close_all_windows(done, &registry);
+        assert!(!events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardAccessed { .. })), "no breach");
+        assert_eq!(done.corp.r_and_d.len(), 4);
+        assert!(done.corp.r_and_d.contains(&id("pad_campaign")));
+        assert_eq!(done.corp.installed.len(), 1, "the agenda stays");
+    }
+}

@@ -706,6 +706,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::UsePrograms, _) => "the Runner cannot use programs",
                 (Prohibition::Install, _) => "the Runner cannot install cards",
                 (Prohibition::Draw, _) => "the Runner cannot draw cards",
+                (Prohibition::RezOutermostIce, _) => "the Corp cannot rez the outermost piece of ice during a run",
                 (Prohibition::ResolveFirstThreeSubroutines, _) => "the first 3 subroutines of the next encounter do not resolve",
                 (Prohibition::ResolveFirstSubroutine, _) => "the first subroutine to resolve this run does not",
                 (Prohibition::CorpInstall, _) => "the Corp cannot install cards",
@@ -1152,6 +1153,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::UsePrograms => "cannot use programs",
             Prohibition::Install | Prohibition::CorpInstall => "cannot install cards",
             Prohibition::Draw => "cannot draw cards",
+            Prohibition::RezOutermostIce => "cannot rez the outermost piece of ice during a run",
             Prohibition::ResolveFirstThreeSubroutines => "cannot resolve the first 3 subroutines of the next encounter",
             Prohibition::ResolveFirstSubroutine => "cannot resolve the first subroutine that would resolve this run",
         }

@@ -321,6 +321,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::UsePrograms => "the Runner cannot use programs",
         Prohibition::Install => "the Runner cannot install cards",
         Prohibition::Draw => "the Runner cannot draw cards",
+        Prohibition::RezOutermostIce => "the Corp cannot rez the outermost ice during a run",
         Prohibition::ResolveFirstThreeSubroutines => "the first 3 subroutines of the next encounter do not resolve",
         Prohibition::ResolveFirstSubroutine => "the first subroutine to resolve this run does not",
         Prohibition::CorpInstall => "the Corp cannot install cards",

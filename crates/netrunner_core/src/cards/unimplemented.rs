@@ -243,7 +243,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Valley* (`the_valley`): tranche F7 of the FFG plan.
 pub(crate) const VAL_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("paige_piper", "Paige Piper"),
     ("adjusted_chronotype", "Adjusted Chronotype"),
     ("gene_conditioning_shoppe", "Gene Conditioning Shoppe"),
     ("jinteki_biotech_life_imagined", "Jinteki Biotech: Life Imagined"),
@@ -268,7 +267,6 @@ pub(crate) const CC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("turntable", "Turntable"),
     ("chrome_parlor", "Chrome Parlor"),
     ("titanium_ribs", "Titanium Ribs"),
-    ("analog_dreamers", "Analog Dreamers"),
 ];
 
 /// *The Underway* (`the_underway`): tranche F7 of the FFG plan.
@@ -283,7 +281,6 @@ pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Old Hollywood* (`old_hollywood`): tranche F7 of the FFG plan.
 pub(crate) const OH_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("film_critic", "Film Critic"),
-    ("its_a_trap", "It's a Trap!"),
     ("an_offer_you_cant_refuse", "An Offer You Can’t Refuse"),
     ("casting_call", "Casting Call"),
     ("old_hollywood_grid", "Old Hollywood Grid"),
@@ -292,7 +289,6 @@ pub(crate) const OH_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *The Universe of Tomorrow* (`the_universe_of_tomorrow`): tranche F7 of the FFG plan.
 pub(crate) const UOT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("surfer", "Surfer"),
-    ("ddos", "DDoS"),
     ("bookmark", "Bookmark"),
     ("chronos_protocol_selective_mind_mapping", "Chronos Protocol: Selective Mind-mapping"),
     ("genetics_pavilion", "Genetics Pavilion"),

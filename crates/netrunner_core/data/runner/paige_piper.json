@@ -1,0 +1,32 @@
+{
+  "id": "paige_piper",
+  "title": "Paige Piper",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnStack",
+            "filter": "ThatCard",
+            "min": 0,
+            "max": 3,
+            "reveal": false,
+            "shuffle_after": true,
+            "destination": "OwnHeap"
+          }
+        }
+      ],
+      "text": "The first time you install a card each turn (including Paige Piper), you may search your stack for any number of copies of that card and add them to your heap. Shuffle your stack."
+    }
+  ],
+  "built_from": 8002,
+  "is_playable": true
+}
