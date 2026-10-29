@@ -50984,3 +50984,96 @@ mod sansan_stage_14 {
         assert!(apply_action(&state, &registry, use_it).is_err());
     }
 }
+
+mod sansan_stage_15 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn root(card: &str, remote: u32, rezzed: bool, tokens: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(remote), slot: InstallSlot::Root, rezzed, advancement_tokens: tokens, ..Default::default() }
+    }
+
+    fn corp_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state
+    }
+
+    fn select(state: &GameState, registry: &CardRegistry, position: usize) -> GameState {
+        assert!(toggles(state, registry).contains(&PlayerAction::ToggleCardSelection { position }), "{position}: {:?}", state.pending_decision);
+        apply_action(state, registry, PlayerAction::ToggleCardSelection { position }).expect("select").0
+    }
+
+    fn confirm(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (done, _) = apply_action(state, registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        close_all_windows(done, registry).0
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
+        crate::rules::legal_actions_for(state, registry, Side::Corp).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect()
+    }
+
+    #[test]
+    fn shannon_claire_draws_the_bottom_card_of_r_and_d() {
+        let registry = registry();
+        let mut state = corp_turn();
+        // The top of R&D is the end of the list.
+        state.corp.r_and_d = vec![id("hostile_takeover"), id("hedge_fund"), id("ice_wall")];
+        state.corp.hq = vec![];
+        state.corp.installed = vec![root("shannon_claire", 0, true, 0)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("shannon_claire"), ability_index: 0 }).expect("[click]");
+        assert_eq!(toggles(&asked, &registry).len(), 1, "only the bottom card");
+        let (chosen, _) = apply_action(&asked, &registry, toggles(&asked, &registry)[0].clone()).expect("select");
+        let done = confirm(&chosen, &registry);
+        assert_eq!(done.corp.hq, vec![id("hostile_takeover")]);
+        assert_eq!(done.corp.r_and_d, vec![id("hedge_fund"), id("ice_wall")]);
+        assert_eq!(done.corp.resources.clicks, Clicks(2));
+    }
+
+    #[test]
+    fn shannon_claire_puts_an_agenda_from_archives_on_the_bottom_of_r_and_d() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall")];
+        state.corp.archives = vec![crate::rules::ArchivedCard::facedown(id("hostile_takeover")), crate::rules::ArchivedCard::faceup(id("hedge_fund"))];
+        state.corp.installed = vec![root("shannon_claire", 0, true, 0)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("shannon_claire"), ability_index: 1 }).expect("[trash]");
+        assert!(asked.corp.installed.is_empty(), "the cost is paid first");
+        let (archives, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("Archives");
+        assert_eq!(toggles(&archives, &registry).len(), 1, "only the agenda");
+        let done = confirm(&select(&archives, &registry, 0), &registry);
+        assert_eq!(done.corp.r_and_d, vec![id("hostile_takeover"), id("hedge_fund"), id("ice_wall")], "the bottom, R&D unshuffled");
+        assert!(done.corp.archives.iter().all(|card| card.card != id("hostile_takeover")));
+    }
+
+    #[test]
+    fn shannon_claire_searches_r_and_d_for_an_agenda() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall"), id("hostile_takeover"), id("enigma")];
+        state.corp.installed = vec![root("shannon_claire", 0, true, 0)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("shannon_claire"), ability_index: 1 }).expect("[trash]");
+        let (search, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("R&D");
+        assert_eq!(toggles(&search, &registry).len(), 1, "only the agenda");
+        let done = confirm(&select(&search, &registry, 2), &registry);
+        assert_eq!(done.corp.r_and_d.len(), 4);
+        assert_eq!(done.corp.r_and_d[0], id("hostile_takeover"), "added to the bottom after the shuffle");
+    }
+
+    #[test]
+    fn genetic_resequencing_places_an_agenda_counter_on_a_scored_agenda() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("hostile_takeover"))];
+        state.corp.installed = vec![root("genetic_resequencing", 0, false, 3)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: fixture_install_id("genetic_resequencing") }).expect("score");
+        let done = confirm(&select(&asked, &registry, 0), &registry);
+        let counters = |card: &str| done.corp.scored_agendas.iter().find(|agenda| agenda.card == id(card)).map(|agenda| agenda.agenda_counters);
+        assert_eq!(counters("hostile_takeover"), Some(1));
+        assert_eq!(counters("genetic_resequencing"), Some(0));
+    }
+}

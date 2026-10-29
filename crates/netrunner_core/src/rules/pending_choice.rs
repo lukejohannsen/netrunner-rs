@@ -465,6 +465,7 @@ fn instance_matches_filter(
             let len = zone_card_ids(state, chooser, zone, source).len();
             position >= len.saturating_sub(*count as usize)
         }
+        CardFilter::BottomOfZone(count) => position < *count as usize,
         // Read as the selection was offered (`with_resolution`); left
         // unread, nothing.
         CardFilter::TopOf(_) => false,
