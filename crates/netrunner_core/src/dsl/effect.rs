@@ -918,10 +918,19 @@ pub enum Effect {
     /// the State Hygiene Rule's chosen value, carried in the effect that
     /// waits. Each agenda keeps its counters and is neither scored nor
     /// stolen. Composition didn't work: no effect moved a card between
-    /// score areas.
+    /// score areas. With `that_agenda` it is the Runner's — Turntable's
+    /// "Whenever you steal an agenda, you may swap that agenda with an
+    /// agenda in the Corp's score area": the `then` of the Runner's
+    /// selection over the Corp's score area, swapping the agenda chosen
+    /// there with the Runner's that the filter names, so there is no
+    /// second selection. The card file writes `ThatCard`, written over as
+    /// the stolen agenda when the trigger fires (`with_that_card`), since
+    /// the selection parks and the triggering event is gone by its answer.
     SwapScoredAgenda {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         yours: Option<InstallId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        that_agenda: Option<crate::dsl::CardFilter>,
     },
     /// Swaps a card in R&D with a card in HQ, each where it stands —
     /// Nihongai Grid's "look at the top 5 cards of R&D and swap 1 of those
@@ -3892,8 +3901,10 @@ impl Effect {
     pub fn names_that_card(&self) -> bool {
         let mut named = false;
         self.for_each_effect(&mut |effect| {
-            if let Effect::PromptChooseCards { filter, .. } = effect {
-                named |= filter.names_that_card();
+            match effect {
+                Effect::PromptChooseCards { filter, .. } => named |= filter.names_that_card(),
+                Effect::SwapScoredAgenda { that_agenda: Some(filter), .. } => named |= filter.names_that_card(),
+                _ => {}
             }
         });
         named
@@ -4062,6 +4073,8 @@ impl Effect {
             // **that ice**": the number is asked first, and the ice is
             // chosen behind it.
             Effect::ChooseNumber { chooser, min, max, of, then, text, secret } => Effect::ChooseNumber { chooser, min, max, of, then: boxed(then), text, secret },
+            // Turntable's "swap **that agenda**".
+            Effect::SwapScoredAgenda { yours, that_agenda } => Effect::SwapScoredAgenda { yours, that_agenda: that_agenda.map(|filter| filter.with_that_card(card)) },
             other => other,
         }
     }

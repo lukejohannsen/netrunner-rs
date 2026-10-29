@@ -1,0 +1,149 @@
+{
+  "id": "zzzzzzz",
+  "name": "Zzzzzzz",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Hayley Kaplan: Universal Scholar, Breaker Bay's Shaper identity, who may install a second card of the same type the first time each turn she installs one. Zymogen's list, its identity swapped.",
+  "style": [
+    "rig"
+  ],
+  "identity": "hayley_kaplan_universal_scholar",
+  "cards": [
+    {
+      "card": "flux_capacitor",
+      "count": 1
+    },
+    {
+      "card": "coalescence",
+      "count": 1
+    },
+    {
+      "card": "orca",
+      "count": 2
+    },
+    {
+      "card": "egret",
+      "count": 2
+    },
+    {
+      "card": "beatriz_friere_gonzalez",
+      "count": 1
+    },
+    {
+      "card": "supercorridor",
+      "count": 2
+    },
+    {
+      "card": "hyperbaric",
+      "count": 1
+    },
+    {
+      "card": "propeller",
+      "count": 1
+    },
+    {
+      "card": "into_the_depths",
+      "count": 1
+    },
+    {
+      "card": "daeg_first_net_cat",
+      "count": 2
+    },
+    {
+      "card": "cybertrooper_talut",
+      "count": 2
+    },
+    {
+      "card": "paules_cafe",
+      "count": 1
+    },
+    {
+      "card": "minds_eye",
+      "count": 1
+    },
+    {
+      "card": "dj_fenris",
+      "count": 1
+    },
+    {
+      "card": "reclaim",
+      "count": 2
+    },
+    {
+      "card": "algo_trading",
+      "count": 1
+    },
+    {
+      "card": "beth_kilrain_chang",
+      "count": 1
+    },
+    {
+      "card": "laguna_velasco_district",
+      "count": 1
+    },
+    {
+      "card": "llds_memory_diamond",
+      "count": 1
+    },
+    {
+      "card": "ubax",
+      "count": 1
+    },
+    {
+      "card": "dai_v",
+      "count": 1
+    },
+    {
+      "card": "dhegdheer",
+      "count": 1
+    },
+    {
+      "card": "careful_planning",
+      "count": 1
+    },
+    {
+      "card": "levy_advanced_research_lab",
+      "count": 2
+    },
+    {
+      "card": "multithreader",
+      "count": 2
+    },
+    {
+      "card": "brain_chip",
+      "count": 1
+    },
+    {
+      "card": "artist_colony",
+      "count": 2
+    },
+    {
+      "card": "liberated_chela",
+      "count": 2
+    },
+    {
+      "card": "wasteland",
+      "count": 1
+    },
+    {
+      "card": "safety_first",
+      "count": 1
+    },
+    {
+      "card": "the_price_of_freedom",
+      "count": 1
+    },
+    {
+      "card": "out_of_the_ashes",
+      "count": 1
+    },
+    {
+      "card": "davinci",
+      "count": 2
+    },
+    {
+      "card": "analog_dreamers",
+      "count": 1
+    }
+  ]
+}

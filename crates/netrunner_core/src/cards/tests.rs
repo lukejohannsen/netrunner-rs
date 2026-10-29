@@ -51454,3 +51454,87 @@ mod sansan_stage_19 {
         assert_eq!(done.corp.installed.len(), 1, "the agenda stays");
     }
 }
+
+mod sansan_stage_20 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
+        crate::rules::legal_actions_for(state, registry, Side::Runner).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect()
+    }
+
+    /// Runs HQ and steals what is offered, stopping at the first question
+    /// that is not about the run.
+    fn run_hq_stealing(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (mut state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        for _ in 0..30 {
+            state = close_all_windows(state, registry).0;
+            let legal = crate::rules::legal_actions_for(&state, registry, Side::Runner);
+            let next = legal
+                .iter()
+                .find(|action| matches!(action, PlayerAction::StealAgenda { .. }))
+                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::PassAccessedCard { .. } | PlayerAction::ContinueRun | PlayerAction::CompleteRun)))
+                .cloned();
+            let Some(action) = next.filter(|_| state.active_run.is_some()) else { break };
+            state = apply_action(&state, registry, action).expect("onward").0;
+        }
+        state
+    }
+
+    #[test]
+    fn turntable_swaps_the_stolen_agenda_for_one_the_corp_scored() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("turntable"), install_id: fixture_install_id("turntable"), ..Default::default() }];
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda { install_id: fixture_install_id("project_atlas"), ..crate::rules::ScoredAgenda::plain(id("project_atlas")) }];
+        state.corp.hq = vec![id("hostile_takeover")];
+        let asked = run_hq_stealing(&state, &registry);
+        assert_eq!(asked.runner.scored_agendas.len(), 1, "stolen");
+        let offered = toggles(&asked, &registry);
+        assert_eq!(offered.len(), 1, "Project Atlas, in the Corp's score area");
+        let (picked, _) = apply_action(&asked, &registry, offered[0].clone()).expect("pick");
+        let (swapped, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("swap");
+        let (swapped, _) = close_all_windows(swapped, &registry);
+        assert_eq!(swapped.runner.scored_agendas.iter().map(|s| s.card.clone()).collect::<Vec<_>>(), vec![id("project_atlas")]);
+        assert_eq!(swapped.corp.scored_agendas.iter().map(|s| s.card.clone()).collect::<Vec<_>>(), vec![id("hostile_takeover")]);
+
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("decline");
+        let (declined, _) = close_all_windows(declined, &registry);
+        assert_eq!(declined.runner.scored_agendas.iter().map(|s| s.card.clone()).collect::<Vec<_>>(), vec![id("hostile_takeover")], "you may");
+    }
+
+    #[test]
+    fn hayley_kaplan_installs_a_second_card_of_the_same_type_the_first_time_each_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("hayley_kaplan_universal_scholar"));
+        state.runner.grip = vec![id("ice_carver"), id("corroder"), id("xanadu"), id("dyson_mem_chip")];
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("ice_carver"), host: None }).expect("Ice Carver");
+        let asked = close_all_windows(installed, &registry).0;
+        let offered = toggles(&asked, &registry);
+        assert_eq!(offered.len(), 1, "Xanadu, the other resource: {:?}", asked.pending_decision);
+        let credits = asked.runner.resources.credits;
+        let (picked, _) = apply_action(&asked, &registry, offered[0].clone()).expect("pick");
+        let (second, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("install it");
+        let (second, _) = close_all_windows(second, &registry);
+        assert!(second.runner.rig.iter().any(|card| card.card == id("xanadu")), "installed");
+        let cost = registry.get(&id("xanadu")).unwrap().cost;
+        assert_eq!(second.runner.resources.credits, Credits(credits.0 - cost), "paying its install cost");
+        assert_eq!(second.runner.resources.clicks, Clicks(3), "no click spent on the second");
+
+        let (third, _) = apply_action(&second, &registry, PlayerAction::InstallHardware { card_id: id("dyson_mem_chip"), host: None }).expect("Dyson Mem Chip");
+        let (third, _) = close_all_windows(third, &registry);
+        assert!(toggles(&third, &registry).is_empty(), "not the first install this turn");
+    }
+}

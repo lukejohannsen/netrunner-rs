@@ -164,7 +164,7 @@ pub(crate) fn zone_install_ids(state: &GameState, chooser: Side, zone: &CardZone
         },
         // A scored agenda keeps the handle it was installed under, which is
         // what tells two scored copies apart (one carries counters).
-        CardZoneRef::OwnScoreArea if owning_side(chooser, zone) == Side::Corp => {
+        CardZoneRef::OwnScoreArea | CardZoneRef::OpponentScoreArea if owning_side(chooser, zone) == Side::Corp => {
             Some(state.corp.scored_agendas.iter().map(|s| s.install_id).collect())
         }
         _ => None,

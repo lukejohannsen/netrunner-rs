@@ -1,0 +1,163 @@
+{
+  "id": "hayley_kaplan_universal_scholar",
+  "title": "Hayley Kaplan: Universal Scholar",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "base_link": 0,
+  "triggers": [
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "CardType": "Program"
+        }
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OwnGrip",
+                "count": 1,
+                "filter": {
+                  "All": [
+                    {
+                      "CardType": "Program"
+                    },
+                    "InstallableRunnerCard"
+                  ]
+                }
+              }
+            },
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnGrip",
+                "filter": {
+                  "All": [
+                    {
+                      "CardType": "Program"
+                    },
+                    "InstallableRunnerCard"
+                  ]
+                },
+                "min": 0,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": "InstallRunnerCardFromGrip"
+              }
+            }
+          }
+        }
+      ],
+      "text": "The first time you install a card each turn, you may install another card of the same type from your grip (paying its install cost)."
+    },
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "CardType": "Hardware"
+        }
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OwnGrip",
+                "count": 1,
+                "filter": {
+                  "All": [
+                    {
+                      "CardType": "Hardware"
+                    },
+                    "InstallableRunnerCard"
+                  ]
+                }
+              }
+            },
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnGrip",
+                "filter": {
+                  "All": [
+                    {
+                      "CardType": "Hardware"
+                    },
+                    "InstallableRunnerCard"
+                  ]
+                },
+                "min": 0,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": "InstallRunnerCardFromGrip"
+              }
+            }
+          }
+        }
+      ],
+      "text": "The first time you install a card each turn, you may install another card of the same type from your grip (paying its install cost)."
+    },
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "CardType": "Resource"
+        }
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OwnGrip",
+                "count": 1,
+                "filter": {
+                  "All": [
+                    {
+                      "CardType": "Resource"
+                    },
+                    "InstallableRunnerCard"
+                  ]
+                }
+              }
+            },
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnGrip",
+                "filter": {
+                  "All": [
+                    {
+                      "CardType": "Resource"
+                    },
+                    "InstallableRunnerCard"
+                  ]
+                },
+                "min": 0,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": "InstallRunnerCardFromGrip"
+              }
+            }
+          }
+        }
+      ],
+      "text": "The first time you install a card each turn, you may install another card of the same type from your grip (paying its install cost)."
+    }
+  ],
+  "built_from": 8025,
+  "is_playable": true
+}

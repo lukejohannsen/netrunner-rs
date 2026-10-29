@@ -253,7 +253,6 @@ pub(crate) const BB_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("hacktivist_meeting", "Hacktivist Meeting"),
     ("off_campus_apartment", "Off-Campus Apartment"),
     ("dorm_computer", "Dorm Computer"),
-    ("hayley_kaplan_universal_scholar", "Hayley Kaplan: Universal Scholar"),
     ("comet", "Comet"),
     ("london_library", "London Library"),
     ("research_grant", "Research Grant"),
@@ -264,7 +263,6 @@ pub(crate) const BB_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Chrome City* (`chrome_city`): tranche F7 of the FFG plan.
 pub(crate) const CC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("immolation_script", "Immolation Script"),
-    ("turntable", "Turntable"),
     ("chrome_parlor", "Chrome Parlor"),
     ("titanium_ribs", "Titanium Ribs"),
 ];
