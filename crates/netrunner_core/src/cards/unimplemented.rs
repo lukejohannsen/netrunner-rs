@@ -248,7 +248,6 @@ pub(crate) const VAL_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("gene_conditioning_shoppe", "Gene Conditioning Shoppe"),
     ("traffic_jam", "Traffic Jam"),
     ("jinteki_biotech_life_imagined", "Jinteki Biotech: Life Imagined"),
-    ("valley_grid", "Valley Grid"),
 ];
 
 /// *Breaker Bay* (`breaker_bay`): tranche F7 of the FFG plan.
@@ -272,13 +271,11 @@ pub(crate) const CC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("chrome_parlor", "Chrome Parlor"),
     ("titanium_ribs", "Titanium Ribs"),
     ("analog_dreamers", "Analog Dreamers"),
-    ("lockdown", "Lockdown"),
 ];
 
 /// *The Underway* (`the_underway`): tranche F7 of the FFG plan.
 pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("street_peddler", "Street Peddler"),
-    ("gang_sign", "Gang Sign"),
     ("muertos_gang_member", "Muertos Gang Member"),
     ("defective_brainchips", "Defective Brainchips"),
     ("allele_repression", "Allele Repression"),
@@ -289,7 +286,6 @@ pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Old Hollywood* (`old_hollywood`): tranche F7 of the FFG plan.
 pub(crate) const OH_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("film_critic", "Film Critic"),
-    ("paparazzi", "Paparazzi"),
     ("its_a_trap", "It's a Trap!"),
     ("an_offer_you_cant_refuse", "An Offer You Can’t Refuse"),
     ("haarpsichord_studios_entertainment_unleashed", "Haarpsichord Studios: Entertainment Unleashed"),

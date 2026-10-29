@@ -1,0 +1,41 @@
+{
+  "id": "paparazzi",
+  "title": "Paparazzi",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Tags": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "text": "You are tagged."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnDamageAboutToResolve",
+      "when": {
+        "Damage": "Meat"
+      },
+      "effects": [
+        {
+          "Prevent": {
+            "Damage": {
+              "kind": "Meat",
+              "up_to": 4294967295
+            }
+          }
+        }
+      ],
+      "text": "[interrupt] → Whenever you would take meat damage, prevent all of that damage."
+    }
+  ],
+  "built_from": 8087,
+  "is_playable": true
+}

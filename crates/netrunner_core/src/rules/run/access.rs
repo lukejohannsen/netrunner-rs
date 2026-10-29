@@ -299,12 +299,13 @@ pub(crate) fn accessing_during_an_encounter(run: &RunState) -> bool {
 }
 
 /// Whether the Runner is accessing on the Corp's turn — an access a Corp
-/// card's text gave them (Hangeki), always outside a breach. The access
+/// card's text gave them (Hangeki), outside a breach, or a breach a Runner
+/// card makes as the Corp scores (Gang Sign), which is no run. The access
 /// decisions are the Runner's then (`engine::require_runner_accessing`,
 /// `legal_actions::current_actor`), though the turn is not.
 pub(crate) fn accessing_outside_the_runners_turn(state: &GameState) -> bool {
     state.phase == GamePhase::Action(Side::Corp)
-        && state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).is_some_and(|access| access.outside_breach.is_some())
+        && state.active_run.as_ref().is_some_and(|run| run.access_state.as_ref().is_some_and(|access| access.outside_breach.is_some()) || (run.breach_only && run.access_state.is_some()))
 }
 
 /// Whether the card being accessed is in the Corp's discard pile — out of

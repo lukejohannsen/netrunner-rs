@@ -323,7 +323,7 @@ impl<'a> ResolutionContext<'a> {
 /// nothing (CR 1.7.2c: the Runner never decks out), so there is nothing
 /// about to happen and nothing is announced.
 pub(crate) fn runner_would_draw(state: &mut GameState, registry: &CardRegistry, amount: u32, ctx: &mut ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
-    if state.runner.stack.is_empty() {
+    if state.runner.stack.is_empty() || crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::Draw) {
         return Ok(Vec::new());
     }
     crate::rules::prevention::would(state, registry, WouldHappen::Draw { side: Side::Runner, amount }, ctx)

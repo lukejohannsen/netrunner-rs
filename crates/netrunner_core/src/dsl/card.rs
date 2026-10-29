@@ -2228,8 +2228,8 @@ impl CardDefinition {
                 (ContinuousKind::CannotBeDeclaredSuccessful | ContinuousKind::AccessOthersAtMost(_), _) => {
                     return misfit("RunsOnThisServer", "a run's success and its accesses are said of the runs on this card's server, by a card in its root");
                 }
-                (ContinuousKind::Tags(_), Scope::Player(Side::Runner)) if self.side == Side::Corp => {}
-                (ContinuousKind::Tags(_), _) => return misfit("Tags", "tags a Runner is considered to have are said of the Runner by a Corp card (`Player`)"),
+                (ContinuousKind::Tags(_), Scope::Player(Side::Runner)) => {}
+                (ContinuousKind::Tags(_), _) => return misfit("Tags", "tags a Runner is considered to have are said of the Runner (`Player`)"),
                 (kind, Scope::Player(_)) if !matches!(kind, ContinuousKind::Cannot(_)) => {
                     return misfit("Player", "only a prohibition, the other player's hand size or a limit on a bid is about a player named by side");
                 }

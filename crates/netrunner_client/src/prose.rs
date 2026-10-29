@@ -704,6 +704,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::InstalledCardAbilities, _) => "the Runner cannot use paid abilities on installed cards except mid-access abilities and icebreakers",
                 (Prohibition::UsePrograms, _) => "the Runner cannot use programs",
                 (Prohibition::Install, _) => "the Runner cannot install cards",
+                (Prohibition::Draw, _) => "the Runner cannot draw cards",
                 (Prohibition::ResolveFirstThreeSubroutines, _) => "the first 3 subroutines of the next encounter do not resolve",
                 (Prohibition::ResolveFirstSubroutine, _) => "the first subroutine to resolve this run does not",
                 (Prohibition::CorpInstall, _) => "the Corp cannot install cards",
@@ -1149,6 +1150,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::InstalledCardAbilities => "cannot use paid abilities on installed cards except mid-access abilities and icebreakers",
             Prohibition::UsePrograms => "cannot use programs",
             Prohibition::Install | Prohibition::CorpInstall => "cannot install cards",
+            Prohibition::Draw => "cannot draw cards",
             Prohibition::ResolveFirstThreeSubroutines => "cannot resolve the first 3 subroutines of the next encounter",
             Prohibition::ResolveFirstSubroutine => "cannot resolve the first subroutine that would resolve this run",
         }

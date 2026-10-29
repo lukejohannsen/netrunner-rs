@@ -51077,3 +51077,130 @@ mod sansan_stage_15 {
         assert_eq!(counters("genetic_resequencing"), Some(0));
     }
 }
+
+mod sansan_stage_16 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn runner_turn(installed: Vec<crate::rules::InstalledCard>) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(20);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { base_strength: 2, ..rig("corroder") }];
+        state.corp.installed = installed;
+        state
+    }
+
+    /// Runs `server` and passes until `stop` holds.
+    fn run_until(state: &GameState, registry: &CardRegistry, server: ServerId, stop: impl Fn(&GameState) -> bool) -> GameState {
+        let (mut state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server }).expect("initiate run");
+        for _ in 0..40 {
+            if stop(&state) {
+                return state;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, registry, action.clone()).unwrap_or_else(|e| panic!("{action:?}: {e:?}")).0;
+        }
+        panic!("never stopped: {:?}", state.active_run.map(|run| run.phase));
+    }
+
+    fn encountering(state: &GameState) -> bool {
+        state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce)
+    }
+
+    #[test]
+    fn lockdown_stops_the_runner_drawing_for_the_rest_of_the_turn() {
+        let registry = registry();
+        let mut state = runner_turn(vec![installed("lockdown", ServerId::Hq, InstallSlot::Ice, true)]);
+        state.runner.stack = vec![id("sure_gamble"); 3];
+        let after = run_until(&state, &registry, ServerId::Hq, |state| state.active_run.as_ref().is_none_or(|run| run.phase == crate::rules::RunPhase::Success));
+        let (after, _) = close_all_windows(after, &registry);
+        let (after, _) = apply_action(&after, &registry, PlayerAction::CompleteRun).expect("complete run");
+        let (after, _) = close_all_windows(after, &registry);
+        assert!(crate::rules::continuous::cannot(&after, &registry, crate::dsl::Prohibition::Draw));
+        let grip = after.runner.grip.len();
+        let (drew, _) = apply_action(&after, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("draw");
+        let (drew, _) = close_all_windows(drew, &registry);
+        assert_eq!(drew.runner.grip.len(), grip, "nothing drawn");
+        assert_eq!(drew.runner.stack.len(), 3);
+
+        let mut fresh = state.clone();
+        fresh.corp.installed.clear();
+        let (drew, _) = apply_action(&fresh, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("draw");
+        assert_eq!(close_all_windows(drew, &registry).0.runner.stack.len(), 2, "without Lockdown a card is drawn");
+    }
+
+    #[test]
+    fn paparazzi_makes_the_runner_tagged_and_prevents_meat_damage() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        state.corp.hq = vec![id("scorched_earth")];
+        state.runner.tags = 0;
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        state.runner.rig = vec![rig("paparazzi")];
+        assert_eq!(crate::rules::continuous::tags(&state, &registry), 1, "you are tagged");
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("scorched_earth") }).expect("tagged, so playable");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.runner.grip.len(), 4, "all of the meat damage prevented");
+    }
+
+    #[test]
+    fn gang_sign_breaches_hq_when_the_corp_scores() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.hq = vec![id("hostile_takeover")];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, ..installed("project_atlas", ServerId::Remote(0), InstallSlot::Root, false) }];
+        state.corp.installed.push(installed("akitaro_watanabe", ServerId::Hq, InstallSlot::Root, true));
+        state.runner.rig = vec![rig("gang_sign")];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: fixture_install_id("project_atlas") }).expect("score");
+        let (mut scored, _) = close_all_windows(scored, &registry);
+        for _ in 0..10 {
+            let steal = crate::rules::legal_actions_for(&scored, &registry, Side::Runner).into_iter().find(|action| matches!(action, PlayerAction::StealAgenda { .. } | PlayerAction::ContinueRun));
+            let Some(action) = steal else { break };
+            scored = close_all_windows(apply_action(&scored, &registry, action).expect("access").0, &registry).0;
+        }
+        assert!(scored.runner.scored_agendas.iter().any(|agenda| agenda.card == id("hostile_takeover")), "{:?}", scored.pending_decision);
+        assert!(scored.corp.hq.is_empty());
+        assert!(scored.active_run.is_none(), "the breach is over");
+        assert!(scored.corp.installed.iter().any(|card| card.card == id("akitaro_watanabe")), "the root of HQ was not accessed");
+        assert!(!crate::rules::legal_actions_for(&scored, &registry, Side::Corp).is_empty(), "the Corp's turn goes on");
+    }
+
+    #[test]
+    fn valley_grid_lowers_the_runners_hand_size_when_its_ice_is_fully_broken() {
+        let registry = registry();
+        let state = runner_turn(vec![installed("valley_grid", ServerId::Remote(0), InstallSlot::Root, true), installed("ice_wall", ServerId::Remote(0), InstallSlot::Ice, true)]);
+        let before = crate::rules::continuous::hand_size(&state, &registry, Side::Runner);
+        let at_ice = run_until(&state, &registry, ServerId::Remote(0), encountering);
+        let (broken, _) = apply_action(&at_ice, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("corroder"), ability_index: 1 }).expect("break");
+        let broken = close_all_windows(broken, &registry).0;
+        assert_eq!(crate::rules::continuous::hand_size(&broken, &registry, Side::Runner), before - 1);
+
+        let mut elsewhere = state.clone();
+        elsewhere.corp.installed[1].server = ServerId::Hq;
+        let at_ice = run_until(&elsewhere, &registry, ServerId::Hq, encountering);
+        let (broken, _) = apply_action(&at_ice, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("corroder"), ability_index: 1 }).expect("break");
+        let broken = close_all_windows(broken, &registry).0;
+        assert_eq!(crate::rules::continuous::hand_size(&broken, &registry, Side::Runner), before, "not protecting its server");
+    }
+}

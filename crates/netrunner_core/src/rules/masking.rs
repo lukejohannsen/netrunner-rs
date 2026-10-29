@@ -1118,7 +1118,9 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         GameEvent::AbilityGainedCredits { card, .. } if concealed(card) => None,
         // Accessed in HQ or R&D, as `TriggerFired`'s access is: the Runner
         // saw it, a spectator did not (Esca, seed 28).
-        GameEvent::AbilityTookCredits { card, .. }
+        // So does a gain an accessed card offers (Explode-a-palooza's "you
+        // may gain 5[credit]", answered from R&D at 256 seeds, seed 180).
+        GameEvent::AbilityTookCredits { card, .. } | GameEvent::AbilityGainedCredits { card, .. }
             if matches!(viewer, Viewer::Spectator) && (state.corp.hq.contains(card) || state.corp.r_and_d.contains(card)) =>
         {
             None
