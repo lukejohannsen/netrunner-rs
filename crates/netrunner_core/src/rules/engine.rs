@@ -1837,7 +1837,9 @@ fn play_operation(
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(play_operation_card(&mut next, registry, card_id, from, false)?);
+    // Petty Cash, the one card the click action plays out of Archives,
+    // prints "After it resolves, remove it from the game".
+    events.extend(play_operation_card(&mut next, registry, card_id, from, false, from == OperationOrigin::Archives)?);
     Ok((next, events))
 }
 
@@ -1871,7 +1873,8 @@ pub(crate) fn can_play_operation(state: &GameState, registry: &CardRegistry, car
 /// `Effect::PlayOperationFromHq` (Humanoid Resources' "You may play 1
 /// operation from HQ"), which spends no click. Takes the card out of HQ or
 /// Archives, checks its type and `play_requirement`, pays its cost, files
-/// it (Archives faceup, or out of the game when played from Archives) and
+/// it (Archives faceup, or out of the game where the card that played it
+/// says so) and
 /// dispatches `OperationPlayed`.
 pub(crate) fn play_operation_card(
     next: &mut GameState,
@@ -1879,6 +1882,7 @@ pub(crate) fn play_operation_card(
     card_id: CardId,
     from: OperationOrigin,
     ignoring_costs: bool,
+    remove_from_game: bool,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Corp;
     let from_archives = from == OperationOrigin::Archives;
@@ -1919,13 +1923,14 @@ pub(crate) fn play_operation_card(
         events.extend(cost_events.clone());
     }
     // A played Operation resolved in the open, so the Runner has seen it.
-    // One played out of Archives leaves the game instead (Petty Cash's
-    // "after it resolves, remove it from the game"), and so does one that
+    // One whose player's card says so leaves the game instead (Petty
+    // Cash's and Plutus's "after it resolves, remove it from the game",
+    // `remove_from_game`), and so does one that
     // says so (Hypoxia's "Remove this operation from the game",
     // `removed_after_play`) — placed now rather than after the dispatch so
     // an `OnPlay` that parks a decision still sees the card where it will
     // end up; nothing reads it back either way.
-    if from_archives || card_def.removed_after_play {
+    if remove_from_game || card_def.removed_after_play {
         next.corp.removed_from_game.push(card_id.clone());
         events.push(GameEvent::CardRemovedFromGame { side, card: card_id.clone() });
     } else if crate::rules::current::is_current(card_def) {

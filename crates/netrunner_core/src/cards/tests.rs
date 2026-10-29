@@ -50879,3 +50879,108 @@ mod sansan_stage_13 {
         assert_eq!(encounter.ice[encounter.position].subroutines.len(), 2, "two rezzed assets; the unrezzed one does not count");
     }
 }
+
+/// SanSan Stage 14: New Angeles Sol, Crowbar and Spike.
+mod sansan_stage_14 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn root(card: &str, server: ServerId, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Root, rezzed, ..Default::default() }
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn select_first_and_confirm(state: &GameState, registry: &CardRegistry, side: Side) -> GameState {
+        let offered: Vec<PlayerAction> = crate::rules::legal_actions_for(state, registry, side).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert_eq!(offered.len(), 1, "{:?}", state.pending_decision);
+        let (chosen, _) = apply_action(state, registry, offered[0].clone()).expect("select");
+        apply_action(&chosen, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    /// Sol scores an agenda and plays the current offered from `option`
+    /// (0 HQ, 1 Archives).
+    fn sol_scores(option: usize) -> GameState {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.identity = Some(id("new_angeles_sol_your_news"));
+        if option == 0 {
+            state.corp.hq = vec![id("scarcity_of_resources")];
+        } else {
+            state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("scarcity_of_resources"))];
+        }
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, ..root("ancestral_imager", ServerId::Remote(0), false) }];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: fixture_install_id("ancestral_imager") }).expect("score");
+        let (scored, _) = close_all_windows(scored, &registry);
+        let (asked, _) = apply_action(&scored, &registry, PlayerAction::ResolvePendingChoice { option_index: option }).expect("play a current");
+        let played = select_first_and_confirm(&asked, &registry, Side::Corp);
+        close_all_windows(played, &registry).0
+    }
+
+    #[test]
+    fn new_angeles_sol_plays_a_current_from_hq_or_archives_when_an_agenda_is_scored() {
+        for option in [0, 1] {
+            let state = sol_scores(option);
+            assert!(state.corp.play_area.iter().any(|played| played.card == id("scarcity_of_resources")), "from option {option}: {:?}", state.corp.play_area);
+            assert!(!state.corp.removed_from_game.contains(&id("scarcity_of_resources")), "a current out of Archives stays in play");
+            assert!(state.corp.archives.is_empty() && state.corp.hq.is_empty());
+        }
+    }
+
+    #[test]
+    fn new_angeles_sol_is_offered_a_current_when_an_agenda_is_stolen() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.identity = Some(id("new_angeles_sol_your_news"));
+        state.corp.hq = vec![id("ancestral_imager")];
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("scarcity_of_resources"))];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Hq);
+        let (state, _) = close_all_windows(state, &registry);
+        let steal = crate::rules::legal_actions_for(&state, &registry, Side::Runner).into_iter().find(|action| matches!(action, PlayerAction::StealAgenda { .. })).expect("steal is offered");
+        let (stolen, _) = apply_action(&state, &registry, steal).expect("steal");
+        let (stolen, _) = close_all_windows(stolen, &registry);
+        assert_eq!(stolen.runner.scored_agendas.len(), 1);
+        let (asked, _) = apply_action(&stolen, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("play a current from Archives");
+        let played = select_first_and_confirm(&asked, &registry, Side::Corp);
+        assert!(played.corp.play_area.iter().any(|played| played.card == id("scarcity_of_resources")));
+    }
+
+    #[test]
+    fn crowbar_and_spike_break_code_gates_and_barriers_by_trashing() {
+        let registry = registry();
+        for (card, kind) in [("crowbar", crate::dsl::IceType::CodeGate), ("spike", crate::dsl::IceType::Barrier)] {
+            let def = registry.get(&id(card)).unwrap();
+            assert!(matches!(&def.abilities[0].effect, crate::dsl::Effect::BreakSubroutines { restrict_to: Some(found), .. } if *found == kind), "{card}");
+            assert_eq!(def.abilities[0].cost, Some(crate::dsl::Cost::TrashSelf));
+            let mut state = base_state();
+            state.runner.rig = vec![rig(card), rig("corroder"), rig("gordian_blade")];
+            assert_eq!(crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[0]), 3, "{card}: one for each icebreaker, itself among them");
+        }
+    }
+
+    /// Seed 92 of the view sweep: a random Runner used Dean Lister on the
+    /// Corp's turn and chose an icebreaker it could never confirm, because
+    /// "until the end of the run" refuses to resolve with no run. The
+    /// ability is offered only during a run, as the effect can only
+    /// resolve in one.
+    #[test]
+    fn dean_lister_is_used_only_during_a_run() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.rig = vec![rig("dean_lister"), rig("corroder")];
+        let use_it = PlayerAction::ActivateAbility { target: fixture_install_id("dean_lister"), ability_index: 0 };
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&use_it));
+        assert!(apply_action(&state, &registry, use_it).is_err());
+    }
+}

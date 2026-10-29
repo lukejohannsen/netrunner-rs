@@ -220,7 +220,6 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.
 pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sync_everything_everywhere", "SYNC: Everything, Everywhere"),
-    ("new_angeles_sol_your_news", "New Angeles Sol: Your News"),
     ("spark_agency_worldswide_reach", "Spark Agency: Worldswide Reach"),
     ("rebranding_team", "Rebranding Team"),
     ("shannon_claire", "Shannon Claire"),
@@ -247,7 +246,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const VAL_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("paige_piper", "Paige Piper"),
     ("adjusted_chronotype", "Adjusted Chronotype"),
-    ("spike", "Spike"),
     ("gene_conditioning_shoppe", "Gene Conditioning Shoppe"),
     ("traffic_jam", "Traffic Jam"),
     ("jinteki_biotech_life_imagined", "Jinteki Biotech: Life Imagined"),
@@ -275,7 +273,6 @@ pub(crate) const CC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("turntable", "Turntable"),
     ("chrome_parlor", "Chrome Parlor"),
     ("titanium_ribs", "Titanium Ribs"),
-    ("crowbar", "Crowbar"),
     ("analog_dreamers", "Analog Dreamers"),
     ("lockdown", "Lockdown"),
 ];

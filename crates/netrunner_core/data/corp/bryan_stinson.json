@@ -44,6 +44,7 @@
           "then": {
             "PlayOperation": {
               "from": "OwnArchives",
+              "remove_from_game": true,
               "ignoring_costs": true
             }
           }

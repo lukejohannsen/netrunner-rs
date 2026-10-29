@@ -2161,6 +2161,15 @@ pub enum Effect {
         from: CardZoneRef,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         ignoring_costs: bool,
+        /// "After it resolves, remove it from the game" (Plutus) and
+        /// "Remove that transaction from the game instead of trashing it"
+        /// (Bryan Stinson): the card's own words, never the zone's. New
+        /// Angeles Sol plays a current out of Archives that stays in play
+        /// like any other, which a removal read off the zone would have
+        /// taken out of the game. Composition didn't work: the filing
+        /// happens inside the play, before a `then` could move the card.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        remove_from_game: bool,
     },
     /// Presents the acting card's own subroutines as a choice and resolves
     /// the one picked, as that card — Mycoweb's "resolve 1 subroutine on a

@@ -3,7 +3,7 @@
   "name": "Zzyzzy",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Armand \"Geist\" Walker: Tech Lord, The Underway's Criminal identity, who draws a card whenever the Runner uses a [trash] ability. Hit List's list, its identity swapped, with two Shiv, a Faust and a Hyperdriver for two Puffer, a Tapwrm and a Reaver, each kept by Hit List. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only. SanSan Stage 11. SanSan Stage 12 swapped a Tremolo, which four other decks carry, for a Trope.",
+  "description": "Not a published list: built so the sweeps reach Armand \"Geist\" Walker: Tech Lord, The Underway's Criminal identity, who draws a card whenever the Runner uses a [trash] ability. Hit List's list, its identity swapped, with two Shiv, a Faust and a Hyperdriver for two Puffer, a Tapwrm and a Reaver, each kept by Hit List. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only. SanSan Stage 11. SanSan Stage 12 swapped a Tremolo, which four other decks carry, for a Trope. FFG F7 Stage 14 swapped both Faeries for a Crowbar and a Spike.",
   "style": [
     "pressure"
   ],
@@ -90,10 +90,6 @@
       "count": 2
     },
     {
-      "card": "faerie",
-      "count": 2
-    },
-    {
       "card": "data_dealer",
       "count": 2
     },
@@ -139,6 +135,14 @@
     },
     {
       "card": "trope",
+      "count": 1
+    },
+    {
+      "card": "crowbar",
+      "count": 1
+    },
+    {
+      "card": "spike",
       "count": 1
     }
   ]
