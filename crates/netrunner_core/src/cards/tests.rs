@@ -51204,3 +51204,55 @@ mod sansan_stage_16 {
         assert_eq!(crate::rules::continuous::hand_size(&broken, &registry, Side::Runner), before, "not protecting its server");
     }
 }
+
+mod sansan_stage_17 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn root(card: &str, remote: u32, tokens: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(remote), slot: InstallSlot::Root, advancement_tokens: tokens, ..Default::default() }
+    }
+
+    #[test]
+    fn defective_brainchips_adds_one_to_the_first_core_damage_each_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(20);
+        state.corp.hq = vec![id("defective_brainchips"), id("hypoxia"), id("hypoxia")];
+        state.runner.grip = vec![id("sure_gamble"); 6];
+        state.runner.tags = 1;
+        let (current, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("defective_brainchips") }).expect("play the current");
+        let (current, _) = close_all_windows(current, &registry);
+        assert!(current.corp.play_area.iter().any(|card| card.card == id("defective_brainchips")), "it stays in play");
+        let (first, _) = apply_action(&current, &registry, PlayerAction::PlayOperation { card_id: id("hypoxia") }).expect("Hypoxia");
+        let (first, _) = close_all_windows(first, &registry);
+        assert_eq!(first.runner.brain_damage, 2, "increased by 1");
+        let (second, _) = apply_action(&first, &registry, PlayerAction::PlayOperation { card_id: id("hypoxia") }).expect("Hypoxia again");
+        let (second, _) = close_all_windows(second, &registry);
+        assert_eq!(second.runner.brain_damage, 3, "only the first time each turn");
+    }
+
+    #[test]
+    fn traffic_jam_raises_each_agendas_requirement_by_its_scored_copies() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![id("traffic_jam")];
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("hostile_takeover")), crate::rules::ScoredAgenda::plain(id("hostile_takeover"))];
+        state.corp.installed = vec![root("hostile_takeover", 0, 2), crate::rules::InstalledCard { install_id: InstallId(91), ..root("project_atlas", 1, 3) }];
+        let requirement = |state: &GameState, install| crate::rules::continuous::advancement_requirement(state, &registry, install);
+        assert_eq!(requirement(&state, fixture_install_id("hostile_takeover")), Some(2));
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("traffic_jam") }).expect("play Traffic Jam");
+        let (played, _) = close_all_windows(played, &registry);
+        assert!(played.runner.in_play.iter().any(|card| card.card == id("traffic_jam")), "it stays in play");
+        assert_eq!(requirement(&played, fixture_install_id("hostile_takeover")), Some(4), "2 copies scored");
+        assert_eq!(requirement(&played, InstallId(91)), Some(3), "no copy of Project Atlas scored");
+    }
+}
