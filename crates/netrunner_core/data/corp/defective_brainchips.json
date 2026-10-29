@@ -1,0 +1,39 @@
+{
+  "id": "defective_brainchips",
+  "title": "Defective Brainchips",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "DamageDone": {
+          "kind": "Brain",
+          "by": {
+            "per": 1
+          }
+        }
+      },
+      "applies_to": "Controller",
+      "while": {
+        "Not": {
+          "AmountAtLeast": [
+            {
+              "TimesThisTurnWhen": {
+                "trigger": "OnDamageAboutToResolve",
+                "when": {
+                  "Damage": "Brain"
+                }
+              }
+            },
+            1
+          ]
+        }
+      },
+      "text": "[interrupt] → The first time each turn the Runner would suffer core damage, increase that damage by 1."
+    }
+  ],
+  "triggers": [],
+  "built_from": 8072,
+  "is_playable": true
+}

@@ -2976,6 +2976,13 @@ pub enum Amount {
     /// Composition didn't work: `EncounteredIceSubroutines` is the ice of
     /// an encounter, and a rez is asked of ice no one is encountering.
     PricedIceSubroutines,
+    /// Copies of the agenda a standing effect is pricing in the Corp's score
+    /// area — Traffic Jam's "The advancement requirement of each agenda is
+    /// increased by 1 for each copy of that agenda in the Corp's score
+    /// area" (`ResolutionContext::priced`). 0 for anything else.
+    /// Composition didn't work: `CopiesInScoreArea` counts copies of the
+    /// acting card, which in a standing effect is the card printing it.
+    PricedCopiesInCorpScoreArea,
     /// The Corp's installed cards the filter admits — Pulse's "The Runner
     /// loses 1[credit] for each **rezzed piece of harmonic ice**", `All([
     /// Ice, Rezzed, HasSubtype(Harmonic)])`. Counted as a selection over

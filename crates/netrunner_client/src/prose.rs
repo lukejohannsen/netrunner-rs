@@ -149,6 +149,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::HostIceStrength => "the strength of host ice".to_string(),
         Amount::EncounteredIceSubroutines => "the subroutines on the ice being encountered".to_string(),
         Amount::PricedIceSubroutines => "the subroutines on that ice".to_string(),
+        Amount::PricedCopiesInCorpScoreArea => "the copies of that agenda in the Corp's score area".to_string(),
         Amount::CardsInHand(Side::Corp) => "the cards in HQ".to_string(),
         Amount::CardsInHand(Side::Runner) => "the cards in the grip".to_string(),
         Amount::MaxHandSize(Side::Corp) => "the Corp's maximum hand size".to_string(),

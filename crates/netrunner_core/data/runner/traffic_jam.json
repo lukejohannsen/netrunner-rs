@@ -1,0 +1,26 @@
+{
+  "id": "traffic_jam",
+  "title": "Traffic Jam",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "AdvancementRequirement": {
+          "per": 1,
+          "of": "PricedCopiesInCorpScoreArea"
+        }
+      },
+      "applies_to": {
+        "CorpInstalled": {
+          "CardType": "Agenda"
+        }
+      },
+      "text": "The advancement requirement of each agenda is increased by 1 for each copy of that agenda in the Corp's score area."
+    }
+  ],
+  "triggers": [],
+  "built_from": 8008,
+  "is_playable": true
+}

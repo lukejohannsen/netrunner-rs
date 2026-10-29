@@ -246,7 +246,6 @@ pub(crate) const VAL_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("paige_piper", "Paige Piper"),
     ("adjusted_chronotype", "Adjusted Chronotype"),
     ("gene_conditioning_shoppe", "Gene Conditioning Shoppe"),
-    ("traffic_jam", "Traffic Jam"),
     ("jinteki_biotech_life_imagined", "Jinteki Biotech: Life Imagined"),
 ];
 
@@ -277,7 +276,6 @@ pub(crate) const CC_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("street_peddler", "Street Peddler"),
     ("muertos_gang_member", "Muertos Gang Member"),
-    ("defective_brainchips", "Defective Brainchips"),
     ("allele_repression", "Allele Repression"),
     ("marcus_batty", "Marcus Batty"),
     ("underway_grid", "Underway Grid"),

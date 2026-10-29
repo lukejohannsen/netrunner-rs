@@ -6615,6 +6615,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             state.runner.heap.iter().filter(|card| registry.get(card).is_some_and(|def| def.subtypes.contains(subtype))).count() as u32
         }
         // "The greatest score of any player" (CR 1.17.1a), never below 0.
+        Amount::PricedCopiesInCorpScoreArea => ctx
+            .priced
+            .and_then(|install| state.corp.installed.iter().find(|card| card.install_id == install))
+            .map_or(0, |priced| state.corp.scored_agendas.iter().filter(|scored| scored.card == priced.card).count() as u32),
         Amount::PricedIceSubroutines => ctx.priced.map_or(0, |install| crate::rules::continuous::subroutine_count(state, registry, install)),
         Amount::EncounteredIceSubroutines => state
             .active_run

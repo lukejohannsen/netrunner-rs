@@ -2212,8 +2212,10 @@ impl CardDefinition {
                 // SanSan City Grid's "each agenda in the root of this
                 // server": an upgrade's, about the agendas beside it.
                 (ContinuousKind::AdvancementRequirement(_), Scope::RootOfThisServer(crate::dsl::CardFilter::CardType(CardType::Agenda))) if self.card_type == CardType::Upgrade => {}
+                // Traffic Jam's "each agenda", from a current in no server.
+                (ContinuousKind::AdvancementRequirement(_), Scope::CorpInstalled(crate::dsl::CardFilter::CardType(CardType::Agenda))) => {}
                 (ContinuousKind::AdvancementRequirement(_), _) => {
-                    return misfit("AdvancementRequirement", "only an agenda has an advancement requirement (CR 3.2.2): it says so of itself (`This`), or an upgrade of the agendas in its root");
+                    return misfit("AdvancementRequirement", "only an agenda has an advancement requirement (CR 3.2.2): it says so of itself (`This`), an upgrade of the agendas in its root, or a card of every installed agenda (`CorpInstalled`)");
                 }
                 (ContinuousKind::BoostsLast(crate::dsl::EffectDuration::Run | crate::dsl::EffectDuration::Turn), Scope::This | Scope::Host) => {}
                 (ContinuousKind::BoostsLast(_), Scope::This | Scope::Host) => return misfit("BoostsLast", "a boost is lengthened to the run or the turn; no card prints another"),
