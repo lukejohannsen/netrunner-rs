@@ -159,7 +159,10 @@ pub enum ContinuousKind {
     /// whether they are tagged (`continuous::tags`), and is never removed
     /// or paid, so `RunnerState::tags` stays the tags the Runner has.
     /// Composition didn't work: a tag placed for the encounter would be a
-    /// tag the Runner could remove and the Corp could spend.
+    /// tag the Runner could remove and the Corp could spend. Paparazzi's
+    /// "You are tagged" is a Runner card saying it of its own player, read
+    /// as 1 considered tag: being tagged with no tags is the same question
+    /// everywhere the pool asks it, and a card counting tags counts one.
     Tags(Number),
     /// Credits to install a card; negative is a discount.
     InstallCost(Number),

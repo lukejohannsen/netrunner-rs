@@ -1,0 +1,34 @@
+{
+  "id": "valley_grid",
+  "title": "Valley Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 3,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnIceFullyBroken",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            "Ice",
+            "InThisServer"
+          ]
+        }
+      },
+      "effects": [
+        {
+          "ModifyHandSize": {
+            "side": "Runner",
+            "by": -1,
+            "until": "UntilYourNextTurnBegins"
+          }
+        }
+      ],
+      "text": "Whenever the Runner fully breaks a piece of ice protecting this server, they get -1 maximum hand size until the beginning of your next turn."
+    }
+  ],
+  "built_from": 8015,
+  "is_playable": true
+}

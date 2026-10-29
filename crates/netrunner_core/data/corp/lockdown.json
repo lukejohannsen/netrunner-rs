@@ -1,0 +1,24 @@
+{
+  "id": "lockdown",
+  "title": "Lockdown",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 0,
+  "strength": 5,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Runner cannot draw cards for the remainder of this turn.",
+      "effect": {
+        "Prohibit": {
+          "what": "Draw",
+          "until": "Turn"
+        }
+      }
+    }
+  ],
+  "built_from": 8056,
+  "is_playable": true
+}

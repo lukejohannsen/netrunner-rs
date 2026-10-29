@@ -1,0 +1,27 @@
+{
+  "id": "gang_sign",
+  "title": "Gang Sign",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "Prohibit": {
+            "what": "AccessRootOfHqOrRnD",
+            "until": "NextBreach"
+          }
+        },
+        {
+          "Breach": "Hq"
+        }
+      ],
+      "text": "Whenever the Corp scores an agenda, breach HQ. You cannot access cards in the root of HQ during this breach."
+    }
+  ],
+  "built_from": 8067,
+  "is_playable": true
+}
