@@ -646,6 +646,7 @@ mod tests {
             ("zzzz", &neither),
             // FFG F7 Stage 14: New Angeles Sol's deck, on Zythum's list.
             ("zzzzz", &neither),
+            ("zzzzzz", &neither),
             ("zzyzzy", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of

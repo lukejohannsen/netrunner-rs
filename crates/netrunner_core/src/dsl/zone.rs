@@ -461,6 +461,12 @@ pub enum CardFilter {
     /// counts from the other end, and `NthFromTop` would need the deck's
     /// size as an amount read as the selection is offered.
     BottomOfZone(u32),
+    /// A card with a copy in the Runner's heap — Student Loans' "if there is
+    /// a copy of that event in the heap", about an event being played
+    /// (`Scope::OpponentPlaying`, which reads it off the heap). Composition
+    /// didn't work: no filter read the heap, and `CopyOfThisCard` is a copy
+    /// of the card printing the effect.
+    CopyInHeap,
     /// The one card `n` from the top of the zone, the top being 1 — Top
     /// Hat's "choose 1 of the top 5 cards in R&D and access it", the
     /// Runner choosing a position (`Effect::ChooseNumber`, written in as
@@ -914,6 +920,7 @@ impl CardFilter {
                 | CardFilter::Unadvanced
                 | CardFilter::TopOfZone(_)
                 | CardFilter::BottomOfZone(_)
+                | CardFilter::CopyInHeap
                 | CardFilter::TopOf(_)
                 | CardFilter::NthFromTop(_)
                 | CardFilter::HostsCounters(crate::dsl::CounterKind::Virus)
@@ -1085,7 +1092,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // requirement are instance-level.
         CardFilter::PlayableOperation => card.card_type == CardType::Operation,
         // Purely instance-level: where the card sits in its zone.
-        CardFilter::TopOfZone(_) | CardFilter::BottomOfZone(_) | CardFilter::TopOf(_) | CardFilter::NthFromTop(_) | CardFilter::Revealed => true,
+        CardFilter::TopOfZone(_) | CardFilter::BottomOfZone(_) | CardFilter::CopyInHeap | CardFilter::TopOf(_) | CardFilter::NthFromTop(_) | CardFilter::Revealed => true,
         CardFilter::IceOfType(ice_type) => card.is_ice_of_type(*ice_type),
         CardFilter::InstallableRunnerCardWithDiscount(_) => card_matches_filter(card, &CardFilter::InstallableRunnerCard),
         // Instance-level, not definition-level — see the variant's doc

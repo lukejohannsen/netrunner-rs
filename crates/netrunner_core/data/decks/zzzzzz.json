@@ -1,0 +1,165 @@
+{
+  "id": "zzzzzz",
+  "name": "Zzzzzz",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: SanSan Stage 18's deck for Haarpsichord Studios: Entertainment Unleashed, on Zzzzz's list, so the sweeps meet a Corp whose Runner cannot steal more than one agenda each turn. Eternal-legal only. It trades a Weir and a Macrophage, which Paid Content and Zythum keep, for two Student Loans.",
+  "style": [
+    "fast-advance"
+  ],
+  "identity": "haarpsichord_studios_entertainment_unleashed",
+  "cards": [
+    {
+      "card": "project_beale",
+      "count": 2
+    },
+    {
+      "card": "bellona",
+      "count": 2
+    },
+    {
+      "card": "astroscript_pilot_program",
+      "count": 2
+    },
+    {
+      "card": "cpc_generator",
+      "count": 1
+    },
+    {
+      "card": "observe_and_destroy",
+      "count": 1
+    },
+    {
+      "card": "ip_block",
+      "count": 1
+    },
+    {
+      "card": "thoth",
+      "count": 1
+    },
+    {
+      "card": "paper_trail",
+      "count": 1
+    },
+    {
+      "card": "nasx",
+      "count": 1
+    },
+    {
+      "card": "sensie_actors_union",
+      "count": 1
+    },
+    {
+      "card": "reality_threedee",
+      "count": 1
+    },
+    {
+      "card": "kala_ghoda_real_tv",
+      "count": 1
+    },
+    {
+      "card": "lily_lockwell",
+      "count": 1
+    },
+    {
+      "card": "localized_product_line",
+      "count": 1
+    },
+    {
+      "card": "news_team",
+      "count": 2
+    },
+    {
+      "card": "keegan_lane",
+      "count": 1
+    },
+    {
+      "card": "disposable_hq",
+      "count": 1
+    },
+    {
+      "card": "waiver",
+      "count": 1
+    },
+    {
+      "card": "aryabhata_tech",
+      "count": 1
+    },
+    {
+      "card": "ibrahim_salem",
+      "count": 1
+    },
+    {
+      "card": "consulting_visit",
+      "count": 1
+    },
+    {
+      "card": "improved_tracers",
+      "count": 1
+    },
+    {
+      "card": "rutherford_grid",
+      "count": 1
+    },
+    {
+      "card": "exchange_of_information",
+      "count": 1
+    },
+    {
+      "card": "indian_union_stock_exchange",
+      "count": 1
+    },
+    {
+      "card": "mumbad_virtual_tour",
+      "count": 1
+    },
+    {
+      "card": "navi_mumbai_city_grid",
+      "count": 1
+    },
+    {
+      "card": "victoria_jenkins",
+      "count": 1
+    },
+    {
+      "card": "news_hound",
+      "count": 1
+    },
+    {
+      "card": "quantum_predictive_model",
+      "count": 1
+    },
+    {
+      "card": "mumbad_city_hall",
+      "count": 1
+    },
+    {
+      "card": "explode_a_palooza",
+      "count": 1
+    },
+    {
+      "card": "award_bait",
+      "count": 1
+    },
+    {
+      "card": "rolling_brownout",
+      "count": 2
+    },
+    {
+      "card": "service_outage",
+      "count": 2
+    },
+    {
+      "card": "enforced_curfew",
+      "count": 1
+    },
+    {
+      "card": "shannon_claire",
+      "count": 1
+    },
+    {
+      "card": "student_loans",
+      "count": 2
+    }
+  ]
+}
