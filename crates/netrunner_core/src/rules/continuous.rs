@@ -63,6 +63,10 @@ pub(crate) enum Target<'a> {
     /// The run against `server`: whether it may be declared successful,
     /// how many cards it may access.
     Run { server: ServerId },
+    /// An agenda the Runner would steal from `from`: what
+    /// `Scope::StealingFromThisServer` asks about without an access in
+    /// progress (`may_steal_from`), the server the steal is from.
+    Stealing { card: &'a CardDefinition, from: ServerId },
     /// A player, as a prohibition binds them (`Scope::Player`). Apart from
     /// `Player`, which walks only that player's own cards because it is
     /// asked after every action (`memory::refresh`): the Corp's ice binds
@@ -80,7 +84,8 @@ impl<'a> Target<'a> {
             | Target::Corp { card, .. }
             | Target::Scored { card, .. }
             | Target::Scoring { card, .. }
-            | Target::Trashing { card, .. } => Some(card),
+            | Target::Trashing { card, .. }
+            | Target::Stealing { card, .. } => Some(card),
         }
     }
 
@@ -88,7 +93,13 @@ impl<'a> Target<'a> {
         match self {
             Target::Rig { install, .. } | Target::Corp { install, .. } | Target::Scoring { install, .. } | Target::Trashing { install, .. } => Some(*install),
             Target::Scored { install, .. } => *install,
-            Target::Player(_) | Target::Card(_) | Target::InstallingOnto { .. } | Target::InstallingIce { .. } | Target::Run { .. } | Target::Bound(_) => None,
+            Target::Player(_)
+            | Target::Card(_)
+            | Target::InstallingOnto { .. }
+            | Target::InstallingIce { .. }
+            | Target::Run { .. }
+            | Target::Bound(_)
+            | Target::Stealing { .. } => None,
         }
     }
 
@@ -277,7 +288,8 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
                 && card_matches_filter(card, filter)
                 && (*filter != crate::dsl::CardFilter::CopyInHeap || state.runner.heap.contains(&card.id))
         }
-        (Scope::Stealing(filter), Target::Card(card)) => card.card_type == CardType::Agenda && card_matches_filter(card, filter),
+        (Scope::Stealing(filter), Target::Card(card) | Target::Stealing { card, .. }) => card.card_type == CardType::Agenda && card_matches_filter(card, filter),
+        (Scope::StealingFromThisServer, Target::Stealing { card, from }) => card.card_type == CardType::Agenda && source.server == Some(*from),
         // Only a Corp card is accessed, whichever side's card asks: Demolisher's
         // "each Corp card" and Kill Switch's "an agenda" alike.
         (Scope::Accessing(filter), Target::Card(card)) => card.side == crate::rules::Side::Corp && card_matches_filter(card, filter),
@@ -792,6 +804,20 @@ pub(crate) fn may_steal(state: &GameState, registry: &CardRegistry, card: &CardI
     let Some(definition) = registry.get(card) else { return true };
     let scored_copy = state.runner.scored_agendas.iter().any(|scored| scored.card == *card);
     !any(state, registry, Target::Card(definition), |kind| matches!(kind, ContinuousKind::CannotBeStolen { except_with_a_scored_copy } if !(*except_with_a_scored_copy && scored_copy)))
+}
+
+/// `may_steal` for an agenda in `server` before any access has begun: the
+/// question a Runner weighing a run asks. With Old Hollywood Grid in the
+/// root of Archives, a faceup agenda there was worth its points to the
+/// planner, which ran Archives four times a turn until the game ran out of
+/// steps (the 256-seed view sweep, seed 251) — Magistrate Revontulet's
+/// seed 120 again, through a rule the steal price does not carry.
+pub fn may_steal_from(state: &GameState, registry: &CardRegistry, card: &CardId, server: ServerId) -> bool {
+    let Some(definition) = registry.get(card) else { return true };
+    let scored_copy = state.runner.scored_agendas.iter().any(|scored| scored.card == *card);
+    !any(state, registry, Target::Stealing { card: definition, from: server }, |kind| {
+        matches!(kind, ContinuousKind::CannotBeStolen { except_with_a_scored_copy } if !(*except_with_a_scored_copy && scored_copy))
+    })
 }
 
 /// Whether the installed piece of ice `install` may be bypassed

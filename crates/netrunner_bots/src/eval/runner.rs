@@ -216,8 +216,12 @@ fn breached(state: &GameState, run: &RunState, registry: &CardRegistry, w: &Weig
                     // Magistrate Revontulet, with no credits, it was worth
                     // four Archives runs a turn and never a credit click,
                     // until the game ran out of steps (the 256-seed view
-                    // sweep, seed 120).
-                    if def.card_type == CardType::Agenda && can_pay_to_steal(state, registry, def, credits) {
+                    // sweep, seed 120). Nor one an upgrade there says
+                    // cannot be stolen (Old Hollywood Grid, seed 251).
+                    if def.card_type == CardType::Agenda
+                        && can_pay_to_steal(state, registry, def, credits)
+                        && netrunner_core::rules::continuous::may_steal_from(state, registry, &archived.card, ServerId::Archives)
+                    {
                         trash_gain += f64::from(def.agenda_points.unwrap_or(0)) * w.agenda_point_weight;
                         known_steals += 1;
                     }
@@ -2424,6 +2428,31 @@ mod tests {
             ACTIVE_RUN_WEIGHT + 2.0 * AGENDA_POINT_WEIGHT,
             "a face-up agenda is worth its points"
         );
+    }
+
+    /// A face-up agenda in Archives is no steal while Old Hollywood Grid
+    /// stands in its root: counted, it sent the planner into Archives four
+    /// times a turn until the 256-seed view sweep ran out of steps (seed
+    /// 251).
+    #[test]
+    fn a_face_up_agenda_old_hollywood_grid_protects_is_worth_nothing() {
+        use netrunner_core::rules::{ArchivedCard, InstallSlot, ServerId};
+        let mut full = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut full);
+        let grid = full.get(&CardId("old_hollywood_grid".to_string())).expect("Old Hollywood Grid is playable").clone();
+        let registry = CardRegistry::from_cards(vec![grid, advanceable("offworld_office", 3)]);
+        let mut state = GameState::new(0);
+        state.corp.archives = vec![ArchivedCard::faceup(CardId("offworld_office".to_string()))];
+        assert_eq!(prospect(&state, ServerId::Archives, &registry), 2.0 * AGENDA_POINT_WEIGHT, "unprotected, the agenda is worth its points");
+        state.corp.installed = vec![InstalledCard {
+            card: CardId("old_hollywood_grid".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Archives,
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }];
+        assert_eq!(prospect(&state, ServerId::Archives, &registry), 0.0, "under the grid it cannot be stolen");
     }
 
     /// The position the person watched the bot lose from: Urtica Cipher

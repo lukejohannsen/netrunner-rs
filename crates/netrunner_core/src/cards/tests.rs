@@ -51682,3 +51682,31 @@ mod sansan_stage_24 {
         assert_eq!(crate::rules::win::score(&state, &registry, Side::Corp), 2, "the Corp's are not touched");
     }
 }
+
+mod sansan_stage_25 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn dedicated_technician_team_pays_to_install_ice_protecting_its_server() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(1);
+        state.corp.hq = vec![id("ice_wall"), id("ice_wall")];
+        let ice = |install: u32, server: ServerId| crate::rules::InstalledCard { install_id: InstallId(install), card: id("ice_wall"), server, slot: InstallSlot::Ice, ..Default::default() };
+        let team = crate::rules::InstalledCard { install_id: fixture_install_id("dedicated_technician_team"), card: id("dedicated_technician_team"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, counters: 2, ..Default::default() };
+        state.corp.installed = vec![ice(81, ServerId::Remote(0)), ice(82, ServerId::Remote(0)), ice(83, ServerId::RnD), ice(84, ServerId::RnD), team];
+        let to = |server| PlayerAction::InstallCard { card_id: id("ice_wall"), zone: server, slot: InstallSlot::Ice, trash_first: false };
+        let legal = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        assert!(legal.contains(&to(ServerId::Remote(0))), "2[c] the team pays");
+        assert!(!legal.contains(&to(ServerId::RnD)), "2[c] it does not pay, and the Corp has 1");
+        let (installed, _) = apply_action(&state, &registry, to(ServerId::Remote(0))).expect("install over two ice");
+        assert_eq!(installed.corp.resources.credits, Credits(1), "the pool untouched");
+        assert_eq!(installed.corp.installed.iter().find(|card| card.card == id("dedicated_technician_team")).map(|card| card.counters), Some(0));
+    }
+}
