@@ -2197,6 +2197,7 @@ impl CardDefinition {
                 // Megaprix Qualifier's "while this agenda has a hosted agenda
                 // counter, it is worth 1 more": in either score area (`This`).
                 (ContinuousKind::AgendaPoints(_), Scope::ScoreArea(_) | Scope::This) if self.card_type == CardType::Agenda => {}
+                (ContinuousKind::AgendaPoints(_), Scope::EachAgendaIn(_)) => {}
                 (ContinuousKind::AgendaPoints(_), _) => {
                     return misfit("AgendaPoints", "an agenda's points change in a score area, said by the agenda of itself (`ScoreArea`, or `This` for either)");
                 }

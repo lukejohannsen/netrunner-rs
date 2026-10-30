@@ -55,7 +55,9 @@ pub fn agenda_value_in(state: &GameState, registry: &CardRegistry, card_id: &Car
 /// negative (Word on the Street), or 0 (Jeitinho, in the Runner's).
 pub fn scored_value(state: &GameState, registry: &CardRegistry, scored: &ScoredAgenda, side: Side) -> i32 {
     match scored.as_agenda {
-        Some(as_agenda) => as_agenda.points,
+        // What another card says of each agenda there counts too (The
+        // Board): a card added as an agenda is one while it is there.
+        Some(as_agenda) => as_agenda.points + registry.get(&scored.card).map_or(0, |card| crate::rules::continuous::agenda_points_said_of(state, registry, card, side)),
         // The copy, whose counters its own text may read: Megaprix
         // Qualifier is worth 1 more while it hosts one, a stolen Project
         // Vacheron nothing while it hosts any.

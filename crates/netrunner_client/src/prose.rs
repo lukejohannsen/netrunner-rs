@@ -1053,6 +1053,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::Accessing(filter) => format!("each card the Runner accesses ({})", lower(format!("{filter:?}"))),
         Scope::Scoring(filter) => format!("an agenda the Corp scores ({})", lower(format!("{filter:?}"))),
         Scope::ScoreArea(side) => format!("this agenda, in the {side:?}'s score area"),
+        Scope::EachAgendaIn(side) => format!("each agenda in the {side:?}'s score area"),
         Scope::RunsOnThisServer => "each run against this server".to_string(),
         Scope::Runs(kind) => format!("each run against {}", match kind {
             netrunner_core::dsl::ServerKind::Hq => "HQ",
