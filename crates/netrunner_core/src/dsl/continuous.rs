@@ -454,6 +454,21 @@ pub enum ContinuousKind {
     /// didn't work: `TrashLimit` counts an encounter's trashes by one
     /// piece of ice, and `Cannot` binds a player rather than a card.
     CannotBeTrashedBy(Side),
+    /// This piece of ice cannot be bypassed — Underway Grid's "Ice
+    /// protecting this server cannot be bypassed". About
+    /// `IceProtectingThisServer` (or `This`, on ice). The "cannot" takes
+    /// precedence (CR 1.2.2): a bypass resolves and does nothing, its cost
+    /// still paid (`continuous::may_bypass`, asked by the one door,
+    /// `run::bypass_encountered_ice`). Composition didn't work: `Cannot`
+    /// binds a player, and this is about the ice.
+    CannotBeBypassed,
+    /// This installed card cannot be exposed — Underway Grid's "Cards in
+    /// the root of and/or protecting this server cannot be exposed". About
+    /// `RootOfThisServer` or `IceProtectingThisServer` (or `This`); asked by
+    /// the one door, `ability::expose` (`continuous::may_expose`), so an
+    /// expose of it does nothing. Composition didn't work, for the reason
+    /// `CannotBeBypassed` gives.
+    CannotBeExposed,
     /// The Corp cannot trash more than this many installed Runner cards
     /// with this ice during each encounter — Sorocaban Blade. Once it has,
     /// a selection this ice's text makes to trash an installed Runner card

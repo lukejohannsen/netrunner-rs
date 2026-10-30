@@ -2246,6 +2246,12 @@ impl CardDefinition {
                 (ContinuousKind::CannotBeTrashedBy(_), _) => {
                     return misfit("CannotBeTrashedBy", "an installed card says of itself (`This`) that the other player cannot trash it");
                 }
+                (ContinuousKind::CannotBeBypassed, Scope::IceProtectingThisServer(_)) if matches!(self.card_type, CardType::Upgrade) => {}
+                (ContinuousKind::CannotBeBypassed, Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}
+                (ContinuousKind::CannotBeBypassed, _) => return misfit("CannotBeBypassed", "a piece of ice that cannot be bypassed is said by the ice of itself (`This`) or by an upgrade of the ice protecting its server"),
+                (ContinuousKind::CannotBeExposed, Scope::IceProtectingThisServer(_) | Scope::RootOfThisServer(_)) if matches!(self.card_type, CardType::Upgrade) => {}
+                (ContinuousKind::CannotBeExposed, Scope::This) if self.side == Side::Corp && !matches!(self.card_type, CardType::Operation | CardType::Identity) => {}
+                (ContinuousKind::CannotBeExposed, _) => return misfit("CannotBeExposed", "an installed Corp card that cannot be exposed is said by itself (`This`) or by an upgrade of its server"),
                 (ContinuousKind::RezzedAsNonIce, Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}
                 (ContinuousKind::RezzedAsNonIce, _) => {
                     return misfit("RezzedAsNonIce", "when a piece of ice may be rezzed is said by the ice of itself (`This`)");

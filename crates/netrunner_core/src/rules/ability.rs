@@ -1484,6 +1484,12 @@ pub fn evaluate_effect(
 
         // A moment Lethe hears, so it goes through the one door.
         Effect::BypassEncounteredIce => {
+            // Underway Grid: a bypass of ice that cannot be bypassed does
+            // nothing, its cost already paid (CR 1.2.2).
+            let encountered = state.active_run.as_ref().and_then(|run| run.ice.get(run.position)).map(|ice| ice.install_id);
+            if encountered.is_some_and(|install| !crate::rules::continuous::may_bypass(state, registry, install)) {
+                return Ok(Vec::new());
+            }
             let mut events = Vec::new();
             for event in run::bypass_encountered_ice(state)? {
                 dispatcher::emit(state, registry, &mut events, event)?;
@@ -5337,6 +5343,9 @@ pub(crate) fn pay_cost_ctx(
 /// and is remembered (`InstalledCard::seen_by_runner`). Nothing if it was
 /// rezzed or left the table while the players were asked.
 pub(crate) fn expose(state: &mut GameState, registry: &CardRegistry, install: InstallId) -> Result<Vec<GameEvent>, RulesError> {
+    if !crate::rules::continuous::may_expose(state, registry, install) {
+        return Ok(Vec::new());
+    }
     let Some(exposed) = state.corp.installed.iter_mut().find(|installed| installed.install_id == install && !installed.rezzed) else {
         return Ok(Vec::new());
     };

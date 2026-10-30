@@ -51569,3 +51569,44 @@ mod sansan_stage_21 {
         assert_eq!(close_all_windows(free, &registry).0.runner.grip.len(), 3, "an unrezzed Pavilion limits nothing");
     }
 }
+
+mod sansan_stage_22 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn corp_card(card: &str, server: ServerId, slot: InstallSlot) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot, ..Default::default() }
+    }
+
+    #[test]
+    fn underway_grid_keeps_its_servers_cards_from_being_exposed_or_its_ice_bypassed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![id("infiltration"), id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        let mut grid = corp_card("underway_grid", ServerId::Hq, InstallSlot::Root);
+        grid.rezzed = true;
+        state.corp.installed = vec![corp_card("its_a_trap", ServerId::Hq, InstallSlot::Ice), grid];
+        let trap = fixture_install_id("its_a_trap");
+        assert!(!crate::rules::continuous::may_bypass(&state, &registry, trap));
+        assert!(!crate::rules::continuous::may_expose(&state, &registry, trap));
+        assert!(!crate::rules::continuous::may_expose(&state, &registry, fixture_install_id("underway_grid")), "a card in the root");
+
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("infiltration") }).expect("Infiltration");
+        let (choosing, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("expose 1 card");
+        let (toggled, _) = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("It's a Trap!");
+        let (exposed, _) = apply_action(&toggled, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let (exposed, _) = pass_until_settled(exposed, &registry);
+        assert_eq!(exposed.runner.grip.len(), 3, "not exposed, so no damage");
+
+        let mut unrezzed = state.clone();
+        unrezzed.corp.installed[1].rezzed = false;
+        assert!(crate::rules::continuous::may_bypass(&unrezzed, &registry, trap), "an unrezzed grid stops nothing");
+        assert!(crate::rules::continuous::may_expose(&unrezzed, &registry, trap));
+    }
+}
