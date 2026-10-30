@@ -931,7 +931,8 @@ fn access_flow_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pla
             // `resolve_trash`'s own hard error, rather than offering an
             // action that would just fail.
             let steal_and_trash_blocked = continuous::cannot_about(state, registry, Prohibition::StealOrTrash, card_id);
-            if !steal_and_trash_blocked && (*mandatory_steal || steal_cost.is_some()) {
+            let steal_blocked = steal_and_trash_blocked || !continuous::may_steal(state, registry, card_id);
+            if !steal_blocked && (*mandatory_steal || steal_cost.is_some()) {
                 candidates.push(PlayerAction::StealAgenda { card_id: card_id.clone() });
             }
             // Affordability is not checked here: `resolve_trash` reads the
@@ -945,7 +946,7 @@ fn access_flow_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pla
             }
             // Also offered when a mandatory steal was itself blocked above —
             // otherwise this access point would have no legal action at all.
-            if !*mandatory_steal || steal_and_trash_blocked {
+            if !*mandatory_steal || steal_blocked {
                 candidates.push(PlayerAction::PassAccessedCard { card_id: card_id.clone() });
             }
             candidates

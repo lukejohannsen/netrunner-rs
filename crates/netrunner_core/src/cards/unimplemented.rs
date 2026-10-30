@@ -280,7 +280,6 @@ pub(crate) const OH_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("film_critic", "Film Critic"),
     ("an_offer_you_cant_refuse", "An Offer You Can’t Refuse"),
     ("casting_call", "Casting Call"),
-    ("old_hollywood_grid", "Old Hollywood Grid"),
 ];
 
 /// *The Universe of Tomorrow* (`the_universe_of_tomorrow`): tranche F7 of the FFG plan.

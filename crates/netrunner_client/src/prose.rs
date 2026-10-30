@@ -1124,6 +1124,8 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Side::Runner => "Runner",
         }),
         ContinuousKind::CannotBeBypassed => "cannot be bypassed".to_string(),
+        ContinuousKind::CannotBeStolen { except_with_a_scored_copy: false } => "cannot be stolen".to_string(),
+        ContinuousKind::CannotBeStolen { except_with_a_scored_copy: true } => "cannot be stolen unless the Runner has a copy in their score area".to_string(),
         ContinuousKind::CannotBeExposed => "cannot be exposed".to_string(),
         ContinuousKind::TrashLimit(n) => format!("trashes at most {} each encounter", plural(*n, "installed Runner card", "installed Runner cards")),
         ContinuousKind::Cannot(what) => match what {

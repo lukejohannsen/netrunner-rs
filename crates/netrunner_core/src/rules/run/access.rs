@@ -1137,6 +1137,9 @@ pub fn resolve_steal(
     if continuous::cannot_about(state, registry, Prohibition::StealOrTrash, card_id) {
         return Err(RulesError::StealAndTrashPreventedThisRun);
     }
+    if !continuous::may_steal(state, registry, card_id) {
+        return Err(RulesError::CannotBeStolen { card: card_id.clone() });
+    }
     let pending = require_pending(state, card_id)?;
     if !pending.mandatory_steal && pending.steal_cost.is_none() {
         return Err(RulesError::NotInAccessPhase);
@@ -1160,6 +1163,7 @@ pub(crate) fn steal_accessed_ignoring_costs(state: &mut GameState, registry: &Ca
     let (server, install) = (access.server, access.pending_install);
     if !registry.get(&card_id).is_some_and(|card| card.card_type == crate::dsl::CardType::Agenda)
         || continuous::cannot_about(state, registry, Prohibition::StealOrTrash, &card_id)
+        || !continuous::may_steal(state, registry, &card_id)
     {
         return Ok(Vec::new());
     }
@@ -1641,7 +1645,7 @@ pub fn resolve_pass(
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let pending = require_pending(state, card_id)?;
-    let steal_blocked = continuous::cannot_about(state, registry, Prohibition::StealOrTrash, card_id);
+    let steal_blocked = continuous::cannot_about(state, registry, Prohibition::StealOrTrash, card_id) || !continuous::may_steal(state, registry, card_id);
     if pending.mandatory_steal && !steal_blocked {
         return Err(RulesError::MandatoryStealViolation { card: card_id.clone() });
     }

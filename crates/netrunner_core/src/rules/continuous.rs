@@ -783,6 +783,15 @@ pub(crate) fn may_trash(state: &GameState, registry: &CardRegistry, install: Ins
     target.is_none_or(|target| !any(state, registry, target, |kind| *kind == ContinuousKind::CannotBeTrashedBy(by)))
 }
 
+/// Whether the Runner may steal the agenda `card` they are accessing
+/// (`ContinuousKind::CannotBeStolen`, Old Hollywood Grid), beside the
+/// player's prohibition `cannot_about` asks.
+pub(crate) fn may_steal(state: &GameState, registry: &CardRegistry, card: &CardId) -> bool {
+    let Some(definition) = registry.get(card) else { return true };
+    let scored_copy = state.runner.scored_agendas.iter().any(|scored| scored.card == *card);
+    !any(state, registry, Target::Card(definition), |kind| matches!(kind, ContinuousKind::CannotBeStolen { except_with_a_scored_copy } if !(*except_with_a_scored_copy && scored_copy)))
+}
+
 /// Whether the installed piece of ice `install` may be bypassed
 /// (`ContinuousKind::CannotBeBypassed`, Underway Grid).
 pub(crate) fn may_bypass(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
