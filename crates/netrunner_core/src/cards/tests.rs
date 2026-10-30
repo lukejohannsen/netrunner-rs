@@ -51538,3 +51538,34 @@ mod sansan_stage_20 {
         assert!(toggles(&third, &registry).is_empty(), "not the first install this turn");
     }
 }
+
+mod sansan_stage_21 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn genetics_pavilion_lets_the_runner_draw_two_cards_each_of_their_turns() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("genetics_pavilion"), card: id("genetics_pavilion"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() }];
+        state.runner.grip = vec![id("diesel")];
+        state.runner.stack = vec![id("sure_gamble"); 6];
+        let (diesel, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("diesel") }).expect("Diesel");
+        let (diesel, _) = close_all_windows(diesel, &registry);
+        assert_eq!(diesel.runner.grip.len(), 2, "Diesel's 3 cards are cut to 2");
+        let (click, _) = apply_action(&diesel, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("the click is still taken");
+        let (click, _) = close_all_windows(click, &registry);
+        assert_eq!(click.runner.grip.len(), 2, "no third card this turn");
+
+        let mut unrezzed = state.clone();
+        unrezzed.corp.installed[0].rezzed = false;
+        let (free, _) = apply_action(&unrezzed, &registry, PlayerAction::PlayEvent { card_id: id("diesel") }).expect("Diesel");
+        assert_eq!(close_all_windows(free, &registry).0.runner.grip.len(), 3, "an unrezzed Pavilion limits nothing");
+    }
+}

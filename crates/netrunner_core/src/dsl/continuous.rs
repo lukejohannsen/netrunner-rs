@@ -369,6 +369,17 @@ pub enum ContinuousKind {
     /// an amount, not an action. Composition didn't work: nothing limited
     /// a bid but the credits a player had.
     BidAtMost(u32),
+    /// The Runner draws at most this many cards during each of their turns
+    /// — Genetics Pavilion's "The Runner cannot draw more than 2 cards
+    /// during each of their turns" (`Scope::Player(Runner)`). Asked by
+    /// `ability::runner_would_draw`, the one door every Runner draw goes
+    /// through, on the Runner's turn: a draw is cut to what is left of the
+    /// limit after the turn's draws (`Trigger::OnCardDrawn`, the Runner's),
+    /// so a draw of 3 with none drawn yet draws 2. A number rather than a
+    /// `Cannot(Draw)` with a `while`, which would let that draw of 3 draw
+    /// all 3. Composition didn't work: nothing counted a draw against a
+    /// limit.
+    DrawsEachTurnAtMost(u32),
     /// During a run it applies to, the Runner cannot access more than this
     /// many cards other than the card that says so — Flagship's "the Runner
     /// cannot access more than 1 card other than this upgrade". Once they

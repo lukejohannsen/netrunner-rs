@@ -326,6 +326,18 @@ pub(crate) fn runner_would_draw(state: &mut GameState, registry: &CardRegistry, 
     if state.runner.stack.is_empty() || crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::Draw) {
         return Ok(Vec::new());
     }
+    // Genetics Pavilion's "more than 2 cards during each of their turns":
+    // the draw is cut to what the turn's draws have left of the limit.
+    let amount = match crate::rules::continuous::runner_draw_limit(state, registry).filter(|_| crate::rules::listeners::active_side(state) == Side::Runner) {
+        Some(limit) => {
+            let drawn = state.this_turn.times_when(crate::dsl::Trigger::OnCardDrawn, &crate::dsl::EventFilter::Whose(Side::Runner), Side::Runner);
+            amount.min(limit.saturating_sub(drawn))
+        }
+        None => amount,
+    };
+    if amount == 0 {
+        return Ok(Vec::new());
+    }
     crate::rules::prevention::would(state, registry, WouldHappen::Draw { side: Side::Runner, amount }, ctx)
 }
 

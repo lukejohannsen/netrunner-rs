@@ -1,0 +1,23 @@
+{
+  "id": "genetics_pavilion",
+  "title": "Genetics Pavilion",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 5,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "DrawsEachTurnAtMost": 2
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "text": "The Runner cannot draw more than 2 cards during each of their turns."
+    }
+  ],
+  "triggers": [],
+  "built_from": 8113,
+  "is_playable": true
+}
