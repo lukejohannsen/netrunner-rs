@@ -977,7 +977,7 @@ pub(crate) fn place_corp_card(
         _ => 0,
     };
     if install_cost > 0 {
-        events.extend(ability::pay_cost(next, registry, side, &Cost::Credits(install_cost), Purpose::Install(card_def), Some(&card_id))?);
+        events.extend(ability::pay_cost(next, registry, side, &Cost::Credits(install_cost), Purpose::InstallIce(card_def, zone), Some(&card_id))?);
     }
     let install_id = next.allocate_install_id();
     let new_card = InstalledCard {
@@ -1084,7 +1084,12 @@ pub(crate) fn corp_install_destinations(state: &GameState, registry: &CardRegist
             // was Mercia B4LL4RD's 1[credit], and a server that discount
             // made affordable was not offered.
             if !ignore_costs {
-                zones.retain(|zone| continuous::ice_install_cost(state, registry, *zone).saturating_sub(discount) <= state.corp.resources.credits.0);
+                // The pool first: `available` scans every source, and this
+                // is asked for every piece of ice in HQ on every action list.
+                zones.retain(|zone| {
+                    let cost = continuous::ice_install_cost(state, registry, *zone).saturating_sub(discount);
+                    cost <= state.corp.resources.credits.0 || cost <= payment::available(state, registry, Side::Corp, Purpose::InstallIce(card_def, *zone))
+                });
             }
             zones
         }

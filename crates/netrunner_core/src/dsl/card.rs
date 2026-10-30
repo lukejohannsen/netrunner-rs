@@ -1160,6 +1160,12 @@ pub enum PaysFor {
     /// credits to rez ice protecting this server". Composition didn't
     /// work: `RezzingInThisServer` pays for the root's assets too.
     RezzingIceProtectingThisServer,
+    /// The install cost of a piece of ice installed to protect the server
+    /// this card is installed in — Dedicated Technician Team's "Use these
+    /// credits to install ice protecting this server". Composition didn't
+    /// work: `Installing` reads the card, never where it goes, so the
+    /// payment says where (`payment::Purpose::InstallIce`).
+    InstallingIceProtectingThisServer,
     /// Either player's bid in a trace attempt — NBN: Making News's "Use
     /// these credits during trace attempts". It was not a word at all: the
     /// identity's credits were a source whenever the Corp paid anything

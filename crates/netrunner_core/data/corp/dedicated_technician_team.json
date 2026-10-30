@@ -1,0 +1,16 @@
+{
+  "id": "dedicated_technician_team",
+  "title": "Dedicated Technician Team",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "counter_kind": "Credit",
+  "recurring_credits": 2,
+  "pays_for": [
+    "InstallingIceProtectingThisServer"
+  ],
+  "trash_cost": 1,
+  "triggers": [],
+  "built_from": 7026,
+  "is_playable": true
+}

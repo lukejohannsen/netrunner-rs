@@ -1005,6 +1005,7 @@ pub fn describe_pays_for(word: &PaysFor) -> String {
         PaysFor::Installing(filter) => format!("to install a card matching {}", humanize(format!("{filter:?}"))),
         PaysFor::RezzingInThisServer => "to rez assets in the root of this server and ice protecting it".to_string(),
         PaysFor::RezzingIceProtectingThisServer => "to rez ice protecting this server".to_string(),
+        PaysFor::InstallingIceProtectingThisServer => "to install ice protecting this server".to_string(),
         PaysFor::Rezzing => "to rez cards".to_string(),
         PaysFor::TraceAttempts => "during trace attempts".to_string(),
         PaysFor::Using(CardFilter::Icebreaker) => "to pay for using icebreakers".to_string(),

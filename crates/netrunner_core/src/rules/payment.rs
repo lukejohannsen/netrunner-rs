@@ -86,6 +86,10 @@ pub(crate) enum Purpose<'a> {
     Play(&'a CardDefinition),
     /// Installing this card, by a click or by a card's text.
     Install(&'a CardDefinition),
+    /// The Corp's install cost for this piece of ice, protecting this
+    /// server: where it goes is what Dedicated Technician Team's credits
+    /// pay for (`PaysFor::InstallingIceProtectingThisServer`).
+    InstallIce(&'a CardDefinition, crate::rules::ServerId),
     /// Rezzing this install.
     Rez(InstallId),
     /// The trash cost of this card, which the Runner is accessing.
@@ -484,7 +488,10 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
             let hosting = host.and_then(|host| state.find_rig_install(host)).map(|card| &card.card);
             hosting.is_some_and(|card| state.active_run.as_ref().is_some_and(|run| run.initiated_by.as_ref() == Some(card)))
         }
-        (PaysFor::Installing(filter), Purpose::Install(card)) => card_matches_filter(card, filter),
+        (PaysFor::Installing(filter), Purpose::Install(card) | Purpose::InstallIce(card, _)) => card_matches_filter(card, filter),
+        (PaysFor::InstallingIceProtectingThisServer, Purpose::InstallIce(_, server)) => {
+            host.and_then(|host| state.corp.installed.iter().find(|c| c.install_id == host)).is_some_and(|host| host.slot == InstallSlot::Root && host.server == server)
+        }
         (PaysFor::Rezzing, Purpose::Rez(_)) => true,
         (PaysFor::RezzingInThisServer, Purpose::Rez(rezzing)) => {
             let installed = |id: InstallId| state.corp.installed.iter().find(|c| c.install_id == id);
@@ -505,6 +512,7 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
             | PaysFor::Installing(_)
             | PaysFor::RezzingInThisServer
             | PaysFor::RezzingIceProtectingThisServer
+            | PaysFor::InstallingIceProtectingThisServer
             | PaysFor::Rezzing
             | PaysFor::TraceAttempts
             | PaysFor::Using(_)
@@ -909,7 +917,7 @@ pub(crate) fn interrupt(
     purpose: Purpose<'_>,
 ) -> Result<(u32, Vec<GameEvent>), RulesError> {
     let card = match purpose {
-        Purpose::Play(card) | Purpose::Install(card) => card,
+        Purpose::Play(card) | Purpose::Install(card) | Purpose::InstallIce(card, _) => card,
         _ => return Ok((amount, Vec::new())),
     };
     if amount == 0 {
