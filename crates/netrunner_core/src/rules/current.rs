@@ -72,7 +72,7 @@ fn trash_currents(state: &mut GameState, registry: &CardRegistry, events: &mut V
             Side::Corp => crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(card.clone())),
             Side::Runner => state.runner.heap.push(card.clone()),
         }
-        let trashed = GameEvent::CardTrashed { side, card, from: TrashedFrom::PlayArea, by: None, install: None };
+        let trashed = GameEvent::CardTrashed { side, card, from: TrashedFrom::PlayArea, by: None, install: None, damage: None };
         dispatcher::emit(state, registry, events, trashed)?;
     }
     Ok(())

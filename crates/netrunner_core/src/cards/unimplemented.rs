@@ -298,7 +298,6 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("housekeeping", "Housekeeping"),
     ("satellite_grid", "Satellite Grid"),
     ("the_twins", "The Twins"),
-    ("ive_had_worse", "I've Had Worse"),
     ("showing_off", "Showing Off"),
     ("wanton_destruction", "Wanton Destruction"),
     ("hivemind", "Hivemind"),

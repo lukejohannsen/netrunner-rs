@@ -143,7 +143,7 @@ fn enforce_consoles(state: &mut GameState, registry: &CardRegistry) -> Vec<GameE
         let Some(position) = state.runner.rig.iter().position(|installed| installed.install_id == install) else { continue };
         let trashed = state.runner.rig.remove(position);
         state.runner.heap.push(trashed.card.clone());
-        events.push(GameEvent::CardTrashed { side: Side::Runner, card: trashed.card.clone(), from: crate::dsl::TrashedFrom::Installed, by: None, install: None });
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card: trashed.card.clone(), from: crate::dsl::TrashedFrom::Installed, by: None, install: None, damage: None });
         events.extend(ability::cascade_trash_hosted_on_rig_card(state, registry, &trashed));
     }
     events
@@ -204,7 +204,7 @@ fn enforce_unique(state: &mut GameState, registry: &CardRegistry, event: Option<
         let Some(trashed) = uninstall::corp_install_at_checkpoint(state, install) else { continue };
         crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(trashed.card.clone()));
         let install = Some(crate::rules::event::TrashedInstall::of(&trashed, false));
-        events.push(GameEvent::CardTrashed { side: Side::Corp, card: trashed.card, from: crate::dsl::TrashedFrom::Installed, by: None, install });
+        events.push(GameEvent::CardTrashed { side: Side::Corp, card: trashed.card, from: crate::dsl::TrashedFrom::Installed, by: None, install, damage: None });
     }
 
     let active = active_copies(&mut active::runner(state, registry));
@@ -212,7 +212,7 @@ fn enforce_unique(state: &mut GameState, registry: &CardRegistry, event: Option<
         let Some(position) = state.runner.rig.iter().position(|installed| installed.install_id == install) else { continue };
         let trashed = state.runner.rig.remove(position);
         state.runner.heap.push(trashed.card.clone());
-        events.push(GameEvent::CardTrashed { side: Side::Runner, card: trashed.card.clone(), from: crate::dsl::TrashedFrom::Installed, by: None, install: None });
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card: trashed.card.clone(), from: crate::dsl::TrashedFrom::Installed, by: None, install: None, damage: None });
         events.extend(ability::cascade_trash_hosted_on_rig_card(state, registry, &trashed));
     }
     events
@@ -299,7 +299,7 @@ mod tests {
         let events = state_based(&mut by_install, &registry, None);
         assert_eq!(by_install.corp.installed.iter().map(|c| c.install_id).collect::<Vec<_>>(), vec![InstallId(2)]);
         assert_eq!(by_install.corp.archives, vec![ArchivedCard::faceup(CardId("spin_doctor".to_string()))]);
-        assert_eq!(events, vec![GameEvent::CardTrashed { side: Side::Corp, card: CardId("spin_doctor".to_string()), from: crate::dsl::TrashedFrom::Installed, by: None, install: Some(crate::rules::TrashedInstall { server: ServerId::Remote(0), rezzed: true, installing: false }) }]);
+        assert_eq!(events, vec![GameEvent::CardTrashed { side: Side::Corp, card: CardId("spin_doctor".to_string()), from: crate::dsl::TrashedFrom::Installed, by: None, install: Some(crate::rules::TrashedInstall { server: ServerId::Remote(0), rezzed: true, installing: false }), damage: None }]);
 
         // …but a rez says which copy just became active, and it may be the
         // one installed first.

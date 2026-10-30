@@ -867,6 +867,10 @@ fn describe_when(filter: &EventFilter) -> String {
         EventFilter::NotInArchives => "of a card not in Archives".to_string(),
         EventFilter::ProtectedByTwoOrMoreIce => "on a server protected by 2 or more pieces of ice".to_string(),
         EventFilter::TrashAbility => "a [trash] ability".to_string(),
+        EventFilter::TrashedByDamage(kinds) => {
+            let kinds: Vec<String> = kinds.iter().map(|kind| format!("{kind:?}").to_lowercase()).collect();
+            format!("by taking {} damage", kinds.join(" or "))
+        }
         EventFilter::TrashedFrom(places) => {
             let places: Vec<&str> = places
                 .iter()

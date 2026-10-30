@@ -536,6 +536,12 @@ pub enum GameEvent {
     /// its server, whether it was rezzed, whether the trash was a step of
     /// installing another card — which the card no longer says once it is
     /// in Archives. `None` for anything else.
+    ///
+    /// `damage` is the kind of damage that trashed it, for a card out of
+    /// the grip — I've Had Worse's "whenever I've Had Worse is trashed by
+    /// taking net or meat damage" (`EventFilter::TrashedByDamage`), which
+    /// `from` cannot say: a grip is trashed from by damage and by cards
+    /// alike. `None` for any other trash.
     CardTrashed {
         side: Side,
         card: CardId,
@@ -543,6 +549,8 @@ pub enum GameEvent {
         by: Option<Side>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         install: Option<TrashedInstall>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        damage: Option<crate::dsl::DamageType>,
     },
     /// A card left play permanently, bypassing the discard pile — Spin
     /// Doctor's `Cost::RemoveSelfFromGame`. Distinct from `CardTrashed`

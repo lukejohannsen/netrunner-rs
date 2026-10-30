@@ -154,7 +154,7 @@ pub(crate) fn action_finished(
 /// filed in the heap as it was played, so Déjà Vu, parked on its own
 /// choice, could return itself.
 pub(crate) fn event_trashed(state: &mut GameState, registry: &CardRegistry, events: &mut Vec<GameEvent>, side: Side, card: CardId) -> Result<(), RulesError> {
-    let trashed = GameEvent::CardTrashed { side, card: card.clone(), from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None };
+    let trashed = GameEvent::CardTrashed { side, card: card.clone(), from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None, damage: None };
     if state.is_resolution_blocked() || !state.deferred_triggers.is_empty() {
         state.runner.play_area.push(card.clone());
     } else {

@@ -1,0 +1,43 @@
+{
+  "id": "ive_had_worse",
+  "title": "I've Had Worse",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            3
+          ]
+        }
+      ],
+      "text": "Draw 3 cards."
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "This",
+      "when": {
+        "TrashedByDamage": [
+          "Net",
+          "Meat"
+        ]
+      },
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            3
+          ]
+        }
+      ],
+      "text": "Whenever I've Had Worse is trashed by taking net or meat damage, draw 3 cards."
+    }
+  ],
+  "built_from": 7032,
+  "is_playable": true
+}

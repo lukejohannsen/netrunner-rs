@@ -437,7 +437,7 @@ pub(crate) fn begin_turn(state: &mut GameState, side: Side, registry: &CardRegis
         state.corp.play_area = currents;
         for played in lockdowns {
             crate::rules::turn_log::file_in_archives(state, crate::rules::ArchivedCard::faceup(played.card.clone()));
-            let trashed = GameEvent::CardTrashed { side: Side::Corp, card: played.card, from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None };
+            let trashed = GameEvent::CardTrashed { side: Side::Corp, card: played.card, from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None, damage: None };
             dispatcher::emit(state, registry, &mut events, trashed)?;
         }
     }

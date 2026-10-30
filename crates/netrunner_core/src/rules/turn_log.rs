@@ -663,6 +663,9 @@ impl Occurrences {
             Some(EventFilter::JackedOut) => {
                 return Err(format!("the turn counts a {trigger:?} without whether it was jacked out of, so \"the first\" cannot be narrowed by it"));
             }
+            Some(EventFilter::TrashedByDamage(_)) => {
+                return Err(format!("the turn counts a {trigger:?} without the damage that did it, so \"the first\" cannot be narrowed by it"));
+            }
             Some(EventFilter::TrashAbility) => {
                 return Err(format!("the turn counts a {trigger:?} without which ability was used, so \"the first\" cannot be narrowed by it"));
             }

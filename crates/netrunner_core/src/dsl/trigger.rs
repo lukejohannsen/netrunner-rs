@@ -1049,6 +1049,13 @@ pub enum EventFilter {
     /// `OnTrashedFromAccess`. Composition didn't work: `Server` is about a
     /// moment that is about a server, and a trash is about a card.
     TrashedFromThisServer,
+    /// The card was trashed by taking damage of one of these kinds — I've
+    /// Had Worse's "whenever I've Had Worse is trashed by taking net or
+    /// meat damage" (`GameEvent::CardTrashed::damage`). Composition didn't
+    /// work: `TrashedFrom(Hand)` is every trash out of the grip, by damage
+    /// and by a card's text alike, and `Damage` is about the damage, not
+    /// the card it trashed. Only on `OnCardTrashed`.
+    TrashedByDamage(Vec<crate::dsl::DamageType>),
     /// The card was rezzed as it was trashed, and was not trashed as a
     /// step of installing another (CR 8.5.16c) — Ob Superheavy Logistics'
     /// "When you trash **a rezzed card, except during installation**".
