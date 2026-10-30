@@ -783,6 +783,18 @@ pub(crate) fn may_trash(state: &GameState, registry: &CardRegistry, install: Ins
     target.is_none_or(|target| !any(state, registry, target, |kind| *kind == ContinuousKind::CannotBeTrashedBy(by)))
 }
 
+/// Whether the installed piece of ice `install` may be bypassed
+/// (`ContinuousKind::CannotBeBypassed`, Underway Grid).
+pub(crate) fn may_bypass(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
+    Target::corp_install(state, registry, install).is_none_or(|target| !any(state, registry, target, |kind| *kind == ContinuousKind::CannotBeBypassed))
+}
+
+/// Whether the installed Corp card `install` may be exposed
+/// (`ContinuousKind::CannotBeExposed`, Underway Grid).
+pub(crate) fn may_expose(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
+    Target::corp_install(state, registry, install).is_none_or(|target| !any(state, registry, target, |kind| *kind == ContinuousKind::CannotBeExposed))
+}
+
 /// Counts an installed Runner card trashed by the text of `install`, when
 /// that is the ice being encountered — what `may_trash_with` reads.
 pub(crate) fn note_runner_card_trashed_by(state: &mut GameState, install: Option<InstallId>) {

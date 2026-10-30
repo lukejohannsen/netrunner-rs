@@ -273,7 +273,6 @@ pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("muertos_gang_member", "Muertos Gang Member"),
     ("allele_repression", "Allele Repression"),
     ("marcus_batty", "Marcus Batty"),
-    ("underway_grid", "Underway Grid"),
 ];
 
 /// *Old Hollywood* (`old_hollywood`): tranche F7 of the FFG plan.

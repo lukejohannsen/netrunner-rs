@@ -1123,6 +1123,8 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Side::Corp => "Corp",
             Side::Runner => "Runner",
         }),
+        ContinuousKind::CannotBeBypassed => "cannot be bypassed".to_string(),
+        ContinuousKind::CannotBeExposed => "cannot be exposed".to_string(),
         ContinuousKind::TrashLimit(n) => format!("trashes at most {} each encounter", plural(*n, "installed Runner card", "installed Runner cards")),
         ContinuousKind::Cannot(what) => match what {
             Prohibition::ScoreAgendas => "cannot score agendas",
