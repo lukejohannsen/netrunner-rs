@@ -699,6 +699,12 @@ pub enum Scope {
     /// The card's own text, like `This`, and read only there: a question
     /// about a scored agenda says whose score area it is in.
     ScoreArea(Side),
+    /// Each agenda in `side`'s score area, said by another active card —
+    /// The Board's "Each agenda in the Runner's score area is worth 1
+    /// less agenda point". Counted for a card added as an agenda too (CR
+    /// 10.1.3), which is an agenda while it is there. `ScoreArea` is the
+    /// agenda's own text and could not reach another card's.
+    EachAgendaIn(Side),
     /// A player, named by side — Attini's "**The Runner** cannot spend
     /// credits". Not a card, so it is reached only by a question about a
     /// player that walks both sides' cards (`continuous::Target::Bound`):

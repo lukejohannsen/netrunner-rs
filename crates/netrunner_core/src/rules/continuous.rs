@@ -235,6 +235,8 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
         (Scope::This, _) => source.own_text_only,
         (Scope::ScoreArea(side), Target::Scored { side: scored_in, .. }) => source.own_text_only && side == scored_in,
         (Scope::ScoreArea(_), _) => false,
+        (Scope::EachAgendaIn(side), Target::Scored { side: scored_in, .. }) => side == scored_in,
+        (Scope::EachAgendaIn(_), _) => false,
         (Scope::Host, target) => {
             let Some(host) = target.install() else { return false };
             let Some(install) = source.install else { return false };
@@ -1138,6 +1140,16 @@ pub fn agenda_points_in(state: &GameState, registry: &CardRegistry, card: &CardD
         _ => None,
     }))
     .max(0) as u32
+}
+
+/// What other active cards say a card in `side`'s score area is worth
+/// beside its own points (`Scope::EachAgendaIn`, The Board), for a card
+/// added there as an agenda, whose points are the addition's.
+pub fn agenda_points_said_of(state: &GameState, registry: &CardRegistry, card: &CardDefinition, side: Side) -> i32 {
+    sum(state, registry, Target::Scored { card, side, install: None }, |kind| match kind {
+        ContinuousKind::AgendaPoints(number) => Some(number),
+        _ => None,
+    })
 }
 
 /// The advancement requirement of the Corp install `install` right now:

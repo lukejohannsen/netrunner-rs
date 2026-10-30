@@ -51656,3 +51656,29 @@ mod sansan_stage_23 {
         assert_eq!(stolen.runner.scored_agendas.len(), 2, "a copy is scored, so the grid is ignored");
     }
 }
+
+mod sansan_stage_24 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn the_board_makes_each_agenda_in_the_runners_score_area_worth_one_less() {
+        let registry = registry();
+        let mut state = base_state();
+        let victoria = crate::rules::ScoredAgenda {
+            as_agenda: Some(crate::dsl::AsAgenda { points: 2, cannot_forfeit: false, subtype: None, to_the_runner: true }),
+            ..crate::rules::ScoredAgenda::plain(id("victoria_jenkins"))
+        };
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("hostile_takeover")), crate::rules::ScoredAgenda::plain(id("project_atlas")), victoria];
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("project_atlas"))];
+        let board = crate::rules::InstalledCard { install_id: fixture_install_id("the_board"), card: id("the_board"), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() };
+        state.corp.installed = vec![board];
+        assert_eq!(crate::rules::win::score(&state, &registry, Side::Runner), 5, "unrezzed, it says nothing");
+        state.corp.installed[0].rezzed = true;
+        assert_eq!(crate::rules::win::score(&state, &registry, Side::Runner), 2, "1 → 0, 2 → 1, and the card added as an agenda 2 → 1");
+        assert_eq!(crate::rules::win::score(&state, &registry, Side::Corp), 2, "the Corp's are not touched");
+    }
+}
