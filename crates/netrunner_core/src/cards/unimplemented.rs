@@ -252,7 +252,6 @@ pub(crate) const VAL_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const BB_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("hacktivist_meeting", "Hacktivist Meeting"),
     ("off_campus_apartment", "Off-Campus Apartment"),
-    ("dorm_computer", "Dorm Computer"),
     ("comet", "Comet"),
     ("london_library", "London Library"),
     ("research_grant", "Research Grant"),
@@ -300,7 +299,6 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("satellite_grid", "Satellite Grid"),
     ("the_twins", "The Twins"),
     ("ive_had_worse", "I've Had Worse"),
-    ("itinerant_protesters", "Itinerant Protesters"),
     ("showing_off", "Showing Off"),
     ("wanton_destruction", "Wanton Destruction"),
     ("hivemind", "Hivemind"),

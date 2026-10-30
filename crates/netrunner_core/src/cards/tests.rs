@@ -51710,3 +51710,67 @@ mod sansan_stage_25 {
         assert_eq!(installed.corp.installed.iter().find(|card| card.card == id("dedicated_technician_team")).map(|card| card.counters), Some(0));
     }
 }
+
+mod sansan_stage_26 {
+    use super::*;
+    use crate::rules::test_support::fixture_install_id;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn dorm_computer_spends_a_power_counter_on_a_run_of_its_own() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![id("dorm_computer")];
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("dorm_computer"), host: None }).expect("install it");
+        let (installed, _) = close_all_windows(installed, &registry);
+        let dorm = installed.runner.rig.iter().find(|card| card.card == id("dorm_computer")).expect("installed");
+        assert_eq!(dorm.counters, 4, "4 power counters");
+        let use_it = PlayerAction::ActivateAbility { target: dorm.install_id, ability_index: 0 };
+        let (asked, _) = apply_action(&installed, &registry, use_it).expect("[click], hosted power counter");
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        assert_eq!(running.active_run.as_ref().and_then(|run| run.initiated_by.clone()), Some(id("dorm_computer")), "the run is the computer's");
+        assert_eq!(running.runner.rig.iter().find(|card| card.card == id("dorm_computer")).map(|card| card.counters), Some(3));
+        assert_eq!(running.runner.resources.clicks, Clicks(2), "one click to install, one to run");
+    }
+
+    #[test]
+    fn dorm_computer_prevents_every_tag_during_its_own_run_and_no_other() {
+        let (mut state, registry) = run_into_snare(5);
+        let dorm = crate::rules::InstalledRunnerCard { install_id: fixture_install_id("dorm_computer"), card: id("dorm_computer"), counters: 3, ..Default::default() };
+        state.runner.rig.push(dorm);
+        let prevent = PlayerAction::ActivateAbility { target: fixture_install_id("dorm_computer"), ability_index: 1 };
+
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PayAccessTrigger { card_id: id("snare") }).expect("corp pays");
+        if asked.pending_prevention.is_some() {
+            assert!(!crate::rules::legal_actions_for(&asked, &registry, Side::Runner).contains(&prevent), "not a run the computer made");
+        }
+
+        state.active_run.as_mut().expect("a run").initiated_by = Some(id("dorm_computer"));
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PayAccessTrigger { card_id: id("snare") }).expect("corp pays");
+        assert!(asked.pending_prevention.is_some(), "the Runner is asked about the tag");
+        let (prevented, _) = apply_action(&asked, &registry, prevent).expect("prevent all of those tags");
+        assert_eq!(prevented.runner.tags, 0);
+    }
+
+    #[test]
+    fn itinerant_protesters_lowers_the_corps_hand_size_for_each_bad_publicity() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.corp.bad_publicity = 2;
+        state.runner.grip.push(id("itinerant_protesters"));
+        let before = crate::rules::continuous::hand_size(&state, &registry, Side::Corp);
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("itinerant_protesters") }).expect("play it");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.runner.in_play.iter().map(|current| &current.card).collect::<Vec<_>>(), vec![&id("itinerant_protesters")], "a current stays");
+        assert_eq!(crate::rules::continuous::hand_size(&played, &registry, Side::Corp), before - 2);
+    }
+}

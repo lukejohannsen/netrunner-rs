@@ -1,0 +1,24 @@
+{
+  "id": "itinerant_protesters",
+  "title": "Itinerant Protesters",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": -1,
+          "of": "BadPublicity"
+        }
+      },
+      "applies_to": {
+        "Player": "Corp"
+      },
+      "text": "The Corp gets −1 maximum hand size for each bad publicity they have."
+    }
+  ],
+  "triggers": [],
+  "built_from": 7033,
+  "is_playable": true
+}
