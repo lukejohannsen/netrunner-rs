@@ -462,6 +462,16 @@ pub enum ContinuousKind {
     /// `run::bypass_encountered_ice`). Composition didn't work: `Cannot`
     /// binds a player, and this is about the ice.
     CannotBeBypassed,
+    /// This agenda cannot be stolen — Old Hollywood Grid's "The Runner
+    /// cannot steal agendas from this server or its root. Ignore this
+    /// ability for any agenda the Runner has a copy of in their score
+    /// area." About `StealingFromThisServer` (or `Stealing`); asked by
+    /// every way an agenda is stolen (`continuous::may_steal`), so the steal
+    /// is not offered and a must-steal agenda may be passed. A trash is not
+    /// barred, which is why this is not `Cannot(StealOrTrashAgendas)`, a
+    /// player's prohibition on both. `except_with_a_scored_copy` is the
+    /// second sentence, read when the steal is asked.
+    CannotBeStolen { except_with_a_scored_copy: bool },
     /// This installed card cannot be exposed — Underway Grid's "Cards in
     /// the root of and/or protecting this server cannot be exposed". About
     /// `RootOfThisServer` or `IceProtectingThisServer` (or `This`); asked by

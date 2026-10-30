@@ -51610,3 +51610,49 @@ mod sansan_stage_22 {
         assert!(crate::rules::continuous::may_expose(&unrezzed, &registry, trap));
     }
 }
+
+mod sansan_stage_23 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Runs HQ, stealing what is offered and passing the rest, until the run is over.
+    fn run_hq_stealing(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (mut state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        for _ in 0..40 {
+            state = close_all_windows(state, registry).0;
+            let legal = crate::rules::legal_actions_for(&state, registry, Side::Runner);
+            let next = legal
+                .iter()
+                .find(|action| matches!(action, PlayerAction::StealAgenda { .. }))
+                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::PassAccessedCard { .. } | PlayerAction::ContinueRun | PlayerAction::CompleteRun)))
+                .or_else(|| legal.iter().find(|action| !matches!(action, PlayerAction::TrashAccessedCard { .. })))
+                .cloned();
+            let Some(action) = next.filter(|_| state.active_run.is_some()) else { break };
+            state = apply_action(&state, registry, action).expect("onward").0;
+        }
+        state
+    }
+
+    #[test]
+    fn old_hollywood_grid_stops_a_steal_unless_the_runner_scored_a_copy() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.corp.hq = vec![id("hostile_takeover")];
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("old_hollywood_grid"), card: id("old_hollywood_grid"), server: ServerId::Hq, slot: InstallSlot::Root, rezzed: true, ..Default::default() }];
+        let blocked = run_hq_stealing(&state, &registry);
+        assert!(blocked.active_run.is_none(), "the run ended, the agenda passed");
+        assert!(blocked.runner.scored_agendas.is_empty(), "not stolen");
+        assert_eq!(blocked.corp.hq, vec![id("hostile_takeover")]);
+
+        let mut copy = state.clone();
+        copy.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("hostile_takeover"))];
+        let stolen = run_hq_stealing(&copy, &registry);
+        assert_eq!(stolen.runner.scored_agendas.len(), 2, "a copy is scored, so the grid is ignored");
+    }
+}

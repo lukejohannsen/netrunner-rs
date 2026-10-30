@@ -1,0 +1,23 @@
+{
+  "id": "old_hollywood_grid",
+  "title": "Old Hollywood Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 5,
+  "trash_cost": 4,
+  "persistent_after_trash": true,
+  "continuous": [
+    {
+      "kind": {
+        "CannotBeStolen": {
+          "except_with_a_scored_copy": true
+        }
+      },
+      "applies_to": "StealingFromThisServer",
+      "text": "Persistent → The Runner cannot steal agendas from this server or its root. Ignore this ability for any agenda the Runner has a copy of in their score area."
+    }
+  ],
+  "triggers": [],
+  "built_from": 8097,
+  "is_playable": true
+}

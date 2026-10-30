@@ -3,7 +3,7 @@
   "name": "Zzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: SanSan Stage 18's deck for Haarpsichord Studios: Entertainment Unleashed, on Zzzzz's list, so the sweeps meet a Corp whose Runner cannot steal more than one agenda each turn. Eternal-legal only. It trades a Weir and a Macrophage, which Paid Content and Zythum keep, for two Student Loans.",
+  "description": "Not a published list: SanSan Stage 18's deck for Haarpsichord Studios: Entertainment Unleashed, on Zzzzz's list, so the sweeps meet a Corp whose Runner cannot steal more than one agenda each turn. Eternal-legal only. It trades a Weir and a Macrophage, which Paid Content and Zythum keep, for two Student Loans. SanSan Stage 23: Old Hollywood Grid",
   "style": [
     "fast-advance"
   ],
@@ -68,10 +68,6 @@
     {
       "card": "news_team",
       "count": 2
-    },
-    {
-      "card": "keegan_lane",
-      "count": 1
     },
     {
       "card": "disposable_hq",
@@ -160,6 +156,10 @@
     {
       "card": "student_loans",
       "count": 2
+    },
+    {
+      "card": "old_hollywood_grid",
+      "count": 1
     }
   ]
 }

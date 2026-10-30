@@ -474,6 +474,11 @@ pub enum RulesError {
     #[error("the runner cannot steal or trash cards for the remainder of this run")]
     StealAndTrashPreventedThisRun,
 
+    /// A standing effect says this agenda cannot be stolen
+    /// (`ContinuousKind::CannotBeStolen`, Old Hollywood Grid).
+    #[error("{card:?} cannot be stolen")]
+    CannotBeStolen { card: CardId },
+
     /// A card in Archives itself, rather than in its root, is never
     /// trashed on access (CR 7.1.5b), by the basic trash ability or by a
     /// card's "trash the card you are accessing".
