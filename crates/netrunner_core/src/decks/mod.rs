@@ -654,6 +654,8 @@ mod tests {
             // Zero-Day Heist's list.
             ("zzzzzzzz", &neither),
             ("zzzzzzzzz", &neither),
+            // FFG F8 Stage 6: Tennin Institute's deck, on Zyzzyva's list.
+            ("zzzzzzzzzz", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.

@@ -3,7 +3,7 @@
   "name": "Zzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Cybernetics Division: Humanity Upgraded's deck, built in SanSan Stage 10 so the sweeps reach a Corp whose identity takes a card from both players' maximum hand size. On Endless Loop's frame, which keeps every card; in for its cards here: Self-Destruct Chips for a Megaprix Qualifier, point for point, Ryon Knight and Oaktown Grid for Game Changer, Lab Dog and Quicksand for Divert Power, and Little Engine and Clairvoyant Monitor for a Pulse and an Echo. Eternal-legal. SanSan Stage 11 swapped two Vaporframe Fabricator and two BASS-CH1R180G4, each kept by four other decks, for two Pachinko, an Exposé and a Test Ground. SanSan Stage 12 swapped a Caveat Emptor, a Vulnerability Audit and an Elivagar Bifurcation, kept by other decks, for an Early Premiere, a Vanity Project (the same four points) and an Enforcer 1.0. FFG F7 Stage 13 swapped Tyr, both Trieste Model Bioroids and Caveat Emptor for Cybernetics Court, two Team Sponsorships and Product Placement. SanSan Stage 17 SanSan Stage 30 swapped two Megaprix Qualifiers, kept by four other decks, for two Research Grants, a point each. Lunar Stage 5 (FFG F8): Markus 1.0 and IQ for two Bloops, which other decks keep.",
+  "description": "Not a published list: Cybernetics Division: Humanity Upgraded's deck, built in SanSan Stage 10 so the sweeps reach a Corp whose identity takes a card from both players' maximum hand size. On Endless Loop's frame, which keeps every card; in for its cards here: Self-Destruct Chips for a Megaprix Qualifier, point for point, Ryon Knight and Oaktown Grid for Game Changer, Lab Dog and Quicksand for Divert Power, and Little Engine and Clairvoyant Monitor for a Pulse and an Echo. Eternal-legal. SanSan Stage 11 swapped two Vaporframe Fabricator and two BASS-CH1R180G4, each kept by four other decks, for two Pachinko, an Exposé and a Test Ground. SanSan Stage 12 swapped a Caveat Emptor, a Vulnerability Audit and an Elivagar Bifurcation, kept by other decks, for an Early Premiere, a Vanity Project (the same four points) and an Enforcer 1.0. FFG F7 Stage 13 swapped Tyr, both Trieste Model Bioroids and Caveat Emptor for Cybernetics Court, two Team Sponsorships and Product Placement. SanSan Stage 17 SanSan Stage 30 swapped two Megaprix Qualifiers, kept by four other decks, for two Research Grants, a point each. Lunar Stage 5 (FFG F8): Markus 1.0 and IQ for two Bloops, which other decks keep. Lunar Stage 7 (FFG F8) swapped Eliza's Toybox and Peak Efficiency for Refuge Campaign and one Cerebral Overwriter, which two other decks keep.",
   "style": [
     "glacier"
   ],
@@ -30,10 +30,6 @@
       "count": 1
     },
     {
-      "card": "refuge_campaign",
-      "count": 1
-    },
-    {
       "card": "project_vitruvius",
       "count": 2
     },
@@ -47,7 +43,7 @@
     },
     {
       "card": "cerebral_overwriter",
-      "count": 2
+      "count": 1
     },
     {
       "card": "next_bronze",
@@ -151,6 +147,14 @@
     },
     {
       "card": "iq",
+      "count": 1
+    },
+    {
+      "card": "elizas_toybox",
+      "count": 1
+    },
+    {
+      "card": "peak_efficiency",
       "count": 1
     }
   ]

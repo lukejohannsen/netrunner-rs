@@ -1,0 +1,29 @@
+{
+  "id": "medical_research_fundraiser",
+  "title": "Medical Research Fundraiser",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            8
+          ]
+        },
+        {
+          "GainCredits": [
+            "Runner",
+            3
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 5014,
+  "is_playable": true
+}

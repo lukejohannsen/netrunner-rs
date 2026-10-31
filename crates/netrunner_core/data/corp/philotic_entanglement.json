@@ -1,0 +1,29 @@
+{
+  "id": "philotic_entanglement",
+  "title": "Philotic Entanglement",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamageAmount": [
+            "Net",
+            {
+              "AgendasInScoreArea": "Runner"
+            }
+          ]
+        }
+      ],
+      "text": "When you score Philotic Entanglement, do 1 net damage for each agenda in the Runner's score area."
+    }
+  ],
+  "built_from": 25088,
+  "is_playable": true
+}

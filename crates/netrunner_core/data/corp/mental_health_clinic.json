@@ -1,0 +1,37 @@
+{
+  "id": "mental_health_clinic",
+  "title": "Mental Health Clinic",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "text": "The Runner's maximum hand size is increased by 1."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "Gain 1[credit] when your turn begins."
+    }
+  ],
+  "built_from": 5009,
+  "is_playable": true
+}

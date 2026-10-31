@@ -52196,3 +52196,54 @@ mod lunar_stage_3 {
         assert_eq!(drawn.runner.resources.clicks, Clicks(0));
     }
 }
+
+/// Lunar Stages 6 to 8 (FFG F8): the composed Corp cards.
+mod lunar_stage_6 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice(card: &str, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    #[test]
+    fn medical_research_fundraiser_gives_the_corp_eight_and_the_runner_three() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(3);
+        state.runner.resources.credits = Credits(0);
+        state.corp.hq = vec![id("medical_research_fundraiser")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("medical_research_fundraiser") }).expect("play it");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.corp.resources.credits, Credits(8));
+        assert_eq!(played.runner.resources.credits, Credits(3));
+    }
+
+    #[test]
+    fn peak_efficiency_counts_only_rezzed_ice() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(1);
+        state.corp.installed = vec![ice("ice_wall", true), ice("enigma", false)];
+        state.corp.hq = vec![id("peak_efficiency")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("peak_efficiency") }).expect("play it");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.corp.resources.credits, Credits(1), "one rezzed piece of ice, for a cost of 1");
+    }
+
+    #[test]
+    fn encrypted_portals_gives_code_gates_strength() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(0);
+        state.corp.installed = vec![ice("enigma", true), ice("ice_wall", true)];
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("encrypted_portals"))];
+        let gate_printed = registry.get(&id("enigma")).and_then(|card| card.strength).unwrap();
+        let wall_printed = registry.get(&id("ice_wall")).and_then(|card| card.strength).unwrap();
+        assert_eq!(crate::rules::continuous::installed_ice_strength(&state, &registry, &id("enigma"), fixture_install_id("enigma")), gate_printed + 1);
+        assert_eq!(crate::rules::continuous::installed_ice_strength(&state, &registry, &id("ice_wall"), fixture_install_id("ice_wall")), wall_printed);
+    }
+}

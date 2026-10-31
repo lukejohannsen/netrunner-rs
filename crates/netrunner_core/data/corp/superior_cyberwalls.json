@@ -1,0 +1,50 @@
+{
+  "id": "superior_cyberwalls",
+  "title": "Superior Cyberwalls",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "Ice": {
+          "IceOfType": "Barrier"
+        }
+      },
+      "text": "All barrier ice have +1 strength."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            {
+              "CorpInstalls": {
+                "All": [
+                  "Rezzed",
+                  {
+                    "IceOfType": "Barrier"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "text": "When you score Superior Cyberwalls, gain 1[credit] for each rezzed barrier."
+    }
+  ],
+  "built_from": 6087,
+  "is_playable": true
+}
