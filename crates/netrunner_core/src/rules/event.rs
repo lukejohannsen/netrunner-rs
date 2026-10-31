@@ -852,7 +852,16 @@ pub enum GameEvent {
     AccessReplacementSet { server: ServerId },
     AccessReplaced { server: ServerId },
     CreditsLost { side: Side, amount: u32 },
-    ClicksLost { side: Side, amount: u32 },
+    /// `by_cost`: lost paying a cost (Ansel 2.0's "Lose [click][click]:"),
+    /// which is an occurrence of nothing — Adjusted Chronotype's "except
+    /// by paying the trigger cost of a paid ability". Defaulted so a
+    /// record written before it still loads.
+    ClicksLost {
+        side: Side,
+        amount: u32,
+        #[serde(default)]
+        by_cost: bool,
+    },
     ClicksGained { side: Side, amount: u32 },
     AgendaScored {
         card: CardId,

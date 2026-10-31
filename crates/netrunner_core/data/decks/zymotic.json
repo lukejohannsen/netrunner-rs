@@ -3,7 +3,7 @@
   "name": "Zymotic",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Edward Kim: Humanity's Hammer, Order and Chaos's Anarch identity, who trashes the first operation he accesses each turn. Zeitgeist's list, its identity swapped, with two Time Bomb for a Skulljack and a Brain Cage, brain damage for a cheaper trash and a bigger hand, which Zeitgeist keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. SanSan Stage 19: two Ice Carvers became DDoS and Paige Piper. SanSan Stage 20: The Toolbox became Turntable. SanSan Stage 28 swapped a Xanadu, kept elsewhere, for a Virus Breeding Ground.",
+  "description": "Not a published list: built so the sweeps reach Edward Kim: Humanity's Hammer, Order and Chaos's Anarch identity, who trashes the first operation he accesses each turn. Zeitgeist's list, its identity swapped, with two Time Bomb for a Skulljack and a Brain Cage, brain damage for a cheaper trash and a bigger hand, which Zeitgeist keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. SanSan Stage 19: two Ice Carvers became DDoS and Paige Piper. SanSan Stage 20: The Toolbox became Turntable. SanSan Stage 28 swapped a Xanadu, kept elsewhere, for a Virus Breeding Ground. Adjusted Chronotype (SanSan Stage 32) for one Liberated Account, which four other decks keep.",
   "style": [
     "rig",
     "dismantle"
@@ -76,7 +76,7 @@
     },
     {
       "card": "liberated_account",
-      "count": 2
+      "count": 1
     },
     {
       "card": "scrubber",
@@ -124,6 +124,10 @@
     },
     {
       "card": "virus_breeding_ground",
+      "count": 1
+    },
+    {
+      "card": "adjusted_chronotype",
       "count": 1
     }
   ]

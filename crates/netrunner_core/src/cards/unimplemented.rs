@@ -243,7 +243,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Valley* (`the_valley`): tranche F7 of the FFG plan.
 pub(crate) const VAL_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("adjusted_chronotype", "Adjusted Chronotype"),
     ("gene_conditioning_shoppe", "Gene Conditioning Shoppe"),
     ("jinteki_biotech_life_imagined", "Jinteki Biotech: Life Imagined"),
 ];
