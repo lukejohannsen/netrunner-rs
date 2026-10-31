@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "aumakua", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "god_of_war", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "yusuf"],
+            vec!["audrey_v2", "aumakua", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "god_of_war", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "virus_breeding_ground", "yusuf"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -51808,5 +51808,109 @@ mod sansan_stage_27 {
         );
         let (damaged, _) = close_all_windows(damaged, &registry);
         assert_eq!(damaged.runner.grip.len(), 3, "trashed by meat damage: draw 3 cards");
+    }
+}
+
+mod sansan_stage_28 {
+    use super::*;
+    use crate::rules::{InstallSlot, InstalledCard};
+    use crate::rules::test_support::fixture_install_id;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Answers the parked card selection with the card at `position`.
+    fn choose(state: &GameState, registry: &CardRegistry, position: usize) -> GameState {
+        let side = crate::rules::current_actor(state).expect("someone chooses");
+        let toggles: Vec<PlayerAction> = crate::rules::legal_actions_for(state, registry, side).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        let (toggled, _) = apply_action(state, registry, toggles[position].clone()).expect("toggle");
+        let (chosen, _) = apply_action(&toggled, registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        close_all_windows(chosen, registry).0
+    }
+
+    #[test]
+    fn virus_breeding_ground_breeds_at_turn_start_and_moves_a_counter_to_a_virus_program() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner.rig.push(crate::rules::InstalledRunnerCard { install_id: fixture_install_id("virus_breeding_ground"), card: id("virus_breeding_ground"), ..Default::default() });
+        state.runner.rig.push(crate::rules::InstalledRunnerCard { install_id: fixture_install_id("imp"), card: id("imp"), counters: 1, ..Default::default() });
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let (mut state, _) = close_all_windows(state, &registry);
+        let ground = |state: &GameState| state.runner.rig.iter().find(|card| card.card == id("virus_breeding_ground")).map(|card| card.counters);
+        assert_eq!(ground(&state), Some(1), "place 1 virus counter");
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        let use_it = PlayerAction::ActivateAbility { target: fixture_install_id("virus_breeding_ground"), ability_index: 0 };
+        let (asked, _) = apply_action(&state, &registry, use_it).expect("[click]: move 1 virus counter");
+        let moved = choose(&asked, &registry, 0);
+        assert_eq!(ground(&moved), Some(0));
+        assert_eq!(moved.runner.rig.iter().find(|card| card.card == id("imp")).map(|card| card.counters), Some(2), "Imp has 2");
+    }
+
+    #[test]
+    fn muertos_gang_member_derezzes_a_card_and_lets_the_corp_rez_one_free_when_it_goes() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.resources.credits = Credits(0);
+        state.corp.installed.push(InstalledCard { install_id: fixture_install_id("ice_wall"), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() });
+        state.runner.grip = vec![id("muertos_gang_member")];
+        state.runner.stack = vec![id("sure_gamble")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("muertos_gang_member"), host: None }).expect("install it");
+        let (asked, _) = close_all_windows(asked, &registry);
+        let derezzed = choose(&asked, &registry, 0);
+        assert!(!derezzed.corp.installed[0].rezzed, "the Corp must derez a card");
+
+        let gang = derezzed.runner.rig.iter().find(|card| card.card == id("muertos_gang_member")).expect("installed").install_id;
+        let (asked, _) = apply_action(&derezzed, &registry, PlayerAction::ActivateAbility { target: gang, ability_index: 0 }).expect("[trash]: draw 1 card");
+        let (asked, _) = close_all_windows(asked, &registry);
+        assert_eq!(asked.runner.grip, vec![id("sure_gamble")], "draw 1 card");
+        let rezzed = choose(&asked, &registry, 0);
+        assert!(rezzed.corp.installed[0].rezzed, "rezzed, ignoring the rez cost");
+        assert_eq!(rezzed.corp.resources.credits, Credits(0));
+    }
+
+    #[test]
+    fn housekeeping_makes_the_runner_trash_a_card_the_first_time_each_turn_they_install() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("housekeeping")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("housekeeping") }).expect("play it");
+        let (mut state, _) = close_all_windows(played, &registry);
+        assert!(state.corp.play_area.iter().any(|card| card.card == id("housekeeping")), "a current stays");
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = vec![id("armitage_codebusting"); 3];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("armitage_codebusting"), host: None }).expect("install");
+        let (asked, _) = close_all_windows(asked, &registry);
+        assert!(asked.pending_decision.is_some(), "trash 1 card from the grip");
+        let trashed = choose(&asked, &registry, 0);
+        assert_eq!(trashed.runner.grip.len(), 1);
+        assert_eq!(trashed.runner.heap.len(), 1);
+        let (again, _) = apply_action(&trashed, &registry, PlayerAction::InstallResource { card_id: id("armitage_codebusting"), host: None }).expect("install again");
+        let (again, _) = close_all_windows(again, &registry);
+        assert!(again.pending_decision.is_none(), "only the first time each turn");
+    }
+
+    #[test]
+    fn constellation_protocol_moves_an_advancement_token_between_pieces_of_ice() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![
+            InstalledCard { install_id: InstallId(1), card: id("constellation_protocol"), server: ServerId::Remote(1), slot: InstallSlot::Root, rezzed: true, ..Default::default() },
+            InstalledCard { install_id: InstallId(2), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, advancement_tokens: 1, ..Default::default() },
+            InstalledCard { install_id: InstallId(3), card: id("ice_wall"), server: ServerId::RnD, slot: InstallSlot::Ice, rezzed: true, ..Default::default() },
+        ];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Corp);
+        let (asked, _) = close_all_windows(state, &registry);
+        assert!(asked.pending_decision.is_some(), "you may move an advancement token");
+        let taken = choose(&asked, &registry, 0);
+        let moved = choose(&taken, &registry, 1);
+        let tokens: Vec<u32> = moved.corp.installed.iter().map(|card| card.advancement_tokens).collect();
+        assert_eq!(tokens, vec![0, 0, 1]);
     }
 }

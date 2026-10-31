@@ -269,7 +269,6 @@ pub(crate) const CC_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *The Underway* (`the_underway`): tranche F7 of the FFG plan.
 pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("street_peddler", "Street Peddler"),
-    ("muertos_gang_member", "Muertos Gang Member"),
     ("allele_repression", "Allele Repression"),
     ("marcus_batty", "Marcus Batty"),
 ];
@@ -293,9 +292,7 @@ pub(crate) const UOT_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("gagarin_deep_space_expanding_the_horizon", "Gagarin Deep Space: Expanding the Horizon"),
     ("glenn_station", "Glenn Station"),
-    ("constellation_protocol", "Constellation Protocol"),
     ("mark_yale", "Mark Yale"),
-    ("housekeeping", "Housekeeping"),
     ("satellite_grid", "Satellite Grid"),
     ("the_twins", "The Twins"),
     ("showing_off", "Showing Off"),
@@ -303,7 +300,6 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("hivemind", "Hivemind"),
     ("progenitor", "Progenitor"),
     ("archives_interface", "Archives Interface"),
-    ("virus_breeding_ground", "Virus Breeding Ground"),
     ("qianju_pt", "Qianju PT"),
 ];
 
