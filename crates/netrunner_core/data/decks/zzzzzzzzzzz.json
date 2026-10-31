@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Creation and Control Stages 1 and 2's (FFG F9) deck for Cybernetics Division, on Zzzz's list, carrying the set's composed Haas-Bioroid and neutral Corp cards: Bastion, Datapike, Heimdall 2.0, Ichi 2.0 and Viktor 2.0 for Pulse, Echo, two Wave and a NEXT Silver; Sentinel Defense Program for a Project Vitruvius and Gila Hands Arcology for Elivagar Bifurcation, a point for a point; Alix T4LB07, Levy University, Director Haas, Thomas Haas and Server Diagnostics for two Biotic Labor, a Cerebral Overwriter, Brain-Taping Warehouse and Test Ground. Zzzz keeps every card swapped out. Eternal-legal only. Spin Stages 1 to 4 (FFG F10) swapped in Fenris, Wotan, Paper Wall and Blue Level Clearance for a NEXT Bronze, a NEXT Silver, Turing and a Black Level Clearance, which other decks keep. Genesis (F11) swaps in Dracō, Private Contracts and Corporate War.",
+  "description": "Not a published list: Creation and Control Stages 1 and 2's (FFG F9) deck for Cybernetics Division, on Zzzz's list, carrying the set's composed Haas-Bioroid and neutral Corp cards: Bastion, Datapike, Heimdall 2.0, Ichi 2.0 and Viktor 2.0 for Pulse, Echo, two Wave and a NEXT Silver; Sentinel Defense Program for a Project Vitruvius and Gila Hands Arcology for Elivagar Bifurcation, a point for a point; Alix T4LB07, Levy University, Director Haas, Thomas Haas and Server Diagnostics for two Biotic Labor, a Cerebral Overwriter, Brain-Taping Warehouse and Test Ground. Zzzz keeps every card swapped out. Eternal-legal only. Spin Stages 1 to 4 (FFG F10) swapped in Fenris, Wotan, Paper Wall and Blue Level Clearance for a NEXT Bronze, a NEXT Silver, Turing and a Black Level Clearance, which other decks keep. Genesis (F11) swaps in Dracō, Private Contracts and Corporate War. The FFG pool's composable leftovers swap in Guard and Lag Time.",
   "style": [
     "glacier"
   ],
@@ -19,10 +19,6 @@
     },
     {
       "card": "black_level_clearance",
-      "count": 1
-    },
-    {
-      "card": "next_gold",
       "count": 1
     },
     {
@@ -55,7 +51,7 @@
     },
     {
       "card": "pachinko",
-      "count": 2
+      "count": 1
     },
     {
       "card": "expose",
@@ -183,6 +179,14 @@
     },
     {
       "card": "corporate_war",
+      "count": 1
+    },
+    {
+      "card": "guard",
+      "count": 1
+    },
+    {
+      "card": "lag_time",
       "count": 1
     }
   ]

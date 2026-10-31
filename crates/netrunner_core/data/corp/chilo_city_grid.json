@@ -1,0 +1,24 @@
+{
+  "id": "chilo_city_grid",
+  "title": "ChiLo City Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 3,
+  "trash_cost": 6,
+  "triggers": [
+    {
+      "trigger": "OnTraceSuccessful",
+      "requirement": "RunAgainstThisServer",
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "Whenever there is a successful trace during a run on this server, give the Runner 1 tag."
+    }
+  ],
+  "built_from": 2036,
+  "is_playable": true
+}
