@@ -1116,7 +1116,7 @@ mod system_gateway {
             let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("toggle");
             apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm")
         };
-        let trashed = crate::rules::GameEvent::CardTrashed { side: Side::Corp, card: CardId("hedge_fund".to_string()), from: crate::dsl::TrashedFrom::Hand, by: Some(Side::Corp), install: None };
+        let trashed = crate::rules::GameEvent::CardTrashed { side: Side::Corp, card: CardId("hedge_fund".to_string()), from: crate::dsl::TrashedFrom::Hand, by: Some(Side::Corp), install: None, damage: None };
 
         let (state, events) = run(crate::dsl::CardZoneRef::OwnArchives);
         assert!(events.contains(&trashed), "{events:?}");
@@ -13895,11 +13895,11 @@ mod rebellion_without_rehearsal {
             };
             state.this_turn.times_when(trigger, &when, Side::Runner) > 0
         };
-        let trashed = |card: &str, from, by| GameEvent::CardTrashed { side: Side::Runner, card: id(card), from, by: Some(by), install: None };
+        let trashed = |card: &str, from, by| GameEvent::CardTrashed { side: Side::Runner, card: id(card), from, by: Some(by), install: None, damage: None };
         assert!(counted(trashed("friend_of_a_friend", crate::dsl::TrashedFrom::Installed, Side::Runner)));
         assert!(!counted(trashed("friend_of_a_friend", crate::dsl::TrashedFrom::Hand, Side::Runner)), "out of the grip");
         assert!(!counted(trashed("friend_of_a_friend", crate::dsl::TrashedFrom::Installed, Side::Corp)), "the Corp trashed it");
-        let corp_card = GameEvent::CardTrashed { side: Side::Corp, card: id("ice_wall"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner), install: None };
+        let corp_card = GameEvent::CardTrashed { side: Side::Corp, card: id("ice_wall"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner), install: None, damage: None };
         assert!(!counted(corp_card), "not one of the Runner's");
     }
 
@@ -15018,9 +15018,9 @@ mod rebellion_without_rehearsal {
             }
             apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id(card) }).is_ok()
         };
-        let own_program = GameEvent::CardTrashed { side: Side::Runner, card: id("mayfly"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner), install: None };
-        let by_the_corp = GameEvent::CardTrashed { side: Side::Corp, card: id("pad_campaign"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Corp), install: None };
-        let corp_card = GameEvent::CardTrashed { side: Side::Corp, card: id("pad_campaign"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner), install: None };
+        let own_program = GameEvent::CardTrashed { side: Side::Runner, card: id("mayfly"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner), install: None, damage: None };
+        let by_the_corp = GameEvent::CardTrashed { side: Side::Corp, card: id("pad_campaign"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Corp), install: None, damage: None };
+        let corp_card = GameEvent::CardTrashed { side: Side::Corp, card: id("pad_campaign"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner), install: None, damage: None };
         let accessed = GameEvent::CardTrashedFromAccess { card: id("pad_campaign"), cost_paid: 4, install: None };
         let stolen = GameEvent::AgendaStolen { card: id("offworld_office"), agenda_points: 2 };
         for card in ["active_policing", "bring_them_home"] {
@@ -22600,7 +22600,7 @@ mod midnight_sun {
             card: id(card),
             from: crate::dsl::TrashedFrom::Installed,
             by: Some(by),
-            install: Some(crate::rules::TrashedInstall { server: ServerId::Remote(0), rezzed, installing }),
+            install: Some(crate::rules::TrashedInstall { server: ServerId::Remote(0), rezzed, installing }), damage: None
         };
         crate::rules::dispatch_event(&mut state, registry, &event).expect("dispatch");
         state
@@ -51772,5 +51772,41 @@ mod sansan_stage_26 {
         let (played, _) = close_all_windows(played, &registry);
         assert_eq!(played.runner.in_play.iter().map(|current| &current.card).collect::<Vec<_>>(), vec![&id("itinerant_protesters")], "a current stays");
         assert_eq!(crate::rules::continuous::hand_size(&played, &registry, Side::Corp), before - 2);
+    }
+}
+
+mod sansan_stage_27 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn ive_had_worse_draws_three_when_played_and_three_more_when_damage_trashes_it() {
+        let registry = registry();
+        let mut played = base_state();
+        played.phase = GamePhase::Action(Side::Runner);
+        played.runner.resources.clicks = Clicks(4);
+        played.runner.resources.credits = Credits(5);
+        played.runner.grip = vec![id("ive_had_worse")];
+        played.runner.stack = vec![id("sure_gamble"); 4];
+        let (played, _) = apply_action(&played, &registry, PlayerAction::PlayEvent { card_id: id("ive_had_worse") }).expect("play it");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.runner.grip.len(), 3, "draw 3 cards");
+
+        // Scorched Earth's 4 meat damage trashes it from the grip.
+        let mut state = base_state();
+        state.runner.tags = 1;
+        state.corp.hq = vec![id("scorched_earth")];
+        state.runner.grip = ["ive_had_worse", "sure_gamble", "sure_gamble", "sure_gamble"].map(id).to_vec();
+        state.runner.stack = vec![id("sure_gamble"); 4];
+        let (damaged, events) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("scorched_earth") }).expect("play Scorched Earth");
+        assert!(
+            events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardTrashed { card, damage: Some(crate::dsl::DamageType::Meat), .. } if *card == id("ive_had_worse"))),
+            "the trash says the damage did it"
+        );
+        let (damaged, _) = close_all_windows(damaged, &registry);
+        assert_eq!(damaged.runner.grip.len(), 3, "trashed by meat damage: draw 3 cards");
     }
 }

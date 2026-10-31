@@ -1549,6 +1549,8 @@ impl CardDefinition {
             EventFilter::ProtectedByTwoOrMoreIce => triggered.trigger == Trigger::OnRunStart,
             // Only a use says which ability was used.
             EventFilter::TrashAbility => triggered.trigger == Trigger::OnAbilityUsed,
+            // Only a trash says what damage did it.
+            EventFilter::TrashedByDamage(kinds) => triggered.trigger == Trigger::OnCardTrashed && !kinds.is_empty(),
             EventFilter::TrashedFromThisServer => {
                 matches!(triggered.trigger, Trigger::OnCardTrashed | Trigger::OnTrashedFromAccess) && self.side == crate::rules::Side::Corp
             }

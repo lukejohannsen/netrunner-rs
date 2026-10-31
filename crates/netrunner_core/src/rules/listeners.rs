@@ -83,6 +83,11 @@ pub(crate) struct Moment {
     /// same reason as `from_hq`: the card is in a discard pile by the time
     /// its trash is heard (`EventFilter::TrashedFrom`, Strike Fund).
     pub trashed_from: Option<crate::dsl::TrashedFrom>,
+    /// The damage that trashed the card, for a trash out of the grip by
+    /// damage (`GameEvent::CardTrashed::damage`) — I've Had Worse's "trashed
+    /// by taking net or meat damage" (`EventFilter::TrashedByDamage`).
+    /// `None` for every other moment.
+    pub damage: Option<crate::dsl::DamageType>,
     /// The object whose abilities did it, for a moment that names one —
     /// the install that fully broke the ice (CR 6.5.7b,
     /// `GameEvent::IceFullyBroken::by`), which Lobisomem's "whenever **it**
@@ -179,7 +184,7 @@ pub(crate) fn card_about(state: &GameState, event: &GameEvent, trigger: Trigger)
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None, was_active: false, trashed_install: None, successful: None, jacked_out: None, in_archives: None, guarded: None, ability: None };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, damage: None, by: None, was_active: false, trashed_install: None, successful: None, jacked_out: None, in_archives: None, guarded: None, ability: None };
     // A moment about the ice at `position` in the run's ice. Where the run
     // or the ice has gone by the time the moment is asked again — a
     // trigger fired after the run ended — it is about nothing, and keeps
@@ -190,7 +195,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             .as_ref()
             .and_then(|run| run.ice.get(position as usize))
             .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
-        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, was_active: false, by: None, trashed_install: None, successful: None, jacked_out: None, in_archives: None, guarded: None, ability: None }
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, damage: None, was_active: false, by: None, trashed_install: None, successful: None, jacked_out: None, in_archives: None, guarded: None, ability: None }
     };
     match event {
         GameEvent::EventPlayed { side, card: played, .. } => {
@@ -387,10 +392,10 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // A rezzed install was active the instant it left, and hears its
         // own trash as one (CR 4.6.6i): Hostile Architecture's and Yakov
         // Erikovich Avdakov's "(including this …)".
-        GameEvent::CardTrashed { card: trashed, from, by: Some(by), install, .. } => {
+        GameEvent::CardTrashed { card: trashed, from, by: Some(by), install, damage, .. } => {
             let about = About::Card { card: trashed.clone(), install: None, installed: from.installed() };
             let was_active = install.is_some_and(|install| install.rezzed);
-            vec![Moment { trashed_from: Some(*from), was_active, trashed_install: *install, ..moment(Trigger::OnCardTrashed, &about, Some(*by)) }]
+            vec![Moment { trashed_from: Some(*from), damage: *damage, was_active, trashed_install: *install, ..moment(Trigger::OnCardTrashed, &about, Some(*by)) }]
         }
         // The one rules' trash that is a moment: an event leaving the play
         // area as it finishes resolving (CR 3.7.1), or a lockdown as the
@@ -832,6 +837,9 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     }
     if let EventFilter::TrashedFrom(places) = filter {
         return moment.trashed_from.is_some_and(|from| places.contains(&from));
+    }
+    if let EventFilter::TrashedByDamage(kinds) = filter {
+        return moment.damage.is_some_and(|kind| kinds.contains(&kind));
     }
     if let EventFilter::Successful = filter {
         return moment.successful == Some(true);
