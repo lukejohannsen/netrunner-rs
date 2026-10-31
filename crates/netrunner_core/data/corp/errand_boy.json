@@ -1,0 +1,93 @@
+{
+  "id": "errand_boy",
+  "title": "Errand Boy",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 1,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Corp gains 1[credit] or draws 1 card.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "GainCredits": [
+                "Corp",
+                1
+              ]
+            },
+            {
+              "DrawCards": [
+                "Corp",
+                1
+              ]
+            }
+          ],
+          "texts": [
+            "The Corp gains 1[credit]",
+            "draws 1 card"
+          ]
+        }
+      }
+    },
+    {
+      "text": "The Corp gains 1[credit] or draws 1 card.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "GainCredits": [
+                "Corp",
+                1
+              ]
+            },
+            {
+              "DrawCards": [
+                "Corp",
+                1
+              ]
+            }
+          ],
+          "texts": [
+            "The Corp gains 1[credit]",
+            "draws 1 card"
+          ]
+        }
+      }
+    },
+    {
+      "text": "The Corp gains 1[credit] or draws 1 card.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "GainCredits": [
+                "Corp",
+                1
+              ]
+            },
+            {
+              "DrawCards": [
+                "Corp",
+                1
+              ]
+            }
+          ],
+          "texts": [
+            "The Corp gains 1[credit]",
+            "draws 1 card"
+          ]
+        }
+      }
+    }
+  ],
+  "built_from": 6102,
+  "is_playable": true
+}

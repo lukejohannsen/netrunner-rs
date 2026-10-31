@@ -335,12 +335,10 @@ pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("three_steps_ahead", "Three Steps Ahead"),
     ("unscheduled_maintenance", "Unscheduled Maintenance"),
     ("net_celebrity", "Net Celebrity"),
-    ("llds_energy_regulator", "LLDS Energy Regulator"),
 ];
 
 /// *First Contact* (`first_contact`): tranche F8 of the FFG plan.
 pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("iq", "IQ"),
     ("elizas_toybox", "Eliza's Toybox"),
     ("kitsune", "Kitsune"),
     ("port_anson_grid", "Port Anson Grid"),
@@ -351,7 +349,6 @@ pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("shattered_remains", "Shattered Remains"),
     ("lancelot", "Lancelot"),
     ("blackat", "BlacKat"),
-    ("duggars", "Duggar's"),
     ("the_supplier", "The Supplier"),
     ("order_of_sol", "Order of Sol"),
     ("hades_shard", "Hades Shard"),
@@ -364,7 +361,6 @@ pub(crate) const UAO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("labyrinthine_servers", "Labyrinthine Servers"),
     ("ashigaru", "Ashigaru"),
     ("mamba", "Mamba"),
-    ("universal_connectivity_fee", "Universal Connectivity Fee"),
     ("blue_sun_powering_the_future", "Blue Sun: Powering the Future"),
     ("changeling", "Changeling"),
     ("reuse", "Reuse"),
@@ -387,19 +383,15 @@ pub(crate) const ATR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("merlin", "Merlin"),
     ("shell_corporation", "Shell Corporation"),
     ("ekomind", "Ekomind"),
-    ("leela_patel_trained_pragmatist", "Leela Patel: Trained Pragmatist"),
     ("utopia_shard", "Utopia Shard"),
 ];
 
 /// *The Source* (`the_source`): tranche F8 of the FFG plan.
 pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("helium_3_deposit", "Helium-3 Deposit"),
-    ("errand_boy", "Errand Boy"),
     ("it_department", "IT Department"),
-    ("markus_1_0", "Markus 1.0"),
     ("industrial_genomics_growing_solutions", "Industrial Genomics: Growing Solutions"),
     ("shoot_the_moon", "Shoot the Moon"),
-    ("troll", "Troll"),
     ("virgo", "Virgo"),
     ("utopia_fragment", "Utopia Fragment"),
     ("self_destruct", "Self-destruct"),
@@ -429,7 +421,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mushin_no_shin", "Mushin No Shin"),
     ("inazuma", "Inazuma"),
     ("komainu", "Komainu"),
-    ("pup", "Pup"),
     ("shiro", "Shiro"),
     ("susanoo_no_mikoto", "Susanoo-no-Mikoto"),
     ("neotokyo_grid", "NeoTokyo Grid"),
@@ -440,10 +431,7 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("diversified_portfolio", "Diversified Portfolio"),
     ("fast_track", "Fast Track"),
     ("iain_stirling_retired_spook", "Iain Stirling: Retired Spook"),
-    ("silhouette_stealth_operative", "Silhouette: Stealth Operative"),
-    ("calling_in_favors", "Calling in Favors"),
     ("early_bird", "Early Bird"),
-    ("express_delivery", "Express Delivery"),
     ("feint", "Feint"),
     ("planned_assault", "Planned Assault"),
     ("unregistered_s_w_35", "Unregistered S&W '35"),
@@ -749,7 +737,6 @@ pub(crate) const MO_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
     ("quest_completed", "Quest Completed"),
-    ("leela_patel_trained_pragmatist", "Leela Patel: Trained Pragmatist"),
     ("hostage", "Hostage"),
     ("r_d_interface", "R&D Interface"),
     ("deus_x", "Deus X"),

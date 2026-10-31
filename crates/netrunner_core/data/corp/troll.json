@@ -1,0 +1,42 @@
+{
+  "id": "troll",
+  "title": "Troll",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 1,
+  "strength": 3,
+  "subroutines": [],
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 2,
+            "on_success": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "LoseClicks": 1
+                  },
+                  "EndTheRun"
+                ],
+                "texts": [
+                  "the Runner must lose [click]",
+                  "end the run"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "When the Runner encounters Troll, Trace[2]. If successful, the Runner must lose [click] or end the run."
+    }
+  ],
+  "built_from": 6108,
+  "is_playable": true
+}

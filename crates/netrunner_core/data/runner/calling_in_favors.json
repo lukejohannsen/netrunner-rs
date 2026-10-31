@@ -1,0 +1,38 @@
+{
+  "id": "calling_in_favors",
+  "title": "Calling in Favors",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Runner",
+            {
+              "InZone": {
+                "zone": "OwnInstalled",
+                "filter": {
+                  "All": [
+                    {
+                      "CardType": "Resource"
+                    },
+                    {
+                      "HasSubtype": "Connection"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "text": "Gain 1[credit] for each installed connection resource."
+    }
+  ],
+  "built_from": 5031,
+  "is_playable": true
+}

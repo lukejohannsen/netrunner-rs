@@ -3,7 +3,7 @@
   "name": "Zzzzzzz",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Hayley Kaplan: Universal Scholar, Breaker Bay's Shaper identity, who may install a second card of the same type the first time each turn she installs one. Zymogen's list, its identity swapped. Comet (SanSan Stage 31) for one Supercorridor, which dead_reckoning and zymogen keep. Lunar Stage 1 (FFG F8): Refractor, Leprechaun, Collective Consciousness, Astrolabe, Cybsoft MacroDrive and Ghost Runner for two Orcas, two Reclaims and two Levy Advanced Research Labs, which Dead Reckoning and Zymogen keep.",
+  "description": "Not a published list: built so the sweeps reach Hayley Kaplan: Universal Scholar, Breaker Bay's Shaper identity, who may install a second card of the same type the first time each turn she installs one. Zymogen's list, its identity swapped. Comet (SanSan Stage 31) for one Supercorridor, which dead_reckoning and zymogen keep. Lunar Stage 1 (FFG F8): Refractor, Leprechaun, Collective Consciousness, Astrolabe, Cybsoft MacroDrive and Ghost Runner for two Orcas, two Reclaims and two Levy Advanced Research Labs, which Dead Reckoning and Zymogen keep. Lunar Stage 3 (FFG F8): LLDS Energy Regulator for one Cybertrooper Talut, which Dead Reckoning and Zymogen keep.",
   "style": [
     "rig"
   ],
@@ -47,7 +47,7 @@
     },
     {
       "card": "cybertrooper_talut",
-      "count": 2
+      "count": 1
     },
     {
       "card": "paules_cafe",
@@ -159,6 +159,10 @@
     },
     {
       "card": "ghost_runner",
+      "count": 1
+    },
+    {
+      "card": "llds_energy_regulator",
       "count": 1
     }
   ]

@@ -650,6 +650,10 @@ mod tests {
             ("zzyzzy", &neither),
             // FFG F7 Stage 20: Hayley Kaplan's deck, on Zymogen's list.
             ("zzzzzzz", &neither),
+            // FFG F8 Stage 3: Leela Patel's and Silhouette's decks, on
+            // Zero-Day Heist's list.
+            ("zzzzzzzz", &neither),
+            ("zzzzzzzzz", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.
