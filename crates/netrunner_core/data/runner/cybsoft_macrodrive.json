@@ -1,0 +1,19 @@
+{
+  "id": "cybsoft_macrodrive",
+  "title": "Cybsoft MacroDrive",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "counter_kind": "Credit",
+  "recurring_credits": 1,
+  "pays_for": [
+    {
+      "Installing": {
+        "CardType": "Program"
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 6098,
+  "is_playable": true
+}

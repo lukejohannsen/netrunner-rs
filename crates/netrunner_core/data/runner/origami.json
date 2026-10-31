@@ -1,0 +1,32 @@
+{
+  "id": "origami",
+  "title": "Origami",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": 1,
+          "of": {
+            "InZone": {
+              "zone": "OwnInstalled",
+              "filter": {
+                "AmongCards": [
+                  "origami"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your maximum hand size is increased by 1 for each copy of Origami installed."
+    }
+  ],
+  "triggers": [],
+  "built_from": 6074,
+  "is_playable": true
+}

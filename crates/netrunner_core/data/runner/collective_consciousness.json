@@ -1,0 +1,28 @@
+{
+  "id": "collective_consciousness",
+  "title": "Collective Consciousness",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "Any",
+      "when": {
+        "Card": "Ice"
+      },
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Draw 1 card whenever the Corp rezzes a piece of ice."
+    }
+  ],
+  "built_from": 6116,
+  "is_playable": true
+}

@@ -1,0 +1,56 @@
+{
+  "id": "switchblade",
+  "title": "Switchblade",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 0,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break any number of sentry subroutines. Spend credits only from stealth cards to use this ability.",
+      "cost": {
+        "CreditsFrom": {
+          "amount": {
+            "Fixed": 1
+          },
+          "from": {
+            "HasSubtype": "Stealth"
+          }
+        }
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": "All",
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +7 strength. Spend credits only from stealth cards to use this ability.",
+      "cost": {
+        "CreditsFrom": {
+          "amount": {
+            "Fixed": 1
+          },
+          "from": {
+            "HasSubtype": "Stealth"
+          }
+        }
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 7,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 6077,
+  "is_playable": true
+}

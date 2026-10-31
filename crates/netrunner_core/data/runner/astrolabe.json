@@ -1,0 +1,39 @@
+{
+  "id": "astrolabe",
+  "title": "Astrolabe",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnServerCreated",
+      "subject": "Any",
+      "when": {
+        "Whose": "Corp"
+      },
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Draw 1 card whenever the Corp creates a server."
+    }
+  ],
+  "built_from": 6079,
+  "is_playable": true
+}

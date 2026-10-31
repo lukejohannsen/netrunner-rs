@@ -1,0 +1,26 @@
+{
+  "id": "ghost_runner",
+  "title": "Ghost Runner",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "counter_kind": "Credit",
+  "pays_for": [
+    "DuringRuns"
+  ],
+  "trash_when_empty": true,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ],
+      "text": "Place 3[credit] on Ghost Runner when it is installed. When there are no credits left on Ghost Runner, trash it."
+    }
+  ],
+  "built_from": 6040,
+  "is_playable": true
+}

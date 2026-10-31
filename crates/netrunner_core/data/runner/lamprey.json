@@ -1,0 +1,39 @@
+{
+  "id": "lamprey",
+  "title": "Lamprey",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "effects": [
+        {
+          "LoseCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever you make a successful run on HQ, the Corp loses 1[credit]."
+    },
+    {
+      "trigger": "OnVirusCountersPurged",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "Trash Lamprey if the Corp purges virus counters."
+    }
+  ],
+  "built_from": 6014,
+  "is_playable": true
+}

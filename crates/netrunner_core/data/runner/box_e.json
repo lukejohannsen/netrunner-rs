@@ -1,0 +1,31 @@
+{
+  "id": "box_e",
+  "title": "Box-E",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 4,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+2[mu]"
+    },
+    {
+      "kind": {
+        "HandSize": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your maximum hand size is increased by 2."
+    }
+  ],
+  "triggers": [],
+  "built_from": 6055,
+  "is_playable": true
+}
