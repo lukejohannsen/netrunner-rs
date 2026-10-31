@@ -1,0 +1,53 @@
+{
+  "id": "zona_sul_shipping",
+  "title": "Zona Sul Shipping",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "counter_kind": "Credit",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Place 1[credit] on Zona Sul Shipping when your turn begins."
+    },
+    {
+      "trigger": "WhileTrue",
+      "requirement": "IsTagged",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "Trash Zona Sul Shipping if you are tagged."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "GainCreditsAmount": [
+              "Runner",
+              "HostedCounters"
+            ]
+          },
+          {
+            "RemoveCounters": "HostedCounters"
+          }
+        ]
+      },
+      "text": "[click]: Take all credits from Zona Sul Shipping."
+    }
+  ],
+  "built_from": 6097,
+  "is_playable": true
+}

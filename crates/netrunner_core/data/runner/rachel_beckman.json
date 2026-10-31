@@ -1,0 +1,33 @@
+{
+  "id": "rachel_beckman",
+  "title": "Rachel Beckman",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 8,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "AllottedClicks": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "You get +1 allotted [click] for each of your turns."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "WhileTrue",
+      "requirement": "IsTagged",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "If you are tagged, trash this resource."
+    }
+  ],
+  "built_from": 6060,
+  "is_playable": true
+}

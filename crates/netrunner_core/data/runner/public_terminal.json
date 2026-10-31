@@ -1,0 +1,26 @@
+{
+  "id": "public_terminal",
+  "title": "Public Terminal",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "counter_kind": "Credit",
+  "recurring_credits": 1,
+  "pays_for": [
+    {
+      "Playing": {
+        "All": [
+          {
+            "CardType": "Event"
+          },
+          {
+            "HasSubtype": "Run"
+          }
+        ]
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 5038,
+  "is_playable": true
+}

@@ -3,7 +3,7 @@
   "name": "Zyrian",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Laramy Fisk: Savvy Investor, Order and Chaos's Criminal identity, who may make the Corp draw a card after the first successful run on a central server each turn. Zero-Day Heist's list, its identity swapped, with its MU Safecracker for a Forger, link and a tag avoided or removed, which Zero-Day Heist keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. FFG F7 Stage 14 swapped both Flashbangs for a Crowbar and a Spike. SanSan Stage 16 FFG F7 Stage 26: Dorm Computer for one Build Script",
+  "description": "Not a published list: built so the sweeps reach Laramy Fisk: Savvy Investor, Order and Chaos's Criminal identity, who may make the Corp draw a card after the first successful run on a central server each turn. Zero-Day Heist's list, its identity swapped, with its MU Safecracker for a Forger, link and a tag avoided or removed, which Zero-Day Heist keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. FFG F7 Stage 14 swapped both Flashbangs for a Crowbar and a Spike. SanSan Stage 16 FFG F7 Stage 26: Dorm Computer for one Build Script Lunar Stage 1 (FFG F8): Cerberus Rex, Switchblade, Public Terminal, Tri-maf Contact, Zona Sul Shipping, Logos and Box-E for two Spot the Prey, two Mobius, two Calderas and a Maui, which Zymosis and Zero Day Heist keep.",
   "style": [
     "pressure"
   ],
@@ -42,14 +42,6 @@
       "count": 2
     },
     {
-      "card": "spot_the_prey",
-      "count": 2
-    },
-    {
-      "card": "mobius",
-      "count": 2
-    },
-    {
       "card": "exploit",
       "count": 1
     },
@@ -59,14 +51,6 @@
     },
     {
       "card": "mad_dash",
-      "count": 2
-    },
-    {
-      "card": "maui",
-      "count": 1
-    },
-    {
-      "card": "caldera",
       "count": 2
     },
     {
@@ -131,6 +115,34 @@
     },
     {
       "card": "dorm_computer",
+      "count": 1
+    },
+    {
+      "card": "cerberus_rex_h2",
+      "count": 1
+    },
+    {
+      "card": "switchblade",
+      "count": 1
+    },
+    {
+      "card": "public_terminal",
+      "count": 1
+    },
+    {
+      "card": "tri_maf_contact",
+      "count": 1
+    },
+    {
+      "card": "zona_sul_shipping",
+      "count": 1
+    },
+    {
+      "card": "logos",
+      "count": 1
+    },
+    {
+      "card": "box_e",
       "count": 1
     }
   ]

@@ -1,0 +1,39 @@
+{
+  "id": "leprechaun",
+  "title": "Leprechaun",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "continuous": [
+    {
+      "kind": "MayHost",
+      "applies_to": {
+        "InstallingOntoThis": {
+          "CardType": "Program"
+        }
+      },
+      "while": {
+        "Not": {
+          "AmountAtLeast": [
+            "HostedCards",
+            2
+          ]
+        }
+      },
+      "text": "Leprechaun can host up to 2 programs."
+    },
+    {
+      "kind": {
+        "HostsMemory": {
+          "per": 8
+        }
+      },
+      "applies_to": "This",
+      "text": "The memory costs of hosted programs do not count against your memory limit."
+    }
+  ],
+  "triggers": [],
+  "built_from": 6019,
+  "is_playable": true
+}

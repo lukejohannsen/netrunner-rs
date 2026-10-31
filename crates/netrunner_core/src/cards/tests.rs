@@ -52093,3 +52093,65 @@ mod sansan_stage_32 {
         assert_eq!(state.runner.resources.clicks, Clicks(0), "a click lost paying a cost is not given back");
     }
 }
+
+mod lunar_stage_1 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { install_id: fixture_install_id(card), card: id(card), ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state
+    }
+
+    #[test]
+    fn origami_raises_the_hand_size_by_each_installed_copy() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("origami"), crate::rules::InstalledRunnerCard { install_id: InstallId(1077), ..rig("origami") }];
+        assert_eq!(crate::rules::continuous::hand_size(&state, &registry, Side::Runner), 4, "each of two copies gives +2");
+    }
+
+    #[test]
+    fn zona_sul_shipping_banks_a_credit_a_turn_and_burns_when_tagged() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 3, ..rig("zona_sul_shipping") }];
+        state.runner.resources.credits = Credits(0);
+        let take = PlayerAction::ActivateAbility { target: fixture_install_id("zona_sul_shipping"), ability_index: 0 };
+        let (taken, _) = apply_action(&state, &registry, take).expect("[click]: take all credits");
+        let (taken, _) = close_all_windows(taken, &registry);
+        assert_eq!(taken.runner.resources.credits, Credits(3));
+        assert_eq!(taken.runner.rig[0].counters, 0);
+
+        let mut tagged = state.clone();
+        tagged.runner.tags = 1;
+        let (tagged, _) = apply_action(&tagged, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("draw");
+        let (tagged, _) = close_all_windows(tagged, &registry);
+        assert!(tagged.runner.rig.is_empty(), "trash Zona Sul Shipping if you are tagged");
+    }
+
+    #[test]
+    fn lamprey_goes_with_a_purge_and_fester_takes_two_credits() {
+        let registry = registry();
+        for (card, credits) in [("lamprey", 5), ("fester", 3)] {
+            let mut state = runner_turn();
+            state.runner.rig = vec![rig(card)];
+            state.corp.resources.credits = Credits(5);
+            state.phase = GamePhase::Action(Side::Corp);
+            state.corp.resources.clicks = Clicks(3);
+            let (purged, _) = apply_action(&state, &registry, PlayerAction::PurgeVirusCounters).expect("purge");
+            let (purged, _) = close_all_windows(purged, &registry);
+            assert_eq!(purged.runner.rig.is_empty(), card == "lamprey", "trash Lamprey if the Corp purges");
+            assert_eq!(purged.corp.resources.credits, Credits(credits), "{card}");
+        }
+    }
+}

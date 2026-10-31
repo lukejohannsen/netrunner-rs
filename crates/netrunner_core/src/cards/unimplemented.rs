@@ -310,12 +310,10 @@ pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("galahad", "Galahad"),
     ("bad_times", "Bad Times"),
     ("cyber_threat", "Cyber Threat"),
-    ("lamprey", "Lamprey"),
     ("paper_tripping", "Paper Tripping"),
     ("power_tap", "Power Tap"),
     ("nasir_meidan_cyber_explorer", "Nasir Meidan: Cyber Explorer"),
     ("social_engineering", "Social Engineering"),
-    ("leprechaun", "Leprechaun"),
     ("eden_shard", "Eden Shard"),
 ];
 
@@ -333,13 +331,11 @@ pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("eden_fragment", "Eden Fragment"),
     ("lag_time", "Lag Time"),
     ("will_o_the_wisp", "Will-o'-the-Wisp"),
-    ("d4v1d", "D4v1d"),
     ("scrubbed", "Scrubbed"),
     ("three_steps_ahead", "Three Steps Ahead"),
     ("unscheduled_maintenance", "Unscheduled Maintenance"),
     ("net_celebrity", "Net Celebrity"),
     ("llds_energy_regulator", "LLDS Energy Regulator"),
-    ("ghost_runner", "Ghost Runner"),
 ];
 
 /// *First Contact* (`first_contact`): tranche F8 of the FFG plan.
@@ -356,12 +352,9 @@ pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("lancelot", "Lancelot"),
     ("blackat", "BlacKat"),
     ("duggars", "Duggar's"),
-    ("box_e", "Box-E"),
     ("the_supplier", "The Supplier"),
-    ("refractor", "Refractor"),
     ("order_of_sol", "Order of Sol"),
     ("hades_shard", "Hades Shard"),
-    ("rachel_beckman", "Rachel Beckman"),
 ];
 
 /// *Up and Over* (`up_and_over`): tranche F8 of the FFG plan.
@@ -378,12 +371,8 @@ pub(crate) const UAO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("hades_fragment", "Hades Fragment"),
     ("docklands_crackdown", "Docklands Crackdown"),
     ("inject", "Inject"),
-    ("origami", "Origami"),
-    ("fester", "Fester"),
     ("autoscripter", "Autoscripter"),
-    ("switchblade", "Switchblade"),
     ("trade_in", "Trade-In"),
-    ("astrolabe", "Astrolabe"),
     ("angel_arena", "Angel Arena"),
 ];
 
@@ -398,11 +387,7 @@ pub(crate) const ATR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("merlin", "Merlin"),
     ("shell_corporation", "Shell Corporation"),
     ("ekomind", "Ekomind"),
-    ("cerberus_cuj_0_h3", "Cerberus \"Cuj.0\" H3"),
     ("leela_patel_trained_pragmatist", "Leela Patel: Trained Pragmatist"),
-    ("cerberus_rex_h2", "Cerberus \"Rex\" H2"),
-    ("zona_sul_shipping", "Zona Sul Shipping"),
-    ("cybsoft_macrodrive", "Cybsoft MacroDrive"),
     ("utopia_shard", "Utopia Shard"),
 ];
 
@@ -421,7 +406,6 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("incubator", "Incubator"),
     ("ixodidae", "Ixodidae"),
     ("code_siphon", "Code Siphon"),
-    ("collective_consciousness", "Collective Consciousness"),
     ("sage", "Sage"),
     ("bribery", "Bribery"),
     ("au_revoir", "Au Revoir"),
@@ -462,8 +446,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("express_delivery", "Express Delivery"),
     ("feint", "Feint"),
     ("planned_assault", "Planned Assault"),
-    ("logos", "Logos"),
-    ("public_terminal", "Public Terminal"),
     ("unregistered_s_w_35", "Unregistered S&W '35"),
     ("window", "Window"),
     ("alias", "Alias"),
@@ -474,9 +456,7 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("passport", "Passport"),
     ("push_your_luck", "Push Your Luck"),
     ("theophilius_bagbiter", "Theophilius Bagbiter"),
-    ("tri_maf_contact", "Tri-maf Contact"),
     ("mass_install", "Mass Install"),
-    ("q_coherence_chip", "Q-Coherence Chip"),
     ("overmind", "Overmind"),
     ("oracle_may", "Oracle May"),
     ("donut_taganes", "Donut Taganes"),
@@ -769,7 +749,6 @@ pub(crate) const MO_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
     ("quest_completed", "Quest Completed"),
-    ("lamprey", "Lamprey"),
     ("leela_patel_trained_pragmatist", "Leela Patel: Trained Pragmatist"),
     ("hostage", "Hostage"),
     ("r_d_interface", "R&D Interface"),

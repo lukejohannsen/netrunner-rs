@@ -1,0 +1,40 @@
+{
+  "id": "tri_maf_contact",
+  "title": "Tri-maf Contact",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            3
+          ]
+        }
+      ],
+      "text": "When this resource is trashed, suffer 3 meat damage."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "GainCredits": [
+          "Runner",
+          2
+        ]
+      },
+      "text": "[click]: Gain 2[credit]."
+    }
+  ],
+  "built_from": 5050,
+  "is_playable": true
+}

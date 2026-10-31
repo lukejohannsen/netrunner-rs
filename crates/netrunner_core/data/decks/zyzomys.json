@@ -3,7 +3,7 @@
   "name": "Zyzomys",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach MaxX: Maximum Punk Rock, Order and Chaos's Anarch identity, who trashes the top 2 cards of the stack and draws 1 as each turn begins. Grassroots' list, its identity swapped, with its two The Wizard's Chest for a Brain Cage and a Skulljack, which Grassroots keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. FFG F7 Stage 26: Itinerant Protesters for one Privileged Access SanSan Stage 29 swapped one of three Arruaceiras Crew for a Hacktivist Meeting.",
+  "description": "Not a published list: built so the sweeps reach MaxX: Maximum Punk Rock, Order and Chaos's Anarch identity, who trashes the top 2 cards of the stack and draws 1 as each turn begins. Grassroots' list, its identity swapped, with its two The Wizard's Chest for a Brain Cage and a Skulljack, which Grassroots keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. FFG F7 Stage 26: Itinerant Protesters for one Privileged Access SanSan Stage 29 swapped one of three Arruaceiras Crew for a Hacktivist Meeting. Lunar Stage 1 (FFG F8): Cerberus Cuj.0, D4v1d, Lamprey, Fester and Origami for two Manuel Lattes de Moura, an Arruaceiras Crew and two Lago Paranoa Shelters, which other decks keep.",
   "style": [
     "rig",
     "dismantle"
@@ -11,16 +11,12 @@
   "identity": "maxx_maximum_punk_rock",
   "cards": [
     {
-      "card": "manuel_lattes_de_moura",
-      "count": 2
-    },
-    {
       "card": "nurse_hanh",
       "count": 2
     },
     {
       "card": "arruaceiras_crew",
-      "count": 2
+      "count": 1
     },
     {
       "card": "juli_moreira_lee",
@@ -95,10 +91,6 @@
       "count": 2
     },
     {
-      "card": "lago_paranoa_shelter",
-      "count": 2
-    },
-    {
       "card": "eru_ayase_pessoa",
       "count": 3
     },
@@ -120,6 +112,26 @@
     },
     {
       "card": "hacktivist_meeting",
+      "count": 1
+    },
+    {
+      "card": "cerberus_cuj_0_h3",
+      "count": 1
+    },
+    {
+      "card": "d4v1d",
+      "count": 1
+    },
+    {
+      "card": "lamprey",
+      "count": 1
+    },
+    {
+      "card": "fester",
+      "count": 1
+    },
+    {
+      "card": "origami",
       "count": 1
     }
   ]

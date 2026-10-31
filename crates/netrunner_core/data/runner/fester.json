@@ -1,0 +1,26 @@
+{
+  "id": "fester",
+  "title": "Fester",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnVirusCountersPurged",
+      "requirement": {
+        "CorpCreditsAtLeast": 2
+      },
+      "effects": [
+        {
+          "LoseCredits": [
+            "Corp",
+            2
+          ]
+        }
+      ],
+      "text": "Whenever the Corp purges virus counters, if the Corp has at least 2[credit], they lose 2[credit]."
+    }
+  ],
+  "built_from": 6075,
+  "is_playable": true
+}

@@ -1,0 +1,50 @@
+{
+  "id": "d4v1d",
+  "title": "D4v1d",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "memory_cost": 1,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ],
+      "text": "Place 3 power counters on D4v1d when it is installed."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Hosted power counter: Break ice subroutine on a piece of ice that has a strength of 5 or greater.",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "AmountAtLeast": [
+              "EncounteredIceStrength",
+              5
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 6033,
+  "is_playable": true
+}
