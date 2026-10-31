@@ -1,0 +1,58 @@
+{
+  "id": "dorm_computer",
+  "title": "Dorm Computer",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 0,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 4
+        }
+      ],
+      "text": "When you install this hardware, place 4 power counters on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[click], hosted power counter: Run any server.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 1
+          }
+        ]
+      },
+      "effect": {
+        "PromptChooseServer": {
+          "chooser": "Runner",
+          "rez_cost_delta": 0,
+          "bonus_run_credits": 0
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "Whenever you would take tags during that run, prevent all of those tags.",
+      "cost": {
+        "Credits": 0
+      },
+      "requirement": "ThisCardStartedTheRun",
+      "effect": {
+        "Prevent": {
+          "Tags": 4294967295
+        }
+      }
+    }
+  ],
+  "built_from": 8024,
+  "is_playable": true
+}

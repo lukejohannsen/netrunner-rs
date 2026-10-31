@@ -3,7 +3,7 @@
   "name": "Zyrian",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Laramy Fisk: Savvy Investor, Order and Chaos's Criminal identity, who may make the Corp draw a card after the first successful run on a central server each turn. Zero-Day Heist's list, its identity swapped, with its MU Safecracker for a Forger, link and a tag avoided or removed, which Zero-Day Heist keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. FFG F7 Stage 14 swapped both Flashbangs for a Crowbar and a Spike. SanSan Stage 16",
+  "description": "Not a published list: built so the sweeps reach Laramy Fisk: Savvy Investor, Order and Chaos's Criminal identity, who may make the Corp draw a card after the first successful run on a central server each turn. Zero-Day Heist's list, its identity swapped, with its MU Safecracker for a Forger, link and a tag avoided or removed, which Zero-Day Heist keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. FFG F7 Stage 14 swapped both Flashbangs for a Crowbar and a Spike. SanSan Stage 16 FFG F7 Stage 26: Dorm Computer for one Build Script",
   "style": [
     "pressure"
   ],
@@ -55,7 +55,7 @@
     },
     {
       "card": "build_script",
-      "count": 2
+      "count": 1
     },
     {
       "card": "mad_dash",
@@ -127,6 +127,10 @@
     },
     {
       "card": "paparazzi",
+      "count": 1
+    },
+    {
+      "card": "dorm_computer",
       "count": 1
     }
   ]
