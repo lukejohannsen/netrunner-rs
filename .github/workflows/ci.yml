@@ -142,28 +142,73 @@ jobs:
           [ "$skip" = true ] || echo "No green run has tested tree $tree; testing it."
           echo "skip=$skip" >> "$GITHUB_OUTPUT"
 
-  # The load-bearing job, on Linux only. Windows and macOS run the same two
+  # The load-bearing jobs, on Linux only. Windows and macOS run the same
   # commands weekly in platforms.yml. The desktop crate is excluded because
   # Bevy is several hundred crates and minutes of cold compile; the small,
   # engine-shaped `netrunner_client` stays in, so the terminal client's
   # lift is still checked on every push.
   #
-  # Cold-cache duration on ubuntu from the first run: 4m26s, which the
-  # timeout is sized against.
-  test:
+  # Three jobs on three runners rather than one job doing all three in a
+  # row, because one 4-core runner was what every PR waited on. Measured on
+  # run 41075114475 (30 October 2026), the single job took 23.5 minutes:
+  # clippy 3m, compiling the tests at opt-level 2 10m30s, and running them
+  # 10m, of which the two agent sweeps' binaries were 7m (system_gateway_
+  # delivery 318s, no_deadlock_sweep 104s) and grow with every deck the
+  # pool gains. Split, the sweeps compile only the engine, the bots and the
+  # session, and the rest of the suite no longer waits behind them. Each
+  # job pays its own compile, which costs runner minutes and saves wall
+  # time; the wall time is the thing a merge waits on.
+  #
+  # `!cancelled()` rather than the default, because `tested` is skipped on
+  # every event but a push and a skipped need would skip these jobs too.
+  clippy:
     needs: tested
-    # `!cancelled()` rather than the default, because `tested` is skipped on
-    # every event but a push and a skipped need would skip this job too.
     if: ${{ !cancelled() && needs.tested.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: $/.github/actions/setup-rust
       - run: cargo clippy --workspace --exclude netrunner_desktop --all-targets --locked -- -D warnings
-      - run: cargo test --workspace --exclude netrunner_desktop --locked
+
+  # Everything but the four sweep tests, which the job below runs. `--skip`
+  # is a substring filter over test names, and these four names are unique
+  # in the workspace.
+  test:
+    needs: tested
+    if: ${{ !cancelled() && needs.tested.outputs.skip != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup-rust
+      - run: >-
+          cargo test --workspace --exclude netrunner_desktop --locked --
+          --skip no_panics_or_deadlocks_across_many_seeds_system_gateway
+          --skip every_sample_deck_matchup_finishes
+          --skip view_based_agents_never_reach_a_state_with_no_legal_action
+          --skip no_client_view_or_log_entry_ever_names_a_card_it_conceals
+
+  # The two agent-driven sweeps (AGENTS.md, Testing Rule), each test binary
+  # whole, at the default seed count; the 256-seed runs stay in
+  # deep-sweep.yml. The binaries' few fast tests also run in the job above,
+  # which costs seconds and keeps the skip list to the slow ones.
+  sweeps:
+    needs: tested
+    if: ${{ !cancelled() && needs.tested.outputs.skip != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup-rust
+      - run: cargo test -p netrunner_single_player --test system_gateway_delivery --locked
+      - run: cargo test -p netrunner_session --test no_deadlock_sweep --locked
 
   # Advisories, licenses, duplicate/banned crates and registry sources. Split
   # into two legs so a newly published CVE does not also hide a license
@@ -277,23 +322,28 @@ jobs:
   # names above change whenever the matrix does, and `needs` alone would let
   # a skipped or cancelled dependency pass for a success.
   #
-  # `test` may be skipped only when `tested` said so; `tested` itself is
-  # skipped on every event but a push, and its failure only means the tests
-  # run, so it is not one of the jobs judged here.
+  # `clippy`, `test` and `sweeps` may be skipped only when `tested` said
+  # so; `tested` itself is skipped on every event but a push, and its
+  # failure only means the tests run, so it is not one of the jobs judged
+  # here.
   ci:
     if: always()
-    needs: [tested, test, deny, workflows, secrets]
+    needs: [tested, clippy, test, sweeps, deny, workflows, secrets]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Fail unless every required job succeeded
         if: >-
           contains(needs.*.result, 'cancelled')
+          || needs.clippy.result == 'failure'
           || needs.test.result == 'failure'
+          || needs.sweeps.result == 'failure'
           || needs.deny.result != 'success'
           || needs.workflows.result != 'success'
           || needs.secrets.result != 'success'
+          || (needs.clippy.result != 'success' && needs.tested.outputs.skip != 'true')
           || (needs.test.result != 'success' && needs.tested.outputs.skip != 'true')
+          || (needs.sweeps.result != 'success' && needs.tested.outputs.skip != 'true')
         # Through the environment rather than inlined into the script: a
         # `${{ }}` expansion inside `run:` is textual substitution, and the
         # habit of letting one become shell source is how injection bugs
