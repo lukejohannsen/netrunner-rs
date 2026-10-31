@@ -1,0 +1,19 @@
+{
+  "id": "dyson_fractal_generator",
+  "title": "Dyson Fractal Generator",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "counter_kind": "Credit",
+  "recurring_credits": 1,
+  "pays_for": [
+    {
+      "Using": {
+        "HasSubtype": "Fracter"
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 4103,
+  "is_playable": true
+}

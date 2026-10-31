@@ -1,0 +1,47 @@
+{
+  "id": "activist_support",
+  "title": "Activist Support",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "when": {
+        "Whose": "Corp"
+      },
+      "requirement": {
+        "Not": "IsTagged"
+      },
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When the Corp's turn begins, take 1 tag if you have no tags."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [
+            "BadPublicity",
+            1
+          ]
+        }
+      },
+      "effects": [
+        {
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When your turn begins, give the Corp 1 bad publicity if they have no bad publicity."
+    }
+  ],
+  "built_from": 4062,
+  "is_playable": true
+}

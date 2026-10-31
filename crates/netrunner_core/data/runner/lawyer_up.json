@@ -1,0 +1,31 @@
+{
+  "id": "lawyer_up",
+  "title": "Lawyer Up",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "RemoveTags": {
+            "Fixed": 2
+          }
+        },
+        {
+          "DrawCards": [
+            "Runner",
+            3
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 4063,
+  "is_playable": true
+}

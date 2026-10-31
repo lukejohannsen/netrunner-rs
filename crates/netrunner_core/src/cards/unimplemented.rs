@@ -470,7 +470,6 @@ pub(crate) const OM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("rook", "Rook"),
     ("hostage", "Hostage"),
     ("gorman_drip_v1", "Gorman Drip v1"),
-    ("lockpick", "Lockpick"),
     ("false_echo", "False Echo"),
     ("motivation", "Motivation"),
     ("john_masanori", "John Masanori"),
@@ -483,10 +482,8 @@ pub(crate) const OM_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const ST_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("bishop", "Bishop"),
     ("scheherazade", "Scheherazade"),
-    ("hard_at_work", "Hard at Work"),
     ("recon", "Recon"),
     ("copycat", "Copycat"),
-    ("leviathan", "Leviathan"),
     ("eureka", "Eureka!"),
     ("record_reconstructor", "Record Reconstructor"),
     ("hellion_alpha_test", "Hellion Alpha Test"),
@@ -499,8 +496,6 @@ pub(crate) const MT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("knight", "Knight"),
     ("running_interference", "Running Interference"),
     ("expert_schedule_analyzer", "Expert Schedule Analyzer"),
-    ("grifter", "Grifter"),
-    ("torch", "Torch"),
     ("woman_in_the_red_dress", "Woman in the Red Dress"),
     ("raymond_flint", "Raymond Flint"),
     ("isabel_mcguire", "Isabel McGuire"),
@@ -516,10 +511,7 @@ pub(crate) const MT_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *True Colors* (`true_colors`): tranche F10 of the FFG plan.
 pub(crate) const TC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("keyhole", "Keyhole"),
-    ("activist_support", "Activist Support"),
-    ("lawyer_up", "Lawyer Up"),
     ("leverage", "Leverage"),
-    ("garrote", "Garrote"),
     ("llds_processor", "LLDS Processor"),
     ("sharpshooter", "Sharpshooter"),
     ("capstone", "Capstone"),
@@ -536,7 +528,6 @@ pub(crate) const FAL_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("tallie_perrault", "Tallie Perrault"),
     ("executive_wiretaps", "Executive Wiretaps"),
     ("blackguard", "Blackguard"),
-    ("cybersolutions_mem_chip", "CyberSolutions Mem Chip"),
     ("alpha", "Alpha"),
     ("omega", "Omega"),
     ("blackmail", "Blackmail"),
@@ -549,10 +540,7 @@ pub(crate) const FAL_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Double Time* (`double_time`): tranche F10 of the FFG plan.
 pub(crate) const DT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
-    ("dyson_fractal_generator", "Dyson Fractal Generator"),
-    ("silencer", "Silencer"),
     ("savoir_faire", "Savoir-faire"),
-    ("power_nap", "Power Nap"),
     ("paintbrush", "Paintbrush"),
     ("gyri_labyrinth", "Gyri Labyrinth"),
     ("reclamation_order", "Reclamation Order"),

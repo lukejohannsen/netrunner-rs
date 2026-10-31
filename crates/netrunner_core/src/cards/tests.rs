@@ -52329,3 +52329,26 @@ mod spin_stage_1 {
         assert_eq!(played.corp.resources.clicks, Clicks(1), "one click to play and one more as its cost");
     }
 }
+
+/// Spin Stages 5 to 7 (FFG F10): the composed Runner cards.
+mod spin_stage_5 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn power_nap_counts_the_double_events_in_the_heap() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(0);
+        state.runner.grip = vec![id("power_nap")];
+        state.runner.heap = vec![id("lawyer_up"), id("sure_gamble")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("power_nap") }).expect("play it");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.runner.resources.credits, Credits(3), "2, and 1 for Lawyer Up");
+        assert_eq!(played.runner.resources.clicks, Clicks(2), "a click to play and one more as its cost");
+    }
+}

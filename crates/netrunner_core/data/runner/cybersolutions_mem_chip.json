@@ -1,0 +1,21 @@
+{
+  "id": "cybersolutions_mem_chip",
+  "title": "CyberSolutions Mem Chip",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 4,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+2[mu]"
+    }
+  ],
+  "triggers": [],
+  "built_from": 4086,
+  "is_playable": true
+}

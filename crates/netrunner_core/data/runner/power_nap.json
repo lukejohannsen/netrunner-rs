@@ -1,0 +1,39 @@
+{
+  "id": "power_nap",
+  "title": "Power Nap",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            2
+          ]
+        },
+        {
+          "GainCreditsAmount": [
+            "Runner",
+            {
+              "InZone": {
+                "zone": "OwnHeap",
+                "filter": {
+                  "HasSubtype": "Double"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 4107,
+  "is_playable": true
+}

@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzz",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Silhouette: Stealth Operative, Honor and Profit's Criminal identity, who may expose a card the first time each turn she makes a successful run on HQ. Zero-Day Heist's list, its identity swapped. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Honor and Profit is in neither pool. FFG F8 (Lunar) Stage 3.",
+  "description": "Not a published list: built so the sweeps reach Silhouette: Stealth Operative, Honor and Profit's Criminal identity, who may expose a card the first time each turn she makes a successful run on HQ. Zero-Day Heist's list, its identity swapped. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Honor and Profit is in neither pool. FFG F8 (Lunar) Stage 3. Spin Stages 5 to 7 (FFG F10) swapped in Garrote, Leviathan, Silencer, Grifter and Lawyer Up for a Femme Fatale, a Shibboleth, Mu Safecracker, Slipstream and a Mad Dash, which other decks keep.",
   "style": [
     "pressure"
   ],
@@ -11,14 +11,10 @@
   "cards": [
     {
       "card": "shibboleth",
-      "count": 2
+      "count": 1
     },
     {
       "card": "femme_fatale",
-      "count": 2
-    },
-    {
-      "card": "mu_safecracker",
       "count": 1
     },
     {
@@ -36,10 +32,6 @@
     {
       "card": "amina",
       "count": 2
-    },
-    {
-      "card": "slipstream",
-      "count": 1
     },
     {
       "card": "jackpot",
@@ -63,7 +55,7 @@
     },
     {
       "card": "mad_dash",
-      "count": 2
+      "count": 1
     },
     {
       "card": "maui",
@@ -119,6 +111,26 @@
     },
     {
       "card": "uninstall",
+      "count": 1
+    },
+    {
+      "card": "garrote",
+      "count": 1
+    },
+    {
+      "card": "leviathan",
+      "count": 1
+    },
+    {
+      "card": "silencer",
+      "count": 1
+    },
+    {
+      "card": "grifter",
+      "count": 1
+    },
+    {
+      "card": "lawyer_up",
       "count": 1
     }
   ]
