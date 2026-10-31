@@ -1,0 +1,72 @@
+{
+  "id": "virus_breeding_ground",
+  "title": "Virus Breeding Ground",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When your turn begins, place 1 virus counter on Virus Breeding Ground."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[click]: Move 1 virus counter on Virus Breeding Ground to another card with at least 1 virus counter on it.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 1
+          }
+        ]
+      },
+      "requirement": {
+        "ZoneHasAtLeast": {
+          "zone": "OwnInstalled",
+          "count": 1,
+          "filter": {
+            "All": [
+              "NotSourceCard",
+              {
+                "HostsCounters": "Virus"
+              }
+            ]
+          }
+        }
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnInstalled",
+          "filter": {
+            "All": [
+              "NotSourceCard",
+              {
+                "HostsCounters": "Virus"
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "AddVirusCounters": 1
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 7052,
+  "is_playable": true
+}
