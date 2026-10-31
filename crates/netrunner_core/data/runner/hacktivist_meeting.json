@@ -1,0 +1,28 @@
+{
+  "id": "hacktivist_meeting",
+  "title": "Hacktivist Meeting",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "AdditionalRezCost": {
+          "TrashRandomFromHq": {
+            "count": 1,
+            "reveal": false
+          }
+        }
+      },
+      "applies_to": {
+        "CorpInstalled": {
+          "Not": "Ice"
+        }
+      },
+      "text": "As an additional cost to rez non-ice cards, the Corp must randomly trash a card from HQ."
+    }
+  ],
+  "triggers": [],
+  "built_from": 8021,
+  "is_playable": true
+}

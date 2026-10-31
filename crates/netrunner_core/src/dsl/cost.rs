@@ -330,8 +330,10 @@ pub enum Cost {
     /// attacked server's root count, known only then). Affordable only
     /// with at least that many cards in HQ; the cards land faceup, being
     /// revealed. Drawn with the state's own PRNG, so a replay trashes the
-    /// same cards.
-    TrashRandomFromHq(u32),
+    /// same cards. `reveal` is whether the cards are revealed as they go,
+    /// and so land faceup: Shred's are; Hacktivist Meeting's "randomly
+    /// trash a card from HQ" are not, and land facedown (CR 4.4.6b).
+    TrashRandomFromHq { count: u32, reveal: bool },
     /// The Runner adds `u32` cards from the grip at random to the bottom of
     /// the stack — Daniela Jorge Inácio's "As an additional cost to trash
     /// this upgrade, the Runner must add 2 cards from the grip at random to

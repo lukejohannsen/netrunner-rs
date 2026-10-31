@@ -250,7 +250,6 @@ pub(crate) const VAL_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Breaker Bay* (`breaker_bay`): tranche F7 of the FFG plan.
 pub(crate) const BB_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("hacktivist_meeting", "Hacktivist Meeting"),
     ("off_campus_apartment", "Off-Campus Apartment"),
     ("comet", "Comet"),
     ("london_library", "London Library"),
@@ -270,7 +269,6 @@ pub(crate) const CC_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("street_peddler", "Street Peddler"),
     ("allele_repression", "Allele Repression"),
-    ("marcus_batty", "Marcus Batty"),
 ];
 
 /// *Old Hollywood* (`old_hollywood`): tranche F7 of the FFG plan.

@@ -7896,7 +7896,7 @@ mod system_gateway {
         assert!(state.active_run.is_some(), "the run has not ended: the end was intercepted");
         let paid = state.pending_paid_choice.as_ref().expect("the corp's choice");
         assert_eq!(paid.side, Side::Corp);
-        assert_eq!(paid.cost, crate::dsl::Cost::TrashRandomFromHq(1), "one card in the root");
+        assert_eq!(paid.cost, crate::dsl::Cost::TrashRandomFromHq { count: 1, reveal: true }, "one card in the root");
 
         let (paid_state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("the corp pays");
         assert_eq!(paid_state.corp.hq.len(), 1, "one random HQ card trashed");
@@ -51913,4 +51913,73 @@ mod sansan_stage_28 {
         let tokens: Vec<u32> = moved.corp.installed.iter().map(|card| card.advancement_tokens).collect();
         assert_eq!(tokens, vec![0, 0, 1]);
     }
+}
+
+mod sansan_stage_29 {
+    use super::*;
+    use crate::rules::{InstallSlot, InstalledCard};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn marcus_batty_resolves_a_subroutine_of_the_servers_ice_when_the_bids_differ() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.installed = vec![
+            InstalledCard { install_id: InstallId(1001), card: id("marcus_batty"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() },
+            InstalledCard { install_id: InstallId(1002), card: id("ice_wall"), server: ServerId::Remote(0), slot: InstallSlot::Ice, rezzed: true, ..Default::default() },
+        ];
+        let use_it = PlayerAction::ActivateAbility { target: InstallId(1001), ability_index: 0 };
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&use_it), "only during a run on this server");
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        for _ in 0..10 {
+            if crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&use_it) {
+                break;
+            }
+            let side = state.paid_ability_window.as_ref().expect("a window").active_priority;
+            state = apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        let (state, _) = apply_action(&state, &registry, use_it).expect("[trash]: play a psi game");
+        assert!(state.corp.installed.iter().all(|card| card.card != id("marcus_batty")), "trashed");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("the Corp bids 1");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 0 }).expect("the Runner bids 0");
+        let toggles: Vec<PlayerAction> = crate::rules::legal_actions_for(&state, &registry, Side::Corp).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert_eq!(toggles.len(), 1, "the ice protecting this server");
+        let (state, _) = apply_action(&state, &registry, toggles[0].clone()).expect("toggle");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(state.active_run.is_none(), "Ice Wall's subroutine ends the run");
+    }
+
+    #[test]
+    fn hacktivist_meeting_makes_the_corp_trash_a_random_card_from_hq_to_rez_a_non_ice_card() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = vec![id("hacktivist_meeting")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("hacktivist_meeting") }).expect("play it");
+        let (mut state, _) = close_all_windows(played, &registry);
+        assert_eq!(state.runner.in_play.iter().map(|current| &current.card).collect::<Vec<_>>(), vec![&id("hacktivist_meeting")], "a current stays");
+        state.corp.installed = vec![
+            InstalledCard { install_id: InstallId(1001), card: id("pad_campaign"), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() },
+            InstalledCard { install_id: InstallId(1002), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, ..Default::default() },
+        ];
+        state.phase = GamePhase::Action(Side::Corp);
+        let rez = PlayerAction::RezIce { ice: InstallId(1001) };
+        assert!(apply_action(&state, &registry, rez.clone()).is_err(), "an empty HQ cannot pay");
+
+        state.corp.hq = vec![id("hedge_fund")];
+        let (rezzed, _) = apply_action(&state, &registry, rez).expect("rez the asset");
+        assert!(rezzed.corp.installed[0].rezzed);
+        assert!(rezzed.corp.hq.is_empty(), "randomly trash a card from HQ");
+        assert_eq!(rezzed.corp.archives.len(), 1);
+        assert!(rezzed.corp.archives[0].facedown, "not revealed: it lands facedown");
+        assert!(crate::rules::continuous::rez_costs(&state, &registry, InstallId(1002)).is_empty(), "ice is not taxed");
+    }
+
 }

@@ -3182,7 +3182,7 @@ impl Amount {
 /// closed enum with one clause, extended when a card prints another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EndRunPrevention {
-    /// The run ends only if the Corp pays `Cost::TrashRandomFromHq(X)`,
+    /// The run ends only if the Corp pays `Cost::TrashRandomFromHq` of X,
     /// X being the number of cards in the attacked server's root — parked
     /// as a Corp `OfferPaidChoice` whose acceptance ends the run. With an
     /// empty root there is nothing to pay and the run simply ends; with

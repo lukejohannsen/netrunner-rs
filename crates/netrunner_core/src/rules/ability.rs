@@ -4853,7 +4853,7 @@ pub(crate) fn cost_is_affordable(
         Cost::Derez { filter, count } => derez_eligible(state, registry, side, filter, ctx).len() >= *count as usize,
         Cost::TrashSelf | Cost::RemoveSelfFromGame | Cost::TakeTags(_) | Cost::ClearTags => true,
         Cost::TakeBadPublicity(_) => side == Side::Corp,
-        Cost::TrashRandomFromHq(count) => state.corp.hq.len() as u32 >= *count,
+        Cost::TrashRandomFromHq { count, .. } => state.corp.hq.len() as u32 >= *count,
         Cost::AddRandomFromGripToBottom(count) => side == Side::Runner && state.runner.grip.len() as u32 >= *count,
         Cost::TurnHostedFacedown => side == Side::Runner && acting_rig_card(state, ctx).is_some_and(|card| card.faceup_hosted() > 0),
         Cost::RevealSelf | Cost::AddSelfToHq => side == Side::Corp && acting_corp_install(state, ctx).is_some(),
@@ -5021,7 +5021,7 @@ pub(crate) fn pay_cost_ctx(
             Ok(vec![GameEvent::CardRevealed { side, card: card.clone(), by: side }, GameEvent::CardTrashed { side, card, from: crate::dsl::TrashedFrom::Hand, by: Some(side), install: None, damage: None }])
         }
 
-        Cost::TrashRandomFromHq(count) => {
+        Cost::TrashRandomFromHq { count, reveal } => {
             if (state.corp.hq.len() as u32) < *count {
                 return Err(RulesError::NotEnoughCardsInHq { required: *count, available: state.corp.hq.len() as u32 });
             }
@@ -5029,8 +5029,10 @@ pub(crate) fn pay_cost_ctx(
             for _ in 0..*count {
                 let index = (state.next_u64() % state.corp.hq.len() as u64) as usize;
                 let card = state.corp.hq.remove(index);
-                // Revealed as it is trashed, so it lands faceup.
-                crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(card.clone()));
+                // A card revealed as it is trashed lands faceup; one
+                // that is not lands as any card out of HQ does.
+                let archived = if *reveal { ArchivedCard::faceup(card.clone()) } else { ArchivedCard::facedown(card.clone()) };
+                crate::rules::turn_log::file_in_archives(state, archived);
                 events.push(GameEvent::CardTrashed { side: Side::Corp, card, from: crate::dsl::TrashedFrom::Hand, by: Some(side), install: None, damage: None });
             }
             Ok(events)
