@@ -1,0 +1,23 @@
+{
+  "id": "veterans_program",
+  "title": "Veterans Program",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "RemoveBadPublicity": 2
+        }
+      ],
+      "text": "When you score this agenda, you may remove up to 2 bad publicity."
+    }
+  ],
+  "built_from": 4080,
+  "is_playable": true
+}

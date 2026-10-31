@@ -1,0 +1,32 @@
+{
+  "id": "blue_level_clearance",
+  "title": "Blue Level Clearance",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            5
+          ]
+        },
+        {
+          "DrawCards": [
+            "Corp",
+            2
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 25081,
+  "is_playable": true
+}

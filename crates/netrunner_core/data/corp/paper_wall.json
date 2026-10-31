@@ -1,0 +1,30 @@
+{
+  "id": "paper_wall",
+  "title": "Paper Wall",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 0,
+  "strength": 1,
+  "triggers": [
+    {
+      "trigger": "OnIceFullyBroken",
+      "subject": "This",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "When the Runner fully breaks this ice, trash it."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 4059,
+  "is_playable": true
+}

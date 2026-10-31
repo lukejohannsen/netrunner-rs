@@ -1,0 +1,48 @@
+{
+  "id": "profiteering",
+  "title": "Profiteering",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Corp",
+            "min": 0,
+            "max": {
+              "Fixed": 3
+            },
+            "then": {
+              "Sequence": [
+                {
+                  "GiveBadPublicity": "ChosenNumber"
+                },
+                {
+                  "GainCreditsAmount": [
+                    "Corp",
+                    {
+                      "Times": {
+                        "amount": "ChosenNumber",
+                        "times": 5
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "text": "take up to 3 bad publicity. Gain 5[credit] for each bad publicity taken this way"
+          }
+        }
+      ],
+      "text": "When you score this agenda, take up to 3 bad publicity. Gain 5[credit] for each bad publicity taken this way."
+    }
+  ],
+  "built_from": 4039,
+  "is_playable": true
+}

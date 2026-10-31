@@ -1,0 +1,75 @@
+{
+  "id": "shinobi",
+  "title": "Shinobi",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 7,
+  "strength": 5,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When you rez this ice, take 1 bad publicity."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trace[1]. If successful, do 1 net damage.",
+      "effect": {
+        "Trace": {
+          "base": 1,
+          "on_success": {
+            "DealDamage": [
+              "Net",
+              1
+            ]
+          }
+        }
+      }
+    },
+    {
+      "text": "Trace[2]. If successful, do 2 net damage.",
+      "effect": {
+        "Trace": {
+          "base": 2,
+          "on_success": {
+            "DealDamage": [
+              "Net",
+              2
+            ]
+          }
+        }
+      }
+    },
+    {
+      "text": "Trace[3]. If successful, do 3 net damage and end the run.",
+      "effect": {
+        "Trace": {
+          "base": 3,
+          "on_success": {
+            "Sequence": [
+              {
+                "DealDamage": [
+                  "Net",
+                  3
+                ]
+              },
+              "EndTheRun"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 4115,
+  "is_playable": true
+}

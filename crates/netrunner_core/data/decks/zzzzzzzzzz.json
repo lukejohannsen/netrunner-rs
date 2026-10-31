@@ -3,26 +3,18 @@
   "name": "Zzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Lunar Stage 6's (FFG F8) deck for Tennin Institute: The Secrets Within, on Zyzzyva's list, so the sweeps meet a Corp that advances a card when the Runner made no successful run on their last turn. It carries the stage's Jinteki and neutral cards: Cerebral Cast for a Kakurenbo, Mental Health Clinic and Chairman Hiro for two Project Junebug, Tenma Line for a Daruma, Medical Research Fundraiser for an Aimor, Fast Track for a Whirlpool, and the agendas point for point, Encrypted Portals for Water Monopoly, Philotic Entanglement for Braintrust and Hades Fragment for Fujii Asset Retrieval; Zyzzyva and other decks keep every card swapped out. Eternal-legal only.",
+  "description": "Not a published list: Lunar Stage 6's (FFG F8) deck for Tennin Institute: The Secrets Within, on Zyzzyva's list, so the sweeps meet a Corp that advances a card when the Runner made no successful run on their last turn. It carries the stage's Jinteki and neutral cards: Cerebral Cast for a Kakurenbo, Mental Health Clinic and Chairman Hiro for two Project Junebug, Tenma Line for a Daruma, Medical Research Fundraiser for an Aimor, Fast Track for a Whirlpool, and the agendas point for point, Encrypted Portals for Water Monopoly, Philotic Entanglement for Braintrust and Hades Fragment for Fujii Asset Retrieval; Zyzzyva and other decks keep every card swapped out. Eternal-legal only. Spin Stages 1 to 4 (FFG F10) swapped in Tsurugi, Shinobi and Shock! for a Mlinzi, Otoroshi and Sadaka, which other decks keep.",
   "style": [
     "traps"
   ],
   "identity": "tennin_institute_the_secrets_within",
   "cards": [
     {
-      "card": "otoroshi",
-      "count": 1
-    },
-    {
       "card": "flower_sermon",
       "count": 2
     },
     {
       "card": "mlinzi",
-      "count": 2
-    },
-    {
-      "card": "sadaka",
       "count": 1
     },
     {
@@ -151,6 +143,18 @@
     },
     {
       "card": "hades_fragment",
+      "count": 1
+    },
+    {
+      "card": "tsurugi",
+      "count": 1
+    },
+    {
+      "card": "shinobi",
+      "count": 1
+    },
+    {
+      "card": "shock",
       "count": 1
     }
   ]

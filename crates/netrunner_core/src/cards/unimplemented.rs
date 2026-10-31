@@ -474,13 +474,9 @@ pub(crate) const OM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("false_echo", "False Echo"),
     ("motivation", "Motivation"),
     ("john_masanori", "John Masanori"),
-    ("character_assassination", "Character Assassination"),
-    ("jackson_howard", "Jackson Howard"),
     ("invasion_of_privacy", "Invasion of Privacy"),
     ("geothermal_fracking", "Geothermal Fracking"),
     ("swarm", "Swarm"),
-    ("cyberdex_trial", "Cyberdex Trial"),
-    ("grim", "Grim"),
 ];
 
 /// *Second Thoughts* (`second_thoughts`): tranche F10 of the FFG plan.
@@ -493,14 +489,8 @@ pub(crate) const ST_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("leviathan", "Leviathan"),
     ("eureka", "Eureka!"),
     ("record_reconstructor", "Record Reconstructor"),
-    ("wotan", "Wotan"),
     ("hellion_alpha_test", "Hellion Alpha Test"),
-    ("clone_retirement", "Clone Retirement"),
-    ("shipment_from_sansan", "Shipment from SanSan"),
-    ("muckraker", "Muckraker"),
     ("off_the_grid", "Off the Grid"),
-    ("profiteering", "Profiteering"),
-    ("restructure", "Restructure"),
 ];
 
 /// *Mala Tempora* (`mala_tempora`): tranche F10 of the FFG plan.
@@ -517,11 +507,9 @@ pub(crate) const MT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("accelerated_diagnostics", "Accelerated Diagnostics"),
     ("unorthodox_predictions", "Unorthodox Predictions"),
     ("sundew", "Sundew"),
-    ("city_surveillance", "City Surveillance"),
     ("snoop", "Snoop"),
     ("ireress", "Ireress"),
     ("power_shutdown", "Power Shutdown"),
-    ("paper_wall", "Paper Wall"),
     ("interns", "Interns"),
 ];
 
@@ -537,13 +525,9 @@ pub(crate) const TC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("capstone", "Capstone"),
     ("starlight_crusade_funding", "Starlight Crusade Funding"),
     ("rex_campaign", "Rex Campaign"),
-    ("fenris", "Fenris"),
     ("panic_button", "Panic Button"),
-    ("shock", "Shock!"),
-    ("tsurugi", "Tsurugi"),
     ("rsvp", "RSVP"),
     ("curtain_wall", "Curtain Wall"),
-    ("veterans_program", "Veterans Program"),
 ];
 
 /// *Fear and Loathing* (`fear_and_loathing`): tranche F10 of the FFG plan.
@@ -556,12 +540,10 @@ pub(crate) const FAL_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("alpha", "Alpha"),
     ("omega", "Omega"),
     ("blackmail", "Blackmail"),
-    ("blue_level_clearance", "Blue Level Clearance"),
     ("toshiyuki_sakai", "Toshiyuki Sakai"),
     ("restoring_face", "Restoring Face"),
     ("market_research", "Market Research"),
     ("grndl_power_unleashed", "GRNDL: Power Unleashed"),
-    ("vulcan_coverup", "Vulcan Coverup"),
 ];
 
 /// *Double Time* (`double_time`): tranche F10 of the FFG plan.
@@ -577,11 +559,8 @@ pub(crate) const DT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("broadcast_square", "Broadcast Square"),
     ("corporate_shuffle", "Corporate Shuffle"),
     ("caprice_nisei", "Caprice Nisei"),
-    ("shinobi", "Shinobi"),
     ("marker", "Marker"),
-    ("witness_tampering", "Witness Tampering"),
     ("napd_contract", "NAPD Contract"),
-    ("quandary", "Quandary"),
 ];
 
 /// *What Lies Ahead* (`what_lies_ahead`): tranche F11 of the FFG plan.
@@ -705,11 +684,9 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("john_masanori", "John Masanori"),
     ("kati_jones", "Kati Jones"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
-    ("blue_level_clearance", "Blue Level Clearance"),
     ("jinteki_replicating_perfection", "Jinteki: Replicating Perfection"),
     ("fetal_ai", "Fetal AI"),
     ("sundew", "Sundew"),
-    ("tsurugi", "Tsurugi"),
     ("spark_agency_worldswide_reach", "Spark Agency: Worldswide Reach"),
     ("marked_accounts", "Marked Accounts"),
     ("blue_sun_powering_the_future", "Blue Sun: Powering the Future"),

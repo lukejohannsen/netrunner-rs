@@ -1,0 +1,35 @@
+{
+  "id": "clone_retirement",
+  "title": "Clone Retirement",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 2,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "RemoveBadPublicity": 1
+        }
+      ],
+      "text": "When you score this agenda, you may remove 1 bad publicity."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When the Runner steals this agenda, take 1 bad publicity."
+    }
+  ],
+  "built_from": 4032,
+  "is_playable": true
+}
