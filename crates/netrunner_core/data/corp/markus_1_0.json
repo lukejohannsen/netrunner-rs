@@ -1,0 +1,52 @@
+{
+  "id": "markus_1_0",
+  "title": "Markus 1.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 4,
+  "strength": 3,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 1
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "text": "Lose [click]: Break 1 subroutine on this ice. Only the Runner can use this ability."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "The Runner trashes 1 of their installed cards.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnInstalled",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnHeap"
+        }
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 6104,
+  "is_playable": true
+}

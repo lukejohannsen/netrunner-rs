@@ -1,0 +1,44 @@
+{
+  "id": "universal_connectivity_fee",
+  "title": "Universal Connectivity Fee",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 2,
+  "strength": 2,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "If the Runner is not tagged, they lose 1[credit]. If the Runner is tagged, they lose all credits in their credit pool and you trash this ice.",
+      "effect": {
+        "EffectIf": {
+          "condition": "IsTagged",
+          "effect": {
+            "Sequence": [
+              {
+                "LoseCreditsAmount": [
+                  "Runner",
+                  {
+                    "Credits": "Runner"
+                  }
+                ]
+              },
+              {
+                "TrashCard": "ThisCard"
+              }
+            ]
+          },
+          "otherwise": {
+            "LoseCredits": [
+              "Runner",
+              1
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 6067,
+  "is_playable": true
+}

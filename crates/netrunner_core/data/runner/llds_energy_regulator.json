@@ -1,0 +1,39 @@
+{
+  "id": "llds_energy_regulator",
+  "title": "LLDS Energy Regulator",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → 3[credit] or [trash]: Prevent a player from trashing 1 installed piece of hardware.",
+      "cost": {
+        "Credits": 3
+      },
+      "effect": {
+        "Prevent": {
+          "Trash": {
+            "CardType": "Hardware"
+          }
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → 3[credit] or [trash]: Prevent a player from trashing 1 installed piece of hardware.",
+      "cost": "TrashSelf",
+      "effect": {
+        "Prevent": {
+          "Trash": {
+            "CardType": "Hardware"
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 6039,
+  "is_playable": true
+}

@@ -1,0 +1,57 @@
+{
+  "id": "pup",
+  "title": "Pup",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 1,
+  "strength": 0,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Do 1 net damage unless the Runner pays 1[credit].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 1
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": {
+            "DealDamage": [
+              "Net",
+              1
+            ]
+          },
+          "text": "Do 1 net damage unless the Runner pays 1[credit]"
+        }
+      }
+    },
+    {
+      "text": "Do 1 net damage unless the Runner pays 1[credit].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 1
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": {
+            "DealDamage": [
+              "Net",
+              1
+            ]
+          },
+          "text": "Do 1 net damage unless the Runner pays 1[credit]"
+        }
+      }
+    }
+  ],
+  "built_from": 5018,
+  "is_playable": true
+}

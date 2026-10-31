@@ -52155,3 +52155,44 @@ mod lunar_stage_1 {
         }
     }
 }
+
+mod lunar_stage_3 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state
+    }
+
+    #[test]
+    fn calling_in_favors_counts_installed_connections() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(0);
+        state.runner.rig = ["aeneas_informant", "hernando_cortez", "cyberfeeder"].iter().map(|card| crate::rules::InstalledRunnerCard { install_id: fixture_install_id(card), card: id(card), ..Default::default() }).collect();
+        state.runner.grip = vec![id("calling_in_favors")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("calling_in_favors") }).expect("play it");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.runner.resources.credits, Credits(2), "two connections, and a chip that is not one");
+    }
+
+    #[test]
+    fn duggars_draws_ten_for_four_clicks() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("duggars"), card: id("duggars"), ..Default::default() }];
+        state.runner.stack = vec![id("sure_gamble"); 12];
+        state.runner.grip = Vec::new();
+        let use_it = PlayerAction::ActivateAbility { target: fixture_install_id("duggars"), ability_index: 0 };
+        let (drawn, _) = apply_action(&state, &registry, use_it).expect("draw 10");
+        let (drawn, _) = close_all_windows(drawn, &registry);
+        assert_eq!(drawn.runner.grip.len(), 10);
+        assert_eq!(drawn.runner.resources.clicks, Clicks(0));
+    }
+}

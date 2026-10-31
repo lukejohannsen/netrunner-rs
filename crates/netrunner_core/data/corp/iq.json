@@ -1,0 +1,45 @@
+{
+  "id": "iq",
+  "title": "IQ",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 0,
+  "strength": 0,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "RezCost": {
+          "per": 1,
+          "of": {
+            "CardsInHand": "Corp"
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "The rez cost of IQ is increased by 1 for each card in HQ."
+    },
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": {
+            "CardsInHand": "Corp"
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "IQ has +1 strength for each card in HQ."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 6041,
+  "is_playable": true
+}

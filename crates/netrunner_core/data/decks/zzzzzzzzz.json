@@ -1,0 +1,125 @@
+{
+  "id": "zzzzzzzzz",
+  "name": "Zzzzzzzzz",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Silhouette: Stealth Operative, Honor and Profit's Criminal identity, who may expose a card the first time each turn she makes a successful run on HQ. Zero-Day Heist's list, its identity swapped. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Honor and Profit is in neither pool. FFG F8 (Lunar) Stage 3.",
+  "style": [
+    "pressure"
+  ],
+  "identity": "silhouette_stealth_operative",
+  "cards": [
+    {
+      "card": "shibboleth",
+      "count": 2
+    },
+    {
+      "card": "femme_fatale",
+      "count": 2
+    },
+    {
+      "card": "mu_safecracker",
+      "count": 1
+    },
+    {
+      "card": "afterimage",
+      "count": 2
+    },
+    {
+      "card": "aurora",
+      "count": 2
+    },
+    {
+      "card": "ninja",
+      "count": 2
+    },
+    {
+      "card": "amina",
+      "count": 2
+    },
+    {
+      "card": "slipstream",
+      "count": 1
+    },
+    {
+      "card": "jackpot",
+      "count": 2
+    },
+    {
+      "card": "spot_the_prey",
+      "count": 2
+    },
+    {
+      "card": "mobius",
+      "count": 2
+    },
+    {
+      "card": "exploit",
+      "count": 2
+    },
+    {
+      "card": "build_script",
+      "count": 2
+    },
+    {
+      "card": "mad_dash",
+      "count": 2
+    },
+    {
+      "card": "maui",
+      "count": 1
+    },
+    {
+      "card": "caldera",
+      "count": 2
+    },
+    {
+      "card": "flashbang",
+      "count": 2
+    },
+    {
+      "card": "hernando_cortez",
+      "count": 1
+    },
+    {
+      "card": "leave_no_trace",
+      "count": 2
+    },
+    {
+      "card": "rosetta_2_0",
+      "count": 2
+    },
+    {
+      "card": "corporate_defector",
+      "count": 2
+    },
+    {
+      "card": "aeneas_informant",
+      "count": 2
+    },
+    {
+      "card": "aumakua",
+      "count": 2
+    },
+    {
+      "card": "keros_mcintyre",
+      "count": 2
+    },
+    {
+      "card": "charlatan",
+      "count": 1
+    },
+    {
+      "card": "drive_by",
+      "count": 2
+    },
+    {
+      "card": "fisk_investment_seminar",
+      "count": 2
+    },
+    {
+      "card": "uninstall",
+      "count": 1
+    }
+  ]
+}

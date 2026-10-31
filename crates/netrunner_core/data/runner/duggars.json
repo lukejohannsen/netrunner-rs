@@ -1,0 +1,26 @@
+{
+  "id": "duggars",
+  "title": "Duggar's",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 4
+      },
+      "effect": {
+        "DrawCards": [
+          "Runner",
+          10
+        ]
+      },
+      "text": "[click],[click],[click],[click]: Draw 10 cards."
+    }
+  ],
+  "built_from": 6054,
+  "is_playable": true
+}
