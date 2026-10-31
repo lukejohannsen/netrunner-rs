@@ -1,0 +1,50 @@
+{
+  "id": "encrypted_portals",
+  "title": "Encrypted Portals",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "Ice": {
+          "IceOfType": "CodeGate"
+        }
+      },
+      "text": "All code gate ice have +1 strength."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            {
+              "CorpInstalls": {
+                "All": [
+                  "Rezzed",
+                  {
+                    "IceOfType": "CodeGate"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "text": "When you score Encrypted Portals, gain 1[credit] for each rezzed code gate."
+    }
+  ],
+  "built_from": 6024,
+  "is_playable": true
+}

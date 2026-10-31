@@ -1,0 +1,32 @@
+{
+  "id": "hades_fragment",
+  "title": "Hades Fragment",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnArchives",
+            "filter": "Any",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "BottomOfOwnDeck"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may add 1 card from Archives to the bottom of R&D."
+    }
+  ],
+  "built_from": 6071,
+  "is_playable": true
+}

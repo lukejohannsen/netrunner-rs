@@ -1,0 +1,30 @@
+{
+  "id": "peak_efficiency",
+  "title": "Peak Efficiency",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            {
+              "CorpInstalls": {
+                "All": [
+                  "Ice",
+                  "Rezzed"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 6062,
+  "is_playable": true
+}

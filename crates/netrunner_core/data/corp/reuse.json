@@ -1,0 +1,43 @@
+{
+  "id": "reuse",
+  "title": "Reuse",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": "Any",
+            "min": 0,
+            "max": 99,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnArchives",
+            "then": {
+              "GainCreditsAmount": [
+                "Corp",
+                {
+                  "Times": {
+                    "amount": "CardsSelected",
+                    "times": 2
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 6070,
+  "is_playable": true
+}

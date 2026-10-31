@@ -3,16 +3,12 @@
   "name": "Zzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Titan Transnational: Investing In Your Future, Order and Chaos's Weyland identity, who may place an agenda counter on every agenda it scores. Zugzwang's list, its identity swapped, with two New Construction and a Transport Monopoly for a Government Takeover and two Space Camp, six points for six, and a Hostile Takeover for a Firmware Updates, which Zugzwang keeps. Named to sort after every other Corp deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 6. Patch, Sub Boost and Cyberdex Virus Suite in for Formicary and Oduduwa (SanSan Stage 7). Negotiator and Capital Investors in for Masvingo (SanSan Stage 8). SanSan Stage 11 swapped a Watchtower for a Spiderweb and a Hostile Takeover for an Underway Renovation, both kept elsewhere. SanSan Stage 12 swapped a Meteor Mining and a Greenmail, kept by other decks, for a Hollywood Renovation (the same three points) and a Ronald Five. SanSan Stage 28 swapped both Rolling Brownouts, kept by three other decks, for a Housekeeping and a Constellation Protocol.",
+  "description": "Not a published list: built so the sweeps reach Titan Transnational: Investing In Your Future, Order and Chaos's Weyland identity, who may place an agenda counter on every agenda it scores. Zugzwang's list, its identity swapped, with two New Construction and a Transport Monopoly for a Government Takeover and two Space Camp, six points for six, and a Hostile Takeover for a Firmware Updates, which Zugzwang keeps. Named to sort after every other Corp deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 6. Patch, Sub Boost and Cyberdex Virus Suite in for Formicary and Oduduwa (SanSan Stage 7). Negotiator and Capital Investors in for Masvingo (SanSan Stage 8). SanSan Stage 11 swapped a Watchtower for a Spiderweb and a Hostile Takeover for an Underway Renovation, both kept elsewhere. SanSan Stage 12 swapped a Meteor Mining and a Greenmail, kept by other decks, for a Hollywood Renovation (the same three points) and a Ronald Five. SanSan Stage 28 swapped both Rolling Brownouts, kept by three other decks, for a Housekeeping and a Constellation Protocol. Lunar Stage 7 (FFG F8) swapped Reuse for one Success, and Superior Cyberwalls for Hostile Takeover, a point for a point, which four other decks keep.",
   "style": [
     "traps"
   ],
   "identity": "titan_transnational_investing_in_your_future",
   "cards": [
-    {
-      "card": "hostile_takeover",
-      "count": 1
-    },
     {
       "card": "above_the_law",
       "count": 1
@@ -31,7 +27,7 @@
     },
     {
       "card": "success",
-      "count": 2
+      "count": 1
     },
     {
       "card": "sacrifice",
@@ -139,6 +135,14 @@
     },
     {
       "card": "constellation_protocol",
+      "count": 1
+    },
+    {
+      "card": "reuse",
+      "count": 1
+    },
+    {
+      "card": "superior_cyberwalls",
       "count": 1
     }
   ]

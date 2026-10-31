@@ -1,0 +1,47 @@
+{
+  "id": "elizas_toybox",
+  "title": "Eliza's Toybox",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 4,
+  "trash_cost": 4,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 3
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": {
+            "All": [
+              "Unrezzed",
+              {
+                "Not": {
+                  "CardType": "Agenda"
+                }
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "RezInstalled": {
+              "install": 0,
+              "pay_cost": false
+            }
+          }
+        }
+      },
+      "text": "[click],[click],[click]: Rez a card, ignoring all costs."
+    }
+  ],
+  "built_from": 6042,
+  "is_playable": true
+}

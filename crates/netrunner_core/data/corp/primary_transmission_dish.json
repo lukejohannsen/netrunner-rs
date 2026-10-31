@@ -1,0 +1,16 @@
+{
+  "id": "primary_transmission_dish",
+  "title": "Primary Transmission Dish",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 3,
+  "counter_kind": "Credit",
+  "recurring_credits": 3,
+  "pays_for": [
+    "TraceAttempts"
+  ],
+  "triggers": [],
+  "built_from": 6006,
+  "is_playable": true
+}
