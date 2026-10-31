@@ -1743,14 +1743,16 @@ fn play_event(
     Ok((next, events))
 }
 
-/// Whether the Runner could play `card_id` out of the heap right now,
-/// click aside — the offer half of The Shadow Net's "Play an event from
-/// your heap, ignoring all costs", as `can_play_operation` is Plutus's.
-/// Only the heap: the click action plays from the grip and asks its own
+/// Whether the Runner could play `card_id` out of the heap (`from_heap`)
+/// or the grip right now, click aside — the offer half of The Shadow
+/// Net's "Play an event from your heap, ignoring all costs" and Comet's
+/// "you may play another event (without spending a click)", as
+/// `can_play_operation` is Plutus's. The click action asks its own
 /// questions.
-pub(crate) fn can_play_event_from_heap(state: &GameState, registry: &CardRegistry, card_id: &CardId, ignoring_costs: bool) -> bool {
+pub(crate) fn can_play_event_from(state: &GameState, registry: &CardRegistry, card_id: &CardId, from_heap: bool, ignoring_costs: bool) -> bool {
     let Some(card_def) = registry.get(card_id) else { return false };
-    state.runner.heap.contains(card_id)
+    let zone = if from_heap { &state.runner.heap } else { &state.runner.grip };
+    zone.contains(card_id)
         && card_def.card_type == CardType::Event
         && (ignoring_costs || payment::available(state, registry, Side::Runner, Purpose::Play(card_def)) >= continuous::play_cost_of(state, registry, card_def))
         && (ignoring_costs || continuous::additional_play_cost_of(state, registry, card_def).as_ref().is_none_or(|cost| {
@@ -1849,6 +1851,10 @@ pub(crate) fn play_event_card(
     // left the play as it resolved, and is trashed by nothing.
     let scored_as_it_resolved = next.runner.scored_agendas.iter().filter(|scored| scored.card == card_id).count()
         > scored_before;
+    // "After the first one resolves" (Comet): an event's resolution ends
+    // as an operation's does, announced behind whatever it parked, and
+    // ahead of the trash that follows it (CR 3.7.1).
+    dispatcher::finished_resolving(next, registry, &mut events, side, card_id.clone())?;
     if scored_as_it_resolved || current {
         // Nothing to file: it is where it will stay.
     } else if card_def.removed_after_play {
@@ -5410,6 +5416,7 @@ mod tests {
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
                 GameEvent::EventPlayed { side: Side::Runner, card: card_id.clone(), paid_with: Vec::new(), x: None },
+                GameEvent::FinishedResolving { side: Side::Runner, card: card_id.clone() },
                 // Trashed as it finishes resolving (CR 3.7.1).
                 GameEvent::CardTrashed { side: Side::Runner, card: card_id, from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None, damage: None },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Play },
@@ -5449,6 +5456,7 @@ mod tests {
                 GameEvent::TriggerFired { card: CardId("sure_gamble".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 9 },
                 GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("sure_gamble".to_string()) },
+                GameEvent::FinishedResolving { side: Side::Runner, card: CardId("sure_gamble".to_string()) },
                 // Trashed as it finishes resolving (CR 3.7.1).
                 GameEvent::CardTrashed { side: Side::Runner, card: CardId("sure_gamble".to_string()), from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None, damage: None },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Play },

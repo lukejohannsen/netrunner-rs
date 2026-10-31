@@ -251,7 +251,6 @@ pub(crate) const VAL_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Breaker Bay* (`breaker_bay`): tranche F7 of the FFG plan.
 pub(crate) const BB_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("off_campus_apartment", "Off-Campus Apartment"),
-    ("comet", "Comet"),
     ("london_library", "London Library"),
     ("recruiting_trip", "Recruiting Trip"),
     ("blacklist", "Blacklist"),

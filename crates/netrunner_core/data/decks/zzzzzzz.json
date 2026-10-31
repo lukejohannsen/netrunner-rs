@@ -3,7 +3,7 @@
   "name": "Zzzzzzz",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Hayley Kaplan: Universal Scholar, Breaker Bay's Shaper identity, who may install a second card of the same type the first time each turn she installs one. Zymogen's list, its identity swapped.",
+  "description": "Not a published list: built so the sweeps reach Hayley Kaplan: Universal Scholar, Breaker Bay's Shaper identity, who may install a second card of the same type the first time each turn she installs one. Zymogen's list, its identity swapped. Comet (SanSan Stage 31) for one Supercorridor, which dead_reckoning and zymogen keep.",
   "style": [
     "rig"
   ],
@@ -31,7 +31,7 @@
     },
     {
       "card": "supercorridor",
-      "count": 2
+      "count": 1
     },
     {
       "card": "hyperbaric",
@@ -143,6 +143,10 @@
     },
     {
       "card": "analog_dreamers",
+      "count": 1
+    },
+    {
+      "card": "comet",
       "count": 1
     }
   ]
