@@ -5959,7 +5959,7 @@ mod system_gateway {
         assert_eq!(state.runner.resources.credits, Credits(6));
         // 4 - 1 (playing the event) - 1 (the card's own click loss) = 2.
         assert_eq!(state.runner.resources.clicks, Clicks(2));
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::ClicksLost { side: Side::Runner, amount: 1 })));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::ClicksLost { side: Side::Runner, amount: 1, .. })));
     }
 
     /// The click check runs *after* the event's own play cost, so spending
@@ -12064,7 +12064,7 @@ mod vantage_point {
         state.runner.resources.clicks = Clicks(2);
         let ansel = install_of(&state, "ansel_2_0");
         let (state, events) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: ansel, ability_index: 0 }).expect("break two");
-        assert!(events.contains(&crate::rules::GameEvent::ClicksLost { side: Side::Runner, amount: 2 }));
+        assert!(events.contains(&crate::rules::GameEvent::ClicksLost { side: Side::Runner, amount: 2, by_cost: true }));
         assert_eq!(state.runner.resources.clicks, Clicks(0));
         let run = state.active_run.as_ref().expect("still encountering");
         assert_eq!(run.ice[run.position].subroutines.iter().filter(|sub| sub.status == crate::rules::SubroutineStatus::Broken).count(), 2);
@@ -52047,5 +52047,49 @@ mod sansan_stage_31 {
         let (third, _) = close_all_windows(third, &registry);
         assert!(event_toggles(&third, &registry).is_empty(), "only the first time each turn");
         assert_eq!(third.runner.resources.clicks, Clicks(2));
+    }
+}
+
+mod sansan_stage_32 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn adjusted_chronotype_gives_back_the_first_click_an_effect_takes_each_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(2);
+        state.runner.rig.push(crate::rules::InstalledRunnerCard { install_id: fixture_install_id("adjusted_chronotype"), card: id("adjusted_chronotype"), ..Default::default() });
+        state.runner.grip = vec![id("creative_commission"), id("creative_commission")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("creative_commission") }).expect("play it");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.resources.clicks, Clicks(3), "4, less the play's click, less the card's, plus the one given back");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("creative_commission") }).expect("play another");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.resources.clicks, Clicks(1), "only the first time each turn");
+    }
+
+    #[test]
+    fn adjusted_chronotype_ignores_a_click_lost_paying_a_cost() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(3);
+        state.runner.rig.push(crate::rules::InstalledRunnerCard { install_id: fixture_install_id("adjusted_chronotype"), card: id("adjusted_chronotype"), ..Default::default() });
+        state.corp.installed.push(crate::rules::InstalledCard { install_id: fixture_install_id("ansel_2_0"), card: id("ansel_2_0"), server: ServerId::Hq, slot: crate::rules::InstallSlot::Ice, rezzed: true, ..Default::default() });
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        assert_eq!(state.runner.resources.clicks, Clicks(2));
+        let use_it = PlayerAction::ActivateAbility { target: fixture_install_id("ansel_2_0"), ability_index: 0 };
+        let (state, _) = apply_action(&state, &registry, use_it).expect("Lose [click][click]: break two");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.resources.clicks, Clicks(0), "a click lost paying a cost is not given back");
     }
 }

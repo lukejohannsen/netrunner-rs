@@ -420,6 +420,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::CardExposed { install, card: exposed } => vec![moment(Trigger::OnCardExposed, &card(exposed, Some(*install)), None)],
         GameEvent::DrewCard { side, card: drawn } => vec![moment(Trigger::OnCardDrawn, &About::Card { card: drawn.clone(), install: None, installed: false }, Some(*side))],
         GameEvent::DrawFinished { side, .. } => vec![moment(Trigger::OnCardsDrawn, &About::Nothing, Some(*side))],
+        // Lost to an effect; a click lost paying a cost is nothing's.
+        GameEvent::ClicksLost { side, by_cost: false, .. } => vec![moment(Trigger::OnClicksLost, &About::Nothing, Some(*side))],
         // A selection that reveals what it chose (Hyoubu Institute's own
         // "reveal the top card of the stack") is its chooser revealing
         // each card.
@@ -553,7 +555,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::AccessReplacementSet { .. }
         | GameEvent::AccessReplaced { .. }
         | GameEvent::CreditsLost { .. }
-        | GameEvent::ClicksLost { .. }
+        | GameEvent::ClicksLost { by_cost: true, .. }
         | GameEvent::ClicksGained { .. }
         | GameEvent::Prevented { .. }
         | GameEvent::CountersAdded { .. }

@@ -2589,9 +2589,15 @@ pub fn evaluate_effect(
         }
 
         Effect::LoseClicks(amount) => {
-            state.runner.resources.clicks =
-                Clicks(state.runner.resources.clicks.0.saturating_sub(*amount));
-            Ok(vec![GameEvent::ClicksLost { side: Side::Runner, amount: *amount }])
+            // What was lost, not what was asked: a Runner with no click
+            // left loses nothing, and Adjusted Chronotype hears nothing.
+            let lost = state.runner.resources.clicks.0.min(*amount);
+            state.runner.resources.clicks = Clicks(state.runner.resources.clicks.0 - lost);
+            let mut events = Vec::new();
+            if lost > 0 {
+                crate::rules::dispatcher::emit(state, registry, &mut events, GameEvent::ClicksLost { side: Side::Runner, amount: lost, by_cost: false })?;
+            }
+            Ok(events)
         }
 
         Effect::GainClicks(side, amount) => {
@@ -4980,14 +4986,14 @@ pub(crate) fn pay_cost_ctx(
                 return Err(RulesError::NotEnoughClicks { side, available: 0, requested: 1 });
             }
             state.resources_mut(side).clicks = crate::rules::state::Clicks(0);
-            Ok(vec![GameEvent::ClicksLost { side, amount }])
+            Ok(vec![GameEvent::ClicksLost { side, amount, by_cost: true }])
         }
         // Lost, not spent: nothing about the ability is an action.
         Cost::LoseClicks(amount) => {
             let clicks = state.resources(side).clicks;
             let left = clicks.spend(*amount).ok_or(RulesError::NotEnoughClicks { side, available: clicks.0, requested: *amount })?;
             state.resources_mut(side).clicks = left;
-            Ok(vec![GameEvent::ClicksLost { side, amount: *amount }])
+            Ok(vec![GameEvent::ClicksLost { side, amount: *amount, by_cost: true }])
         }
 
         // The run ends as a jack-out, which the payer dispatches with the

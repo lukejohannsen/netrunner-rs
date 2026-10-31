@@ -384,6 +384,8 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         Trigger::OnSecretCreditsRevealed => false,
         // About no card: how many were drawn is public.
         Trigger::OnCardsDrawn => false,
+        // About no card: a click count is public.
+        Trigger::OnClicksLost => false,
         // A score area is public.
         Trigger::OnAgendaAddedToScoreArea => false,
         // An operation resolves in the open, and an expendable card is
