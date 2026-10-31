@@ -52011,3 +52011,41 @@ mod sansan_stage_30 {
         assert_eq!(scored.corp.resources.agenda_points, AgendaPoints(2));
     }
 }
+
+mod sansan_stage_31 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn event_toggles(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
+        crate::rules::legal_actions_for(state, registry, Side::Runner).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect()
+    }
+
+    #[test]
+    fn comet_plays_a_second_event_without_a_click_after_the_first_event_of_the_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig.push(crate::rules::InstalledRunnerCard { install_id: fixture_install_id("comet"), card: id("comet"), ..Default::default() });
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }).expect("play the first event");
+        let (asked, _) = close_all_windows(asked, &registry);
+        let toggles = event_toggles(&asked, &registry);
+        assert_eq!(toggles.len(), 2, "either Sure Gamble left in the grip");
+        assert_eq!(asked.runner.resources.credits, Credits(9));
+        let (toggled, _) = apply_action(&asked, &registry, toggles[0].clone()).expect("toggle");
+        let (played, _) = apply_action(&toggled, &registry, PlayerAction::ConfirmCardSelection).expect("play another");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.runner.resources.clicks, Clicks(3), "the second event spent no click");
+        assert_eq!(played.runner.resources.credits, Credits(13), "and paid its own cost");
+        assert_eq!(played.runner.grip.len(), 1);
+        let (third, _) = apply_action(&played, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }).expect("play the last event");
+        let (third, _) = close_all_windows(third, &registry);
+        assert!(event_toggles(&third, &registry).is_empty(), "only the first time each turn");
+        assert_eq!(third.runner.resources.clicks, Clicks(2));
+    }
+}
