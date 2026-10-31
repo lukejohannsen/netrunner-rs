@@ -1,0 +1,29 @@
+{
+  "id": "manhunt",
+  "title": "Manhunt",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "Trace": {
+            "base": 2,
+            "on_success": {
+              "GiveTags": {
+                "Fixed": 1
+              }
+            }
+          }
+        }
+      ],
+      "text": "The first time the Runner makes a successful run each turn, Trace[2]. If successful, give the Runner 1 tag."
+    }
+  ],
+  "built_from": 6046,
+  "is_playable": true
+}

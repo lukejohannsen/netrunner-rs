@@ -324,10 +324,8 @@ pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("cerebral_static", "Cerebral Static"),
     ("targeted_marketing", "Targeted Marketing"),
     ("information_overload", "Information Overload"),
-    ("paywall_implementation", "Paywall Implementation"),
     ("sealed_vault", "Sealed Vault"),
     ("eden_fragment", "Eden Fragment"),
-    ("lag_time", "Lag Time"),
     ("will_o_the_wisp", "Will-o'-the-Wisp"),
     ("scrubbed", "Scrubbed"),
     ("three_steps_ahead", "Three Steps Ahead"),
@@ -340,7 +338,6 @@ pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("kitsune", "Kitsune"),
     ("port_anson_grid", "Port Anson Grid"),
     ("the_news_now_hour", "The News Now Hour"),
-    ("manhunt", "Manhunt"),
     ("wendigo", "Wendigo"),
     ("chronos_project", "Chronos Project"),
     ("shattered_remains", "Shattered Remains"),
@@ -390,9 +387,7 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("incubator", "Incubator"),
     ("ixodidae", "Ixodidae"),
     ("code_siphon", "Code Siphon"),
-    ("sage", "Sage"),
     ("bribery", "Bribery"),
-    ("au_revoir", "Au Revoir"),
 ];
 
 /// *Honor and Profit* (`honor_and_profit`): tranche F8 of the FFG plan.
@@ -411,7 +406,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("neotokyo_grid", "NeoTokyo Grid"),
     ("tori_hanzo", "Tori Hanzō"),
     ("plan_b", "Plan B"),
-    ("guard", "Guard"),
     ("rainbow", "Rainbow"),
     ("diversified_portfolio", "Diversified Portfolio"),
     ("iain_stirling_retired_spook", "Iain Stirling: Retired Spook"),
@@ -431,7 +425,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mass_install", "Mass Install"),
     ("overmind", "Overmind"),
     ("oracle_may", "Oracle May"),
-    ("donut_taganes", "Donut Taganes"),
 ];
 
 /// *Creation and Control* (`creation_and_control`): tranche F9 of the FFG plan.
@@ -440,14 +433,12 @@ pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("custom_biotics_engineered_for_success", "Custom Biotics: Engineered for Success"),
     ("next_design_guarding_the_net", "NEXT Design: Guarding the Net"),
     ("director_haas_pet_project", "Director Haas' Pet Project"),
-    ("efficiency_committee", "Efficiency Committee"),
     ("project_wotan", "Project Wotan"),
     ("haas_arcology_ai", "Haas Arcology AI"),
     ("bioroid_efficiency_research", "Bioroid Efficiency Research"),
     ("successful_demonstration", "Successful Demonstration"),
     ("howler", "Howler"),
     ("minelayer", "Minelayer"),
-    ("zed_1_0", "Zed 1.0"),
     ("awakening_center", "Awakening Center"),
     ("tyrs_hand", "Tyr's Hand"),
     ("the_professor_keeper_of_knowledge", "The Professor: Keeper of Knowledge"),
@@ -486,7 +477,6 @@ pub(crate) const ST_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("copycat", "Copycat"),
     ("eureka", "Eureka!"),
     ("record_reconstructor", "Record Reconstructor"),
-    ("hellion_alpha_test", "Hellion Alpha Test"),
     ("off_the_grid", "Off the Grid"),
 ];
 
@@ -528,8 +518,6 @@ pub(crate) const FAL_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("tallie_perrault", "Tallie Perrault"),
     ("executive_wiretaps", "Executive Wiretaps"),
     ("blackguard", "Blackguard"),
-    ("alpha", "Alpha"),
-    ("omega", "Omega"),
     ("blackmail", "Blackmail"),
     ("toshiyuki_sakai", "Toshiyuki Sakai"),
     ("restoring_face", "Restoring Face"),
@@ -542,7 +530,6 @@ pub(crate) const DT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
     ("savoir_faire", "Savoir-faire"),
     ("paintbrush", "Paintbrush"),
-    ("gyri_labyrinth", "Gyri Labyrinth"),
     ("reclamation_order", "Reclamation Order"),
     ("broadcast_square", "Broadcast Square"),
     ("corporate_shuffle", "Corporate Shuffle"),
@@ -556,7 +543,6 @@ pub(crate) const WLA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("cortez_chip", "Cortez Chip"),
     ("zu_13_key_master", "ZU.13 Key Master"),
     ("the_helpful_ai", "The Helpful AI"),
-    ("tmi", "TMI"),
 ];
 
 /// *Trace Amount* (`trace_amount`): tranche F11 of the FFG plan.
@@ -567,8 +553,6 @@ pub(crate) const TA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("jinteki_replicating_perfection", "Jinteki: Replicating Perfection"),
     ("fetal_ai", "Fetal AI"),
     ("sensei", "Sensei"),
-    ("chilo_city_grid", "ChiLo City Grid"),
-    ("power_grid_overload", "Power Grid Overload"),
     ("amazon_industrial_zone", "Amazon Industrial Zone"),
     ("executive_retreat", "Executive Retreat"),
 ];
@@ -615,7 +599,6 @@ pub(crate) const FP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("deep_thought", "Deep Thought"),
     ("midori", "Midori"),
     ("nbn_the_world_is_yours", "NBN: The World is Yours*"),
-    ("midseason_replacements", "Midseason Replacements"),
 ];
 
 /// *NAPD Multiplayer* (`napd_multiplayer`): tranche F12 of the FFG plan.

@@ -1,0 +1,38 @@
+{
+  "id": "tmi",
+  "title": "TMI",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 3,
+  "strength": 5,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 2,
+            "on_success": {
+              "Sequence": []
+            },
+            "on_failure": {
+              "DerezCard": "ThisCard"
+            }
+          }
+        }
+      ],
+      "text": "When you rez TMI, Trace[2]. If unsuccessful, derez TMI."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 2017,
+  "is_playable": true
+}

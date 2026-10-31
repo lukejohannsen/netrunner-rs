@@ -1,0 +1,26 @@
+{
+  "id": "au_revoir",
+  "title": "Au Revoir",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnRunEnded",
+      "subject": "Any",
+      "when": "JackedOut",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Gain 1[credit] whenever you jack out."
+    }
+  ],
+  "built_from": 6119,
+  "is_playable": true
+}

@@ -1,0 +1,25 @@
+{
+  "id": "gyri_labyrinth",
+  "title": "Gyri Labyrinth",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 2,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Runner's maximum hand size is reduced by 2 until the beginning of the Corp's next turn.",
+      "effect": {
+        "ModifyHandSize": {
+          "side": "Runner",
+          "by": -2,
+          "until": "UntilYourNextTurnBegins"
+        }
+      }
+    }
+  ],
+  "built_from": 4110,
+  "is_playable": true
+}

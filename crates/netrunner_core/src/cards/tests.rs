@@ -52401,3 +52401,23 @@ mod genesis_stage_1 {
         assert_eq!(played.runner.resources.credits, Credits(0));
     }
 }
+
+/// The FFG pool's composable leftovers (31 October 2026).
+mod ffg_leftovers_stage_1 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn midseason_replacements_and_power_grid_overload_need_last_turns_run() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(10);
+        state.corp.hq = vec![id("midseason_replacements"), id("power_grid_overload")];
+        for card in ["midseason_replacements", "power_grid_overload"] {
+            assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id(card) }).is_err(), "{card} with no run last turn");
+        }
+    }
+}

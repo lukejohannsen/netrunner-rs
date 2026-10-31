@@ -1,0 +1,55 @@
+{
+  "id": "efficiency_committee",
+  "title": "Efficiency Committee",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ],
+      "text": "Place 3 agenda counters on Efficiency Committee when you score it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 1
+          }
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "GainClicks": [
+              "Corp",
+              2
+            ]
+          },
+          {
+            "Prohibit": {
+              "what": "Advance",
+              "until": "Turn"
+            }
+          }
+        ]
+      },
+      "text": "[click], hosted agenda counter: Gain [click][click]. You cannot advance cards for the remainder of this turn."
+    }
+  ],
+  "built_from": 3005,
+  "is_playable": true
+}

@@ -1,0 +1,26 @@
+{
+  "id": "guard",
+  "title": "Guard",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 2,
+  "continuous": [
+    {
+      "kind": "CannotBeBypassed",
+      "applies_to": "This",
+      "text": "Guard cannot be bypassed."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 5024,
+  "is_playable": true
+}

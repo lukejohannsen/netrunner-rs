@@ -1,0 +1,58 @@
+{
+  "id": "sage",
+  "title": "Sage",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 0,
+  "memory_cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "UnusedMemory"
+        }
+      },
+      "applies_to": "This",
+      "text": "This program gets +1 strength for each unused MU."
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break 1 code gate or 1 barrier subroutine. — code gate",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break 1 code gate or 1 barrier subroutine. — barrier",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 6117,
+  "is_playable": true
+}

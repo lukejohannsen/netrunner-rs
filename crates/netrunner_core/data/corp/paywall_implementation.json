@@ -1,0 +1,24 @@
+{
+  "id": "paywall_implementation",
+  "title": "Paywall Implementation",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "Gain 1[credit] whenever the Runner makes a successful run."
+    }
+  ],
+  "built_from": 6028,
+  "is_playable": true
+}

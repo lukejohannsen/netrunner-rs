@@ -1,0 +1,33 @@
+{
+  "id": "midseason_replacements",
+  "title": "Midseason Replacements",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 5,
+  "play_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesLastTurn": "OnAgendaStolen"
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 6,
+            "on_success": {
+              "GiveTags": "TraceMargin"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 2116,
+  "is_playable": true
+}

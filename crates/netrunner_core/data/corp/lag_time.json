@@ -1,0 +1,23 @@
+{
+  "id": "lag_time",
+  "title": "Lag Time",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "Ice": "Any"
+      },
+      "text": "All ice have +1 strength."
+    }
+  ],
+  "triggers": [],
+  "built_from": 6031,
+  "is_playable": true
+}
