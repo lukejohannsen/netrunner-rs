@@ -1316,12 +1316,13 @@ pub fn evaluate_effect(
 
         Effect::StealAccessedCard => crate::rules::run::steal_accessed_ignoring_costs(state, registry),
 
-        Effect::Score => {
+        Effect::Score | Effect::ScoreIgnoringAdvancementRequirement => {
             let Some(install) = ctx.acting_install else { return Err(RulesError::MissingActingCardContext) };
-            if !crate::rules::engine::scorable(state, registry, install) {
+            let requirement = matches!(effect, Effect::Score);
+            if !crate::rules::engine::scorable_with(state, registry, install, requirement) {
                 return Ok(Vec::new());
             }
-            crate::rules::engine::score_install(state, registry, install)
+            crate::rules::engine::score_install(state, registry, install, requirement)
         }
 
         // Drawn together and first, so the `each` that moves one cannot be

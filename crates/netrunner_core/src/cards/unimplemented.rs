@@ -253,7 +253,6 @@ pub(crate) const BB_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("off_campus_apartment", "Off-Campus Apartment"),
     ("comet", "Comet"),
     ("london_library", "London Library"),
-    ("research_grant", "Research Grant"),
     ("recruiting_trip", "Recruiting Trip"),
     ("blacklist", "Blacklist"),
 ];

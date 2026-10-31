@@ -294,8 +294,10 @@ pub enum CardFilter {
     /// Another copy of the parking card — Restore's "Remove all other
     /// copies of **that card** in Archives from the game", asked as the
     /// card Restore installed (`PromptInstallCorpCard::if_installed`), which
-    /// has left Archives by then, so every copy still there is another.
-    /// Instance-level: the parking card is an install, read off the state.
+    /// has left Archives by then, so every copy still there is another;
+    /// and Research Grant's "another copy of Research Grant that is
+    /// installed", asked as the agenda being scored. Instance-level: the
+    /// parking card is an install or a scored agenda, read off the state.
     /// Composition didn't work: `AmongCards` is written in the card file,
     /// and `ChosenThisWay` names installs, which a card in Archives is not.
     CopyOfThisCard,

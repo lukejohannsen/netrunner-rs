@@ -759,13 +759,16 @@ fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: 
         // that card"), resolved as its choice is answered: a necessary
         // condition, any install's costs, since the choice does not say
         // which card it scores.
-        PlayerAction::ResolvePendingChoice { .. } => {
-            let scores = match &state.pending_decision {
-                Some(crate::rules::PendingDecision::ChooseEffect { options, .. }) => options.iter().any(|option| {
-                    let mut found = false;
-                    option.for_each_effect(&mut |effect| found |= matches!(effect, crate::dsl::Effect::Score));
-                    found
-                }),
+        PlayerAction::ResolvePendingChoice { .. } | PlayerAction::ToggleCardSelection { .. } | PlayerAction::ConfirmCardSelection => {
+            let any_scores = |effect: &crate::dsl::Effect| {
+                let mut found = false;
+                effect.for_each_effect(&mut |effect| found |= effect.scores());
+                found
+            };
+            // Research Grant scores the copy its selection chose.
+            let scores = match (action, &state.pending_decision) {
+                (PlayerAction::ResolvePendingChoice { .. }, Some(crate::rules::PendingDecision::ChooseEffect { options, .. })) => options.iter().any(any_scores),
+                (PlayerAction::ToggleCardSelection { .. } | PlayerAction::ConfirmCardSelection, Some(crate::rules::PendingDecision::ChooseCards { then: Some(then), .. })) => any_scores(then),
                 _ => false,
             };
             scores
