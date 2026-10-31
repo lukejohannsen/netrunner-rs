@@ -1845,6 +1845,15 @@ pub enum Effect {
     /// priority and no window open, and Big Deal scores in the middle of its
     /// resolution, just before it ends that phase.
     Score,
+    /// `Score` without the advancement requirement — Research Grant's
+    /// "you may score another copy of Research Grant that is installed",
+    /// which, unlike Big Deal, does not say "if able": the copy is scored
+    /// however many advancement counters it has, and still pays every cost
+    /// to score and is still refused by anything that forbids scoring.
+    /// Composition didn't work: the requirement is the one restriction
+    /// `engine::scorable` asks before every other, and a card had no way
+    /// to waive it.
+    ScoreIgnoringAdvancementRequirement,
     /// `chooser` chooses a card name, among the playable cards `names`
     /// admits, and `then` resolves with the name written over
     /// `CardFilter::ChosenName` — Complete Image's "Choose a card name,
@@ -4471,6 +4480,7 @@ impl Effect {
             | Effect::EndActionPhase
             | Effect::TurnFaceup
             | Effect::Score
+            | Effect::ScoreIgnoringAdvancementRequirement
             | Effect::StealAccessedCard
             | Effect::Breach(_)
             | Effect::BreachAfter(_)
@@ -4539,6 +4549,13 @@ impl Effect {
             found |= matches!(effect, Effect::RezInstalled { pay_cost: true, .. });
         });
         found
+    }
+
+    /// Whether this effect, itself and not what it holds, scores an agenda
+    /// by a card's text (Big Deal, Research Grant). Read by
+    /// `payment::could_ask` beside `for_each_effect`.
+    pub fn scores(&self) -> bool {
+        matches!(self, Effect::Score | Effect::ScoreIgnoringAdvancementRequirement)
     }
 
     /// The variant name of this effect — `"Sequence"`, `"GainCredits"` —

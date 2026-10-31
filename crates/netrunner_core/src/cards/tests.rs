@@ -51983,3 +51983,31 @@ mod sansan_stage_29 {
     }
 
 }
+
+mod sansan_stage_30 {
+    use super::*;
+    use crate::rules::{InstallSlot, InstalledCard};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn research_grant_scores_another_installed_copy_whatever_its_advancement() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![
+            InstalledCard { install_id: InstallId(1001), card: id("research_grant"), server: ServerId::Remote(0), slot: InstallSlot::Root, advancement_tokens: 3, ..Default::default() },
+            InstalledCard { install_id: InstallId(1002), card: id("research_grant"), server: ServerId::Remote(1), slot: InstallSlot::Root, ..Default::default() },
+        ];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(1001) }).expect("score it");
+        let (asked, _) = close_all_windows(asked, &registry);
+        let toggles: Vec<PlayerAction> = crate::rules::legal_actions_for(&asked, &registry, Side::Corp).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert_eq!(toggles.len(), 1, "another copy that is installed");
+        let (toggled, _) = apply_action(&asked, &registry, toggles[0].clone()).expect("toggle");
+        let (scored, _) = apply_action(&toggled, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let (scored, _) = close_all_windows(scored, &registry);
+        assert!(scored.corp.installed.is_empty(), "both scored, the second with no advancement counters");
+        assert_eq!(scored.corp.resources.agenda_points, AgendaPoints(2));
+    }
+}

@@ -1,0 +1,32 @@
+{
+  "id": "research_grant",
+  "title": "Research Grant",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "CopyOfThisCard",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": "ScoreIgnoringAdvancementRequirement"
+          }
+        }
+      ],
+      "text": "When you score Research Grant, you may score another copy of Research Grant that is installed."
+    }
+  ],
+  "built_from": 8032,
+  "is_playable": true
+}

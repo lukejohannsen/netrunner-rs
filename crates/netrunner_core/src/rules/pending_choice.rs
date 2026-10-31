@@ -576,7 +576,16 @@ fn instance_matches_filter(
         // install that left the zone, so any card there by its id is
         // another copy.
         CardFilter::CopyOfThisCard => {
-            let this = source.and_then(|source| state.find_corp_install(source).map(|card| card.card.clone()).or_else(|| state.find_rig_install(source).map(|card| card.card.clone())));
+            // A scored agenda is the parking card too: Research Grant's
+            // "another copy of Research Grant that is installed", asked
+            // from the Corp's score area as it is scored.
+            let this = source.and_then(|source| {
+                state
+                    .find_corp_install(source)
+                    .map(|card| card.card.clone())
+                    .or_else(|| state.find_rig_install(source).map(|card| card.card.clone()))
+                    .or_else(|| state.corp.find_scored(source).map(|card| card.card.clone()))
+            });
             this.is_some_and(|this| zone_card_ids(state, chooser, zone, source).get(position) == Some(&this))
         }
         // Only a heap card can have been discarded; the list is the

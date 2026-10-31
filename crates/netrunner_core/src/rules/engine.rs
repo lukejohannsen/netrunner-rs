@@ -3273,7 +3273,7 @@ fn score_agenda(
     require_phase(state, GamePhase::Action(Side::Corp))?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let events = score_install(&mut next, registry, target)?;
+    let events = score_install(&mut next, registry, target, true)?;
     Ok((next, events))
 }
 
@@ -3285,13 +3285,19 @@ fn score_agenda(
 /// action's phase and window, which are the action's (`score_agenda`), not
 /// the score's: a card's text scores in the middle of its own resolution.
 pub(crate) fn scorable(state: &GameState, registry: &CardRegistry, target: InstallId) -> bool {
+    scorable_with(state, registry, target, true)
+}
+
+/// [`scorable`], asking the advancement requirement only when
+/// `requirement` (Research Grant's score of another copy waives it).
+pub(crate) fn scorable_with(state: &GameState, registry: &CardRegistry, target: InstallId, requirement: bool) -> bool {
     let Some(installed) = state.find_corp_install(target) else { return false };
     let Some(card_def) = registry.get(&installed.card) else { return false };
     if card_def.card_type != CardType::Agenda || continuous::cannot_install(state, registry, Prohibition::ScoreAgendas, target) {
         return false;
     }
     let required = continuous::advancement_requirement(state, registry, target).unwrap_or(0);
-    (installed.advancement_tokens as i32) >= required
+    (!requirement || (installed.advancement_tokens as i32) >= required)
         && continuous::score_costs(state, registry, target).iter().all(|(cost, source, source_install)| {
             let ctx = match source_install {
                 Some(install) => ability::ResolutionContext::for_install(*install, source),
@@ -3306,7 +3312,9 @@ pub(crate) fn scorable(state: &GameState, registry: &CardRegistry, target: Insta
 /// share, so a score by text pays the same costs, keeps the same
 /// dividends and is heard as the same `AgendaScored`. Was the body of
 /// `score_agenda` until a card scored outside the action phase.
-pub(crate) fn score_install(next: &mut GameState, registry: &CardRegistry, target: InstallId) -> Result<Vec<GameEvent>, RulesError> {
+/// `requirement` is whether the advancement requirement is asked: always,
+/// but for Research Grant's score of another copy.
+pub(crate) fn score_install(next: &mut GameState, registry: &CardRegistry, target: InstallId, requirement: bool) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Corp;
     let state: &GameState = next;
     // Luminal Transubstantiation's lockout. Asked here and by
@@ -3337,7 +3345,7 @@ pub(crate) fn score_install(next: &mut GameState, registry: &CardRegistry, targe
     // As the table stands (Ontological Dependence), and signed: a
     // requirement lowered to 0 or below is met by no counters (CR 1.17.3a).
     let required = continuous::advancement_requirement(state, registry, target).unwrap_or(0);
-    if (advancement_tokens as i32) < required {
+    if requirement && (advancement_tokens as i32) < required {
         return Err(RulesError::AdvancementRequirementNotMet {
             card: card_id,
             current: advancement_tokens,
