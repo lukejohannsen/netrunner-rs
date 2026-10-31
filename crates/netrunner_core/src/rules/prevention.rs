@@ -323,7 +323,7 @@ pub(crate) fn run_ending(
                 state,
                 &Effect::OfferPaidChoice {
                     side: Side::Corp,
-                    cost: Cost::TrashRandomFromHq(root),
+                    cost: Cost::TrashRandomFromHq { count: root, reveal: true },
                     if_paid: Box::new(Effect::EndTheRun),
                     if_declined: Box::new(Effect::Sequence(Vec::new())),
                     text: None,

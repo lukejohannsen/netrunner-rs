@@ -2150,6 +2150,8 @@ impl CardDefinition {
                 (_, Scope::IceNotInnermost) => return misfit("IceNotInnermost", "only an install cost is asked of a piece of ice being installed"),
                 (ContinuousKind::RezCost(_), Scope::This | Scope::Ice(_) | Scope::RootOfThisServer(_) | Scope::IceProtectingThisServer(_)) => {}
                 (ContinuousKind::RezCost(_), _) => return misfit("RezCost", "only an installed Corp card is rezzed"),
+                (ContinuousKind::AdditionalRezCost(_), Scope::CorpInstalled(_)) => {}
+                (ContinuousKind::AdditionalRezCost(_), _) => return misfit("AdditionalRezCost", "an additional cost to rez is about the Corp's installs"),
                 (ContinuousKind::TrashCost(_), Scope::This | Scope::RootOfThisServer(_) | Scope::Accessing(_)) => {}
                 (ContinuousKind::TrashCost(_), _) => return misfit("TrashCost", "a trash cost is this card's own, that of a card in its server's root, or that of a card being accessed"),
                 // Kill Switch's "while the Runner is accessing an agenda in

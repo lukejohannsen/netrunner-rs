@@ -3,7 +3,7 @@
   "name": "Zyzomys",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach MaxX: Maximum Punk Rock, Order and Chaos's Anarch identity, who trashes the top 2 cards of the stack and draws 1 as each turn begins. Grassroots' list, its identity swapped, with its two The Wizard's Chest for a Brain Cage and a Skulljack, which Grassroots keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. FFG F7 Stage 26: Itinerant Protesters for one Privileged Access",
+  "description": "Not a published list: built so the sweeps reach MaxX: Maximum Punk Rock, Order and Chaos's Anarch identity, who trashes the top 2 cards of the stack and draws 1 as each turn begins. Grassroots' list, its identity swapped, with its two The Wizard's Chest for a Brain Cage and a Skulljack, which Grassroots keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. FFG F7 Stage 26: Itinerant Protesters for one Privileged Access SanSan Stage 29 swapped one of three Arruaceiras Crew for a Hacktivist Meeting.",
   "style": [
     "rig",
     "dismantle"
@@ -20,7 +20,7 @@
     },
     {
       "card": "arruaceiras_crew",
-      "count": 3
+      "count": 2
     },
     {
       "card": "juli_moreira_lee",
@@ -116,6 +116,10 @@
     },
     {
       "card": "itinerant_protesters",
+      "count": 1
+    },
+    {
+      "card": "hacktivist_meeting",
       "count": 1
     }
   ]

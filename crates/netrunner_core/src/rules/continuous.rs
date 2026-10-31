@@ -1124,6 +1124,20 @@ pub(crate) fn score_costs(state: &GameState, registry: &CardRegistry, install: I
     costs
 }
 
+/// Every additional cost to rez the Corp install `install` (Hacktivist
+/// Meeting), each with the card that imposes it and that card's install,
+/// as [`score_costs`] has them: the payer is the Corp.
+pub(crate) fn rez_costs(state: &GameState, registry: &CardRegistry, install: InstallId) -> Vec<(Cost, CardId, Option<InstallId>)> {
+    let Some(target) = Target::corp_install(state, registry, install) else { return Vec::new() };
+    let mut costs = Vec::new();
+    for_each_applying(state, registry, target, |kind| matches!(kind, ContinuousKind::AdditionalRezCost(_)), |effect, source, _| {
+        if let ContinuousKind::AdditionalRezCost(cost) = &effect.kind {
+            costs.push((cost.clone(), source.card.clone(), source.install));
+        }
+    });
+    costs
+}
+
 /// Every interrupt on paying for `card` as it is played or installed
 /// (`ContinuousKind::Interrupt`, Patchwork), each with the card that prints
 /// it and that card's install, as [`score_costs`] has them. Whether its use

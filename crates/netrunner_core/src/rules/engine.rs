@@ -1276,8 +1276,27 @@ pub(crate) fn rez_install(
         return Err(RulesError::RezRestricted { card: ice_id });
     }
     let card_def = registry.get(&ice_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(ice_id.clone()))?;
+    // Another card's additional cost to rez (Hacktivist Meeting's random
+    // trash from HQ), asked ahead of any payment so a rez that cannot be
+    // finished takes nothing, and paid before the card turns faceup. A rez
+    // ignoring all costs pays none of it (CR 1.16.5c).
+    let additional = if pay_cost { continuous::rez_costs(next, registry, ice) } else { Vec::new() };
+    if !additional.iter().all(|(cost, source, source_install)| ability::cost_is_affordable(next, registry, side, cost, Purpose::Other, &additional_cost_context(source, *source_install))) {
+        return Err(RulesError::RezRestricted { card: ice_id });
+    }
     if !pay_cost || card_def.rez_alternatives.is_empty() {
-        return rez_priced(next, registry, ice, pay_cost, discount);
+        if additional.is_empty() {
+            return rez_priced(next, registry, ice, pay_cost, discount);
+        }
+        let (cost, available) = rez_price(next, registry, ice, pay_cost, discount);
+        if available < cost {
+            return Err(RulesError::NotEnoughCredits { side, available, requested: cost });
+        }
+        let paid = pay_additional_rez_costs(next, registry, &additional)?;
+        let mut events = paid.clone();
+        events.extend(rez_priced(next, registry, ice, pay_cost, discount)?);
+        events.extend(ability::dispatch_cost_events(next, registry, &paid)?);
+        return Ok(events);
     }
 
     let ctx = ability::ResolutionContext::for_card(Some(&ice_id));
@@ -1330,13 +1349,32 @@ pub(crate) fn rez_install(
         }
     };
     let alternative = &card_def.rez_alternatives[chosen as usize];
-    let paid = match &alternative.cost {
-        Some(cost) => ability::pay_cost_ctx(next, registry, side, cost, Purpose::Other, &ctx)?,
-        None => Vec::new(),
-    };
+    let mut paid = pay_additional_rez_costs(next, registry, &additional)?;
+    if let Some(cost) = &alternative.cost {
+        paid.extend(ability::pay_cost_ctx(next, registry, side, cost, Purpose::Other, &ctx)?);
+    }
     let mut events = paid.clone();
     events.extend(rez_priced(next, registry, ice, true, discount.saturating_add(alternative.discount))?);
     events.extend(ability::dispatch_cost_events(next, registry, &paid)?);
+    Ok(events)
+}
+
+/// What a cost another card imposes on a rez is paid as: that card, at its
+/// install when it has one (as `score_install` pays Word on the Street's).
+fn additional_cost_context<'a>(source: &'a CardId, install: Option<InstallId>) -> ability::ResolutionContext<'a> {
+    match install {
+        Some(install) => ability::ResolutionContext::for_install(install, source),
+        None => ability::ResolutionContext::for_card(Some(source)),
+    }
+}
+
+/// Pays every additional cost to rez that `rez_install` found affordable,
+/// returning the payments' events for its caller to dispatch after the rez.
+fn pay_additional_rez_costs(next: &mut GameState, registry: &CardRegistry, costs: &[(Cost, CardId, Option<InstallId>)]) -> Result<Vec<GameEvent>, RulesError> {
+    let mut events = Vec::new();
+    for (cost, source, source_install) in costs {
+        events.extend(ability::pay_cost_ctx(next, registry, Side::Corp, cost, Purpose::Other, &additional_cost_context(source, *source_install))?);
+    }
     Ok(events)
 }
 

@@ -224,6 +224,16 @@ pub enum ContinuousKind {
     /// with the score, and then a checkpoint, before the agenda moves
     /// (CR 1.16.10b–c); the Corp may decline by not scoring (CR 1.17.3b).
     ScoreCost(crate::dsl::Cost),
+    /// A cost the Corp pays, as an additional cost, to rez a card —
+    /// Hacktivist Meeting's "As an additional cost to rez non-ice cards,
+    /// the Corp must randomly trash a card from HQ", about the installs
+    /// `Scope::CorpInstalled` admits. `ScoreCost`'s shape, because what is
+    /// paid is a card. Paid with the rez's credits, before the card turns
+    /// faceup (CR 1.16.10b), and not payable means no rez; a rez "ignoring
+    /// all costs" pays none of it (CR 1.16.5c). Composition didn't work:
+    /// `RezCost` is credits, and a card's own `rez_alternatives` are its
+    /// own, never another card's.
+    AdditionalRezCost(crate::dsl::Cost),
     /// A cost the Corp pays, as an additional cost, to trash a resource with
     /// the basic action (CR 5.2.6g) — Sebastião Souza Pessoa's "As an
     /// additional cost to trash a **connection** resource with the basic
