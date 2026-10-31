@@ -52247,3 +52247,51 @@ mod lunar_stage_6 {
         assert_eq!(crate::rules::continuous::installed_ice_strength(&state, &registry, &id("ice_wall"), fixture_install_id("ice_wall")), wall_printed);
     }
 }
+
+/// Creation and Control Stages 1 to 4 (FFG F9): the composed cards.
+mod creation_and_control_stage_1 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn gila_hands_arcology_gains_three_from_the_score_area() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(0);
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda { install_id: InstallId(7), ..crate::rules::ScoredAgenda::plain(id("gila_hands_arcology")) }];
+        let (used, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(7), ability_index: 0 }).expect("[click], [click]: gain 3");
+        let (used, _) = close_all_windows(used, &registry);
+        assert_eq!(used.corp.resources.credits, Credits(3));
+        assert_eq!(used.corp.resources.clicks, Clicks(1));
+    }
+
+    #[test]
+    fn thomas_haas_pays_for_the_tokens_its_own_trash_removed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(0);
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("thomas_haas"), card: id("thomas_haas"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, advancement_tokens: 3, ..Default::default() }];
+        let (used, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("thomas_haas"), ability_index: 0 }).expect("[trash]: gain 2 per token");
+        let (used, _) = close_all_windows(used, &registry);
+        assert_eq!(used.corp.resources.credits, Credits(6));
+        assert!(used.corp.installed.is_empty());
+    }
+
+    #[test]
+    fn levy_ar_lab_access_shuffles_the_grip_and_heap_back_and_draws_five() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("levy_ar_lab_access"), id("sure_gamble"), id("sure_gamble")];
+        state.runner.heap = vec![id("sure_gamble"); 4];
+        state.runner.stack = vec![id("sure_gamble"); 2];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("levy_ar_lab_access") }).expect("play it");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.runner.grip.len(), 5);
+        assert_eq!(played.runner.stack.len(), 3);
+        assert!(played.runner.heap.is_empty(), "removed from the game, not trashed");
+    }
+}

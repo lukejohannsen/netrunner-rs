@@ -1,0 +1,36 @@
+{
+  "id": "datapike",
+  "title": "Datapike",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 4,
+  "strength": 2,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Runner must pay 2[credit], if able. If the Runner cannot pay 2[credit], end the run.",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 2
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": "EndTheRun",
+          "text": "The Runner must pay 2[credit], if able. If the Runner cannot pay 2[credit], end the run.",
+          "if_able": true
+        }
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 3027,
+  "is_playable": true
+}

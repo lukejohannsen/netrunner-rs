@@ -1,0 +1,31 @@
+{
+  "id": "thomas_haas",
+  "title": "Thomas Haas",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 1,
+  "advancement_requirement": 0,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "GainCreditsAmount": [
+          "Corp",
+          {
+            "Times": {
+              "amount": "HostedAdvancementTokens",
+              "times": 2
+            }
+          }
+        ]
+      },
+      "text": "[trash]: Gain 2[credit] for each advancement token on Thomas Haas."
+    }
+  ],
+  "built_from": 3012,
+  "is_playable": true
+}

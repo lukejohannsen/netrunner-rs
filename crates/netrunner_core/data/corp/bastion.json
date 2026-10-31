@@ -1,0 +1,19 @@
+{
+  "id": "bastion",
+  "title": "Bastion",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 4,
+  "strength": 4,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 3026,
+  "is_playable": true
+}

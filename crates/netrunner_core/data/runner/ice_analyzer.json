@@ -1,0 +1,32 @@
+{
+  "id": "ice_analyzer",
+  "title": "Ice Analyzer",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "counter_kind": "Credit",
+  "pays_for": [
+    {
+      "Installing": {
+        "CardType": "Program"
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "Any",
+      "when": {
+        "Card": "Ice"
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever the Corp rezzes a piece of ice, place 1[credit] on Ice Analyzer."
+    }
+  ],
+  "built_from": 25057,
+  "is_playable": true
+}

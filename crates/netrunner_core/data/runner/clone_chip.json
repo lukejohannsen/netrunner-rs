@@ -1,0 +1,47 @@
+{
+  "id": "clone_chip",
+  "title": "Clone Chip",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnHeap",
+          "filter": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              {
+                "InstallableRunnerCardWithDiscount": {
+                  "Credits": 0
+                }
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "InstallRunnerCardFromZone": {
+              "from": "OwnHeap",
+              "discount": {
+                "Credits": 0
+              }
+            }
+          }
+        }
+      },
+      "text": "[trash]: Install a program from your heap (paying the install cost)."
+    }
+  ],
+  "built_from": 3038,
+  "is_playable": true
+}

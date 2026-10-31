@@ -1,0 +1,44 @@
+{
+  "id": "server_diagnostics",
+  "title": "Server Diagnostics",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        }
+      ],
+      "text": "Gain 2[credit] when your turn begins."
+    },
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Whose": "Corp"
+          },
+          {
+            "Card": "Ice"
+          }
+        ]
+      },
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "Trash Server Diagnostics when you install a piece of ice."
+    }
+  ],
+  "built_from": 3025,
+  "is_playable": true
+}

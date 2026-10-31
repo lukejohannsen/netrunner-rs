@@ -1,0 +1,43 @@
+{
+  "id": "freelance_coding_contract",
+  "title": "Freelance Coding Contract",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnGrip",
+            "filter": {
+              "CardType": "Program"
+            },
+            "min": 0,
+            "max": 5,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnHeap",
+            "then": {
+              "GainCreditsAmount": [
+                "Runner",
+                {
+                  "Times": {
+                    "amount": "CardsSelected",
+                    "times": 2
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Trash up to 5 programs from your grip. Gain 2[credit] for each program trashed."
+    }
+  ],
+  "built_from": 3033,
+  "is_playable": true
+}

@@ -1,0 +1,177 @@
+{
+  "id": "zzzzzzzzzzz",
+  "name": "Zzzzzzzzzzz",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: Creation and Control Stages 1 and 2's (FFG F9) deck for Cybernetics Division, on Zzzz's list, carrying the set's composed Haas-Bioroid and neutral Corp cards: Bastion, Datapike, Heimdall 2.0, Ichi 2.0 and Viktor 2.0 for Pulse, Echo, two Wave and a NEXT Silver; Sentinel Defense Program for a Project Vitruvius and Gila Hands Arcology for Elivagar Bifurcation, a point for a point; Alix T4LB07, Levy University, Director Haas, Thomas Haas and Server Diagnostics for two Biotic Labor, a Cerebral Overwriter, Brain-Taping Warehouse and Test Ground. Zzzz keeps every card swapped out. Eternal-legal only.",
+  "style": [
+    "glacier"
+  ],
+  "identity": "cybernetics_division_humanity_upgraded",
+  "cards": [
+    {
+      "card": "vulnerability_audit",
+      "count": 1
+    },
+    {
+      "card": "project_vitruvius",
+      "count": 1
+    },
+    {
+      "card": "next_silver",
+      "count": 1
+    },
+    {
+      "card": "next_bronze",
+      "count": 2
+    },
+    {
+      "card": "project_vacheron",
+      "count": 2
+    },
+    {
+      "card": "black_level_clearance",
+      "count": 2
+    },
+    {
+      "card": "next_gold",
+      "count": 1
+    },
+    {
+      "card": "turing",
+      "count": 1
+    },
+    {
+      "card": "self_destruct_chips",
+      "count": 1
+    },
+    {
+      "card": "ryon_knight",
+      "count": 1
+    },
+    {
+      "card": "oaktown_grid",
+      "count": 1
+    },
+    {
+      "card": "lab_dog",
+      "count": 1
+    },
+    {
+      "card": "quicksand",
+      "count": 1
+    },
+    {
+      "card": "little_engine",
+      "count": 1
+    },
+    {
+      "card": "clairvoyant_monitor",
+      "count": 1
+    },
+    {
+      "card": "pachinko",
+      "count": 2
+    },
+    {
+      "card": "expose",
+      "count": 1
+    },
+    {
+      "card": "early_premiere",
+      "count": 1
+    },
+    {
+      "card": "vanity_project",
+      "count": 1
+    },
+    {
+      "card": "enforcer_1_0",
+      "count": 1
+    },
+    {
+      "card": "cybernetics_court",
+      "count": 1
+    },
+    {
+      "card": "team_sponsorship",
+      "count": 2
+    },
+    {
+      "card": "product_placement",
+      "count": 1
+    },
+    {
+      "card": "defective_brainchips",
+      "count": 1
+    },
+    {
+      "card": "research_grant",
+      "count": 2
+    },
+    {
+      "card": "markus_1_0",
+      "count": 1
+    },
+    {
+      "card": "iq",
+      "count": 1
+    },
+    {
+      "card": "elizas_toybox",
+      "count": 1
+    },
+    {
+      "card": "peak_efficiency",
+      "count": 1
+    },
+    {
+      "card": "bastion",
+      "count": 1
+    },
+    {
+      "card": "datapike",
+      "count": 1
+    },
+    {
+      "card": "heimdall_2_0",
+      "count": 1
+    },
+    {
+      "card": "ichi_2_0",
+      "count": 1
+    },
+    {
+      "card": "viktor_2_0",
+      "count": 1
+    },
+    {
+      "card": "sentinel_defense_program",
+      "count": 1
+    },
+    {
+      "card": "gila_hands_arcology",
+      "count": 1
+    },
+    {
+      "card": "alix_t4lb07",
+      "count": 1
+    },
+    {
+      "card": "levy_university",
+      "count": 1
+    },
+    {
+      "card": "director_haas",
+      "count": 1
+    },
+    {
+      "card": "thomas_haas",
+      "count": 1
+    },
+    {
+      "card": "server_diagnostics",
+      "count": 1
+    }
+  ]
+}
