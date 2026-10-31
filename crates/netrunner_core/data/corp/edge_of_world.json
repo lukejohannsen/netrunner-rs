@@ -1,0 +1,38 @@
+{
+  "id": "edge_of_world",
+  "title": "Edge of World",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": "ThisCardIsInstalled",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Credits": 3
+            },
+            "if_paid": {
+              "DealDamageAmount": [
+                "Brain",
+                "IceProtectingThisServer"
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 3[credit]. If you do, do 1 core damage for each piece of ice protecting this server"
+          }
+        }
+      ],
+      "text": "When the Runner accesses this asset while it is installed, you may pay 3[credit]. If you do, do 1 core damage for each piece of ice protecting this server."
+    }
+  ],
+  "built_from": 2053,
+  "is_playable": true
+}

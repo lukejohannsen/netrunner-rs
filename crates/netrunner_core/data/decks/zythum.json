@@ -3,7 +3,7 @@
   "name": "Zythum",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Flashpoint Stage 19's deck for NBN: Controlling the Message, on Paid Content's list, so the sweeps meet a Corp that may trace[4] for a tag the first time each turn the Runner trashes one of its installed cards. Eternal-legal only. Flashpoint Stage 23 traded a CPC Generator for NASX, so the sweeps meet an asset that buys power counters whenever another card gains the Corp credits. Mumbad Stage 7 swapped two Daily Business Show, two Ghost Branch and two Focus Group for two Sensie Actors Union, two Reality Threedee and two Kala Ghoda Real TV. Mumbad Stage 8 swapped two Digital Rights Management, The Powers That Be and Reversed Accounts for two The All-Seeing I, Lily Lockwell and Localized Product Line. Mumbad Stage 9 swapped two Increased Drop Rates, SanSan City Grid and Honeyfarm for two News Team, Keegan Lane and Disposable HQ. Mumbad Stage 10 swapped in Salem's Hospitality for Sweeps Week and Special Report, which another deck still carries. Mumbad Stage 11 swapped in Waiver and Aryabhata Tech for Data Ward and Watchdog, which another deck still carries. Mumbad Stage 13 swapped in Ibrahim Salem and Consulting Visit for a Pop-up Window and an IPO, which Paid Content still carries. Mumbad Stage 14 swapped in Improved Tracers, Rutherford Grid and Exchange of Information for a Breaking News, a Drone Screen and a Hard-Hitting News, which Paid Content still carries. Mumbad Stage 16: Indian Union Stock Exchange for a Sensie Actors Union. Mumbad Stage 17: Mumbad Virtual Tour for a Loot Box. Mumbad Stage 18 swaps one SYNC BRE and the Hatchet Job for Interrupt 0 and Navi Mumbai City Grid. Mumbad Stage 20 swaps one Kala Ghoda Real TV for Victoria Jenkins. Mumbad Stage 21 swaps the last SYNC BRE for News Hound. Mumbad Stage 22 swapped a License Acquisition for Quantum Predictive Model. Mumbad Stage 25 swapped a Reality Threedee for Mumbad City Hall. SanSan Stage 12 swapped a Kingmaking and a License Acquisition, kept by other decks, for an Explode-a-palooza and an Award Bait of the same points. SanSan Stage 22: Underway Grid Lunar Stage 5 (FFG F8): Troll, Universal Connectivity Fee and Errand Boy for an IP Block, a Thoth and a Weir, which Zzzzz and Paid Content keep. Lunar Stage 7 (FFG F8) swapped Shoot the Moon and Primary Transmission Dish for Localized Product Line and NASX, which two other decks keep. Spin Stages 1 to 4 (FFG F10) swapped in Muckraker, Quandary, City Surveillance, Jackson Howard, Shipment from SanSan, Restructure, Cyberdex Trial, and the agendas point for point, Character Assassination for Explode-a-palooza and Profiteering for Award Bait, for cards other decks keep.",
+  "description": "Not a published list: Flashpoint Stage 19's deck for NBN: Controlling the Message, on Paid Content's list, so the sweeps meet a Corp that may trace[4] for a tag the first time each turn the Runner trashes one of its installed cards. Eternal-legal only. Flashpoint Stage 23 traded a CPC Generator for NASX, so the sweeps meet an asset that buys power counters whenever another card gains the Corp credits. Mumbad Stage 7 swapped two Daily Business Show, two Ghost Branch and two Focus Group for two Sensie Actors Union, two Reality Threedee and two Kala Ghoda Real TV. Mumbad Stage 8 swapped two Digital Rights Management, The Powers That Be and Reversed Accounts for two The All-Seeing I, Lily Lockwell and Localized Product Line. Mumbad Stage 9 swapped two Increased Drop Rates, SanSan City Grid and Honeyfarm for two News Team, Keegan Lane and Disposable HQ. Mumbad Stage 10 swapped in Salem's Hospitality for Sweeps Week and Special Report, which another deck still carries. Mumbad Stage 11 swapped in Waiver and Aryabhata Tech for Data Ward and Watchdog, which another deck still carries. Mumbad Stage 13 swapped in Ibrahim Salem and Consulting Visit for a Pop-up Window and an IPO, which Paid Content still carries. Mumbad Stage 14 swapped in Improved Tracers, Rutherford Grid and Exchange of Information for a Breaking News, a Drone Screen and a Hard-Hitting News, which Paid Content still carries. Mumbad Stage 16: Indian Union Stock Exchange for a Sensie Actors Union. Mumbad Stage 17: Mumbad Virtual Tour for a Loot Box. Mumbad Stage 18 swaps one SYNC BRE and the Hatchet Job for Interrupt 0 and Navi Mumbai City Grid. Mumbad Stage 20 swaps one Kala Ghoda Real TV for Victoria Jenkins. Mumbad Stage 21 swaps the last SYNC BRE for News Hound. Mumbad Stage 22 swapped a License Acquisition for Quantum Predictive Model. Mumbad Stage 25 swapped a Reality Threedee for Mumbad City Hall. SanSan Stage 12 swapped a Kingmaking and a License Acquisition, kept by other decks, for an Explode-a-palooza and an Award Bait of the same points. SanSan Stage 22: Underway Grid Lunar Stage 5 (FFG F8): Troll, Universal Connectivity Fee and Errand Boy for an IP Block, a Thoth and a Weir, which Zzzzz and Paid Content keep. Lunar Stage 7 (FFG F8) swapped Shoot the Moon and Primary Transmission Dish for Localized Product Line and NASX, which two other decks keep. Spin Stages 1 to 4 (FFG F10) swapped in Muckraker, Quandary, City Surveillance, Jackson Howard, Shipment from SanSan, Restructure, Cyberdex Trial, and the agendas point for point, Character Assassination for Explode-a-palooza and Profiteering for Award Bait, for cards other decks keep. Genesis (F11) swaps in Uroboros, Big Brother, Freelancer, Foxfire, Marked Accounts and Restructured Datapool.",
   "style": [
     "fast-advance"
   ],
@@ -15,7 +15,7 @@
     },
     {
       "card": "bellona",
-      "count": 2
+      "count": 1
     },
     {
       "card": "astroscript_pilot_program",
@@ -23,14 +23,6 @@
     },
     {
       "card": "matrix_analyzer",
-      "count": 1
-    },
-    {
-      "card": "cpc_generator",
-      "count": 1
-    },
-    {
-      "card": "macrophage",
       "count": 1
     },
     {
@@ -43,7 +35,7 @@
     },
     {
       "card": "the_all_seeing_i",
-      "count": 2
+      "count": 1
     },
     {
       "card": "lily_lockwell",
@@ -51,7 +43,7 @@
     },
     {
       "card": "news_team",
-      "count": 2
+      "count": 1
     },
     {
       "card": "keegan_lane",
@@ -59,7 +51,7 @@
     },
     {
       "card": "salems_hospitality",
-      "count": 2
+      "count": 1
     },
     {
       "card": "aryabhata_tech",
@@ -163,6 +155,30 @@
     },
     {
       "card": "cyberdex_trial",
+      "count": 1
+    },
+    {
+      "card": "uroboros",
+      "count": 1
+    },
+    {
+      "card": "big_brother",
+      "count": 1
+    },
+    {
+      "card": "freelancer",
+      "count": 1
+    },
+    {
+      "card": "foxfire",
+      "count": 1
+    },
+    {
+      "card": "marked_accounts",
+      "count": 1
+    },
+    {
+      "card": "restructured_datapool",
       "count": 1
     }
   ]

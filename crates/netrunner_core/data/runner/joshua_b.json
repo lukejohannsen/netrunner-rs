@@ -1,0 +1,51 @@
+{
+  "id": "joshua_b",
+  "title": "Joshua B.",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "GainClicks": [
+                      "Runner",
+                      1
+                    ]
+                  },
+                  {
+                    "LaterThisTurn": {
+                      "when": "OnDiscardPhaseEnd",
+                      "effect": {
+                        "GiveTags": {
+                          "Fixed": 1
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may gain [click]. If you do, take 1 tag when this turn ends",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may gain [click]. If you do, take 1 tag when this turn ends."
+    }
+  ],
+  "built_from": 2042,
+  "is_playable": true
+}

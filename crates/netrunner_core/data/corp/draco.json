@@ -1,0 +1,77 @@
+{
+  "id": "draco",
+  "title": "Dracō",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 1,
+  "strength": 0,
+  "counter_kind": "Power",
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "This",
+      "text": "This ice gets +1 strength for each hosted power counter."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Corp",
+            "min": 0,
+            "max": {
+              "Credits": "Corp"
+            },
+            "then": {
+              "Sequence": [
+                {
+                  "LoseCreditsAmount": [
+                    "Corp",
+                    "ChosenNumber"
+                  ]
+                },
+                {
+                  "AddCounters": "ChosenNumber"
+                }
+              ]
+            },
+            "text": "you may spend any number of credits to place that many power counters on it"
+          }
+        }
+      ],
+      "text": "When you rez this ice, you may spend any number of credits to place that many power counters on it."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trace[2]. If successful, give the Runner 1 tag and end the run.",
+      "effect": {
+        "Trace": {
+          "base": 2,
+          "on_success": {
+            "Sequence": [
+              {
+                "GiveTags": {
+                  "Fixed": 1
+                }
+              },
+              "EndTheRun"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 2020,
+  "is_playable": true
+}

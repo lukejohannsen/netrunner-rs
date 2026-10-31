@@ -1,0 +1,33 @@
+{
+  "id": "hourglass",
+  "title": "Hourglass",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 5,
+  "strength": 4,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Runner loses [click], if able.",
+      "effect": {
+        "LoseClicks": 1
+      }
+    },
+    {
+      "text": "The Runner loses [click], if able.",
+      "effect": {
+        "LoseClicks": 1
+      }
+    },
+    {
+      "text": "The Runner loses [click], if able.",
+      "effect": {
+        "LoseClicks": 1
+      }
+    }
+  ],
+  "built_from": 2071,
+  "is_playable": true
+}

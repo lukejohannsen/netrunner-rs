@@ -1,0 +1,32 @@
+{
+  "id": "freelancer",
+  "title": "Freelancer",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "play_requirement": "IsTagged",
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OpponentInstalled",
+            "filter": {
+              "CardType": "Resource"
+            },
+            "min": 0,
+            "max": 2,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OpponentDiscard"
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 2040,
+  "is_playable": true
+}

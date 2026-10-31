@@ -1,0 +1,22 @@
+{
+  "id": "ruhr_valley",
+  "title": "Ruhr Valley",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 6,
+  "trash_cost": 4,
+  "continuous": [
+    {
+      "kind": {
+        "RunCost": {
+          "Clicks": 1
+        }
+      },
+      "applies_to": "RunsOnThisServer",
+      "text": "As an additional cost to make a run on this server, the Runner must spend [click]."
+    }
+  ],
+  "triggers": [],
+  "built_from": 2111,
+  "is_playable": true
+}

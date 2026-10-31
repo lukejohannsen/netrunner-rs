@@ -1,0 +1,58 @@
+{
+  "id": "private_contracts",
+  "title": "Private Contracts",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "trash_cost": 5,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 14
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": {
+        "ThisCardCountersAtLeast": 2
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "RemoveCounters": {
+              "Fixed": 2
+            }
+          },
+          {
+            "GainCredits": [
+              "Corp",
+              2
+            ]
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "ThisCardCountersAtMost": 0
+              },
+              "effect": {
+                "TrashCard": "ThisCard"
+              }
+            }
+          }
+        ]
+      },
+      "text": "[click]: Take 2[credit] from Private Contracts."
+    }
+  ],
+  "built_from": 2059,
+  "is_playable": true
+}

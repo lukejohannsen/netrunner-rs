@@ -1,0 +1,23 @@
+{
+  "id": "quality_time",
+  "title": "Quality Time",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            5
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 2087,
+  "is_playable": true
+}

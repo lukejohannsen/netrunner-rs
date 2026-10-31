@@ -1,0 +1,21 @@
+{
+  "id": "public_sympathy",
+  "title": "Public Sympathy",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your maximum hand size is increased by 2."
+    }
+  ],
+  "triggers": [],
+  "built_from": 2050,
+  "is_playable": true
+}

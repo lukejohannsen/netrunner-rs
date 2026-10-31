@@ -1,0 +1,31 @@
+{
+  "id": "restructured_datapool",
+  "title": "Restructured Datapool",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Trace": {
+          "base": 2,
+          "on_success": {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        }
+      },
+      "text": "[click]: Trace[2]. If successful, give the Runner 1 tag."
+    }
+  ],
+  "built_from": 2016,
+  "is_playable": true
+}

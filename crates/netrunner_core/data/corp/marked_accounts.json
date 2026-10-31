@@ -1,0 +1,44 @@
+{
+  "id": "marked_accounts",
+  "title": "Marked Accounts",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 5,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "ThisCardCountersAtLeast": 1
+      },
+      "effects": [
+        {
+          "RemoveCounters": {
+            "Fixed": 1
+          }
+        },
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, take 1[credit] from Marked Accounts, if able."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "AddCounters": 3
+      },
+      "text": "[click]: Place 3[credit] from the bank on Marked Accounts."
+    }
+  ],
+  "built_from": 2055,
+  "is_playable": true
+}

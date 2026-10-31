@@ -1,0 +1,23 @@
+{
+  "id": "big_brother",
+  "title": "Big Brother",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "play_requirement": "IsTagged",
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 2
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 2035,
+  "is_playable": true
+}

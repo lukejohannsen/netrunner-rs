@@ -1,0 +1,19 @@
+{
+  "id": "whizzard_master_gamer",
+  "title": "Whizzard: Master Gamer",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "counter_kind": "Credit",
+  "recurring_credits": 3,
+  "pays_for": [
+    {
+      "TrashCosts": "Any"
+    }
+  ],
+  "triggers": [],
+  "built_from": 2001,
+  "is_playable": true
+}

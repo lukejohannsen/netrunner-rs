@@ -1,0 +1,142 @@
+{
+  "id": "zzzzzzzzzzzz",
+  "name": "Zzzzzzzzzzzz",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Whizzard: Master Gamer, Genesis's Anarch identity, whose recurring credits pay trash costs. Zymotic's list, its identity swapped. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG F11. Genesis swaps in Joshua B., Public Sympathy and Plascrete Carapace.",
+  "style": [
+    "rig",
+    "dismantle"
+  ],
+  "identity": "whizzard_master_gamer",
+  "cards": [
+    {
+      "card": "cyberfeeder",
+      "count": 1
+    },
+    {
+      "card": "corroder",
+      "count": 1
+    },
+    {
+      "card": "hantu",
+      "count": 2
+    },
+    {
+      "card": "chain_reaction",
+      "count": 1
+    },
+    {
+      "card": "take_a_dive",
+      "count": 2
+    },
+    {
+      "card": "stargate",
+      "count": 2
+    },
+    {
+      "card": "friend_of_a_friend",
+      "count": 2
+    },
+    {
+      "card": "banner",
+      "count": 2
+    },
+    {
+      "card": "finality",
+      "count": 2
+    },
+    {
+      "card": "katorga_breakout",
+      "count": 2
+    },
+    {
+      "card": "the_nihilist",
+      "count": 1
+    },
+    {
+      "card": "chastushka",
+      "count": 2
+    },
+    {
+      "card": "utae",
+      "count": 2
+    },
+    {
+      "card": "climactic_showdown",
+      "count": 2
+    },
+    {
+      "card": "mimic",
+      "count": 2
+    },
+    {
+      "card": "liberated_account",
+      "count": 1
+    },
+    {
+      "card": "scrubber",
+      "count": 2
+    },
+    {
+      "card": "xanadu",
+      "count": 1
+    },
+    {
+      "card": "en_passant",
+      "count": 2
+    },
+    {
+      "card": "patchwork",
+      "count": 2
+    },
+    {
+      "card": "consume",
+      "count": 2
+    },
+    {
+      "card": "sifr",
+      "count": 1
+    },
+    {
+      "card": "skulljack",
+      "count": 1
+    },
+    {
+      "card": "brain_cage",
+      "count": 1
+    },
+    {
+      "card": "ddos",
+      "count": 1
+    },
+    {
+      "card": "paige_piper",
+      "count": 1
+    },
+    {
+      "card": "turntable",
+      "count": 1
+    },
+    {
+      "card": "virus_breeding_ground",
+      "count": 1
+    },
+    {
+      "card": "adjusted_chronotype",
+      "count": 1
+    },
+    {
+      "card": "joshua_b",
+      "count": 1
+    },
+    {
+      "card": "public_sympathy",
+      "count": 1
+    },
+    {
+      "card": "plascrete_carapace",
+      "count": 1
+    }
+  ]
+}

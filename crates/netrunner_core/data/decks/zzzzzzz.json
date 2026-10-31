@@ -3,16 +3,12 @@
   "name": "Zzzzzzz",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Hayley Kaplan: Universal Scholar, Breaker Bay's Shaper identity, who may install a second card of the same type the first time each turn she installs one. Zymogen's list, its identity swapped. Comet (SanSan Stage 31) for one Supercorridor, which dead_reckoning and zymogen keep. Lunar Stage 1 (FFG F8): Refractor, Leprechaun, Collective Consciousness, Astrolabe, Cybsoft MacroDrive and Ghost Runner for two Orcas, two Reclaims and two Levy Advanced Research Labs, which Dead Reckoning and Zymogen keep. Lunar Stage 3 (FFG F8): LLDS Energy Regulator for one Cybertrooper Talut, which Dead Reckoning and Zymogen keep. Creation and Control Stages 3 and 4 (FFG F9) swapped in Borrowed Satellite, Cloak, Sahasrara, Ice Analyzer, Dagger, Inti, Clone Chip, Feedback Filter, Freelance Coding Contract and Levy AR Lab Access for Laguna Velasco District, Flux Capacitor, Coalescence, Paule's Café, an Egret, Propeller, LLDS Memory Diamond, Brain Chip, Into the Depths and Careful Planning, which Dead Reckoning and Zymogen keep. Spin Stages 5 to 7 (FFG F10) swapped in Torch, CyberSolutions Mem Chip, Lockpick and Power Nap for Hyperbaric, Supercorridor, Egret and Algo Trading, which Dead Reckoning and Zymogen keep.",
+  "description": "Not a published list: built so the sweeps reach Hayley Kaplan: Universal Scholar, Breaker Bay's Shaper identity, who may install a second card of the same type the first time each turn she installs one. Zymogen's list, its identity swapped. Comet (SanSan Stage 31) for one Supercorridor, which dead_reckoning and zymogen keep. Lunar Stage 1 (FFG F8): Refractor, Leprechaun, Collective Consciousness, Astrolabe, Cybsoft MacroDrive and Ghost Runner for two Orcas, two Reclaims and two Levy Advanced Research Labs, which Dead Reckoning and Zymogen keep. Lunar Stage 3 (FFG F8): LLDS Energy Regulator for one Cybertrooper Talut, which Dead Reckoning and Zymogen keep. Creation and Control Stages 3 and 4 (FFG F9) swapped in Borrowed Satellite, Cloak, Sahasrara, Ice Analyzer, Dagger, Inti, Clone Chip, Feedback Filter, Freelance Coding Contract and Levy AR Lab Access for Laguna Velasco District, Flux Capacitor, Coalescence, Paule's Café, an Egret, Propeller, LLDS Memory Diamond, Brain Chip, Into the Depths and Careful Planning, which Dead Reckoning and Zymogen keep. Spin Stages 5 to 7 (FFG F10) swapped in Torch, CyberSolutions Mem Chip, Lockpick and Power Nap for Hyperbaric, Supercorridor, Egret and Algo Trading, which Dead Reckoning and Zymogen keep. Genesis (F11) swaps in Quality Time.",
   "style": [
     "rig"
   ],
   "identity": "hayley_kaplan_universal_scholar",
   "cards": [
-    {
-      "card": "beatriz_friere_gonzalez",
-      "count": 1
-    },
     {
       "card": "daeg_first_net_cat",
       "count": 2
@@ -167,6 +163,10 @@
     },
     {
       "card": "power_nap",
+      "count": 1
+    },
+    {
+      "card": "quality_time",
       "count": 1
     }
   ]

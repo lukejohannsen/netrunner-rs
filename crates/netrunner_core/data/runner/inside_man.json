@@ -1,0 +1,19 @@
+{
+  "id": "inside_man",
+  "title": "Inside Man",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "counter_kind": "Credit",
+  "recurring_credits": 2,
+  "pays_for": [
+    {
+      "Installing": {
+        "CardType": "Hardware"
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 2068,
+  "is_playable": true
+}

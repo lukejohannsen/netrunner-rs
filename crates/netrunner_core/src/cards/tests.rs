@@ -52352,3 +52352,52 @@ mod spin_stage_5 {
         assert_eq!(played.runner.resources.clicks, Clicks(2), "a click to play and one more as its cost");
     }
 }
+
+/// Genesis Stages 1 to 3 (FFG F11): the composed Corp cards.
+mod genesis_stage_1 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn big_brother_is_played_only_on_a_tagged_runner_and_gives_two() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("big_brother")];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("big_brother") }).is_err(), "untagged");
+        state.runner.tags = 1;
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("big_brother") }).expect("play it");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.runner.tags, 3);
+    }
+
+    #[test]
+    fn rework_shuffles_a_card_from_hq_into_r_and_d() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("rework"), id("hedge_fund")];
+        state.corp.r_and_d = vec![id("ice_wall"); 3];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("rework") }).expect("play it");
+        let (played, _) = apply_action(&played, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("pick Hedge Fund");
+        let (played, _) = apply_action(&played, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let (played, _) = close_all_windows(played, &registry);
+        assert!(played.corp.hq.is_empty());
+        assert_eq!(played.corp.r_and_d.len(), 4);
+        assert!(played.corp.r_and_d.contains(&id("hedge_fund")));
+    }
+    #[test]
+    fn quality_time_draws_five() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(3);
+        state.runner.grip = vec![id("quality_time")];
+        state.runner.stack = vec![id("sure_gamble"); 6];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("quality_time") }).expect("play it");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.runner.grip.len(), 5);
+        assert_eq!(played.runner.resources.credits, Credits(0));
+    }
+}

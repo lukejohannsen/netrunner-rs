@@ -1,0 +1,50 @@
+{
+  "id": "foxfire",
+  "title": "Foxfire",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 7,
+            "on_success": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OpponentInstalled",
+                "filter": {
+                  "AnyOf": [
+                    {
+                      "All": [
+                        {
+                          "CardType": "Resource"
+                        },
+                        {
+                          "HasSubtype": "Virtual"
+                        }
+                      ]
+                    },
+                    {
+                      "HasSubtype": "Link"
+                    }
+                  ]
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OpponentDiscard"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 2100,
+  "is_playable": true
+}

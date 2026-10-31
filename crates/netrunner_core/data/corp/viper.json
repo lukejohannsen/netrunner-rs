@@ -1,0 +1,35 @@
+{
+  "id": "viper",
+  "title": "Viper",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 4,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Trace[3]. If successful, the Runner loses [click], if able.",
+      "effect": {
+        "Trace": {
+          "base": 3,
+          "on_success": {
+            "LoseClicks": 1
+          }
+        }
+      }
+    },
+    {
+      "text": "Trace[3]. If successful, end the run.",
+      "effect": {
+        "Trace": {
+          "base": 3,
+          "on_success": "EndTheRun"
+        }
+      }
+    }
+  ],
+  "built_from": 2052,
+  "is_playable": true
+}
