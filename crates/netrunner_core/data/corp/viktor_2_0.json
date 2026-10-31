@@ -1,0 +1,62 @@
+{
+  "id": "viktor_2_0",
+  "title": "Viktor 2.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 5,
+  "strength": 5,
+  "counter_kind": "Power",
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 2
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 2
+          }
+        }
+      },
+      "text": "Lose [click][click]: Break up to 2 subroutines on this ice. Only the Runner can use this ability."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "DealDamage": [
+          "Brain",
+          1
+        ]
+      },
+      "text": "Hosted power counter: Do 1 core damage."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trace[2]. If successful, place 1 power counter on this ice.",
+      "effect": {
+        "Trace": {
+          "base": 2,
+          "on_success": {
+            "AddCounters": 1
+          }
+        }
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 3019,
+  "is_playable": true
+}

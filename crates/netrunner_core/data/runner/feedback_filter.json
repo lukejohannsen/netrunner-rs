@@ -1,0 +1,40 @@
+{
+  "id": "feedback_filter",
+  "title": "Feedback Filter",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → 3[credit]: Prevent 1 net damage.",
+      "cost": {
+        "Credits": 3
+      },
+      "effect": {
+        "Prevent": {
+          "Damage": {
+            "kind": "Net",
+            "up_to": 1
+          }
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → [trash]: Prevent up to 2 core damage.",
+      "cost": "TrashSelf",
+      "effect": {
+        "Prevent": {
+          "Damage": {
+            "kind": "Brain",
+            "up_to": 2
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 3037,
+  "is_playable": true
+}

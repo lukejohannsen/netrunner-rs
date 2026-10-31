@@ -1,0 +1,30 @@
+{
+  "id": "borrowed_satellite",
+  "title": "Borrowed Satellite",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "Link": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[link]"
+    },
+    {
+      "kind": {
+        "HandSize": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your maximum hand size is increased by 1."
+    }
+  ],
+  "triggers": [],
+  "built_from": 3050,
+  "is_playable": true
+}

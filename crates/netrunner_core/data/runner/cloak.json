@@ -1,0 +1,18 @@
+{
+  "id": "cloak",
+  "title": "Cloak",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "counter_kind": "Credit",
+  "recurring_credits": 1,
+  "pays_for": [
+    {
+      "Using": "Icebreaker"
+    }
+  ],
+  "triggers": [],
+  "built_from": 3041,
+  "is_playable": true
+}

@@ -1,0 +1,37 @@
+{
+  "id": "director_haas",
+  "title": "Director Haas",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "trash_cost": 5,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "AllottedClicks": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "You get +1 allotted [click] for each of your turns."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "This",
+      "effects": [
+        {
+          "AddToScoreAreaAsAgenda": {
+            "points": 2,
+            "to_the_runner": true
+          }
+        }
+      ],
+      "text": "When this asset is trashed from anywhere while being accessed, add it to the Runner's score area as an agenda worth 2 agenda points."
+    }
+  ],
+  "built_from": 3010,
+  "is_playable": true
+}

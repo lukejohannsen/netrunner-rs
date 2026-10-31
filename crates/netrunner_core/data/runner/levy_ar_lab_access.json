@@ -1,0 +1,30 @@
+{
+  "id": "levy_ar_lab_access",
+  "title": "Levy AR Lab Access",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 5,
+  "removed_after_play": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "ShuffleIntoDeck": [
+            "OwnGrip",
+            "OwnHeap"
+          ]
+        },
+        {
+          "DrawCards": [
+            "Runner",
+            5
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 3035,
+  "is_playable": true
+}

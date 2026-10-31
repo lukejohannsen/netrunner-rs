@@ -1,0 +1,60 @@
+{
+  "id": "heimdall_2_0",
+  "title": "Heimdall 2.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 11,
+  "strength": 7,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 2
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 2
+          }
+        }
+      },
+      "text": "Lose [click][click]: Break up to 2 subroutines on this ice. Only the Runner can use this ability."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 1 core damage.",
+      "effect": {
+        "DealDamage": [
+          "Brain",
+          1
+        ]
+      }
+    },
+    {
+      "text": "Do 1 core damage and end the run.",
+      "effect": {
+        "Sequence": [
+          {
+            "DealDamage": [
+              "Brain",
+              1
+            ]
+          },
+          "EndTheRun"
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 3015,
+  "is_playable": true
+}

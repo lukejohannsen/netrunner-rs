@@ -1,0 +1,47 @@
+{
+  "id": "alix_t4lb07",
+  "title": "Alix T4LB07",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 2,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "Whose": "Corp"
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Place 1 power counter on Alix T4LB07 whenever you install a card."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "GainCreditsPerCounter": {
+          "side": "Corp",
+          "credits_per_counter": 2
+        }
+      },
+      "text": "[click],[trash]: Gain 2[credit] for each power counter on Alix T4LB07."
+    }
+  ],
+  "built_from": 3008,
+  "is_playable": true
+}

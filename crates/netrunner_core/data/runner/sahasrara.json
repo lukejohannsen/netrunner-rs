@@ -1,0 +1,20 @@
+{
+  "id": "sahasrara",
+  "title": "Sahasrara",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "counter_kind": "Credit",
+  "recurring_credits": 2,
+  "pays_for": [
+    {
+      "Installing": {
+        "CardType": "Program"
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 3047,
+  "is_playable": true
+}
