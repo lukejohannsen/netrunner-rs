@@ -1,0 +1,38 @@
+{
+  "id": "vulcan_coverup",
+  "title": "Vulcan Coverup",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            2
+          ]
+        }
+      ],
+      "text": "When you score this agenda, do 2 meat damage."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When the Runner steals this agenda, take 1 bad publicity."
+    }
+  ],
+  "built_from": 4098,
+  "is_playable": true
+}

@@ -1,0 +1,58 @@
+{
+  "id": "tsurugi",
+  "title": "Tsurugi",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 6,
+  "strength": 2,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "End the run unless the Corp pays 1[credit].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Corp",
+          "cost": {
+            "Credits": 1
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": "EndTheRun",
+          "text": "End the run unless the Corp pays 1[credit]."
+        }
+      }
+    },
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    },
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    },
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    }
+  ],
+  "built_from": 25097,
+  "is_playable": true
+}

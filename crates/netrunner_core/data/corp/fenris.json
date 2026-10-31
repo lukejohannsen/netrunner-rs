@@ -1,0 +1,41 @@
+{
+  "id": "fenris",
+  "title": "Fenris",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 2,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When you rez this ice, take 1 bad publicity."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 1 core damage.",
+      "effect": {
+        "DealDamage": [
+          "Brain",
+          1
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 4071,
+  "is_playable": true
+}

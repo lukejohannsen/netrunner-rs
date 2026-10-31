@@ -1,0 +1,23 @@
+{
+  "id": "witness_tampering",
+  "title": "Witness Tampering",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 4,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "RemoveBadPublicity": 2
+        }
+      ]
+    }
+  ],
+  "built_from": 4118,
+  "is_playable": true
+}

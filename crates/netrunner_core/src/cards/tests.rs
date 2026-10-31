@@ -52295,3 +52295,37 @@ mod creation_and_control_stage_1 {
         assert!(played.runner.heap.is_empty(), "removed from the game, not trashed");
     }
 }
+
+/// Spin Stages 1 to 4 (FFG F10): the composed Corp cards.
+mod spin_stage_1 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn restructure_nets_five() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(10);
+        state.corp.hq = vec![id("restructure")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("restructure") }).expect("play it");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.corp.resources.credits, Credits(15));
+    }
+
+    #[test]
+    fn blue_level_clearance_costs_a_second_click() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(2);
+        state.corp.hq = vec![id("blue_level_clearance")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("blue_level_clearance") }).expect("play it");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.corp.resources.credits, Credits(5));
+        assert_eq!(played.corp.hq.len(), 2);
+        assert_eq!(played.corp.resources.clicks, Clicks(1), "one click to play and one more as its cost");
+    }
+}

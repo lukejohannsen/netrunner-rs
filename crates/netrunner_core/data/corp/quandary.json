@@ -1,0 +1,19 @@
+{
+  "id": "quandary",
+  "title": "Quandary",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 1,
+  "strength": 0,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 4120,
+  "is_playable": true
+}

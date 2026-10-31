@@ -1,0 +1,18 @@
+{
+  "id": "cyberdex_trial",
+  "title": "Cyberdex Trial",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        "PurgeVirusCounters"
+      ]
+    }
+  ],
+  "built_from": 4019,
+  "is_playable": true
+}

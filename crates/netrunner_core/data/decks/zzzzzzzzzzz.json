@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Creation and Control Stages 1 and 2's (FFG F9) deck for Cybernetics Division, on Zzzz's list, carrying the set's composed Haas-Bioroid and neutral Corp cards: Bastion, Datapike, Heimdall 2.0, Ichi 2.0 and Viktor 2.0 for Pulse, Echo, two Wave and a NEXT Silver; Sentinel Defense Program for a Project Vitruvius and Gila Hands Arcology for Elivagar Bifurcation, a point for a point; Alix T4LB07, Levy University, Director Haas, Thomas Haas and Server Diagnostics for two Biotic Labor, a Cerebral Overwriter, Brain-Taping Warehouse and Test Ground. Zzzz keeps every card swapped out. Eternal-legal only.",
+  "description": "Not a published list: Creation and Control Stages 1 and 2's (FFG F9) deck for Cybernetics Division, on Zzzz's list, carrying the set's composed Haas-Bioroid and neutral Corp cards: Bastion, Datapike, Heimdall 2.0, Ichi 2.0 and Viktor 2.0 for Pulse, Echo, two Wave and a NEXT Silver; Sentinel Defense Program for a Project Vitruvius and Gila Hands Arcology for Elivagar Bifurcation, a point for a point; Alix T4LB07, Levy University, Director Haas, Thomas Haas and Server Diagnostics for two Biotic Labor, a Cerebral Overwriter, Brain-Taping Warehouse and Test Ground. Zzzz keeps every card swapped out. Eternal-legal only. Spin Stages 1 to 4 (FFG F10) swapped in Fenris, Wotan, Paper Wall and Blue Level Clearance for a NEXT Bronze, a NEXT Silver, Turing and a Black Level Clearance, which other decks keep.",
   "style": [
     "glacier"
   ],
@@ -18,12 +18,8 @@
       "count": 1
     },
     {
-      "card": "next_silver",
-      "count": 1
-    },
-    {
       "card": "next_bronze",
-      "count": 2
+      "count": 1
     },
     {
       "card": "project_vacheron",
@@ -31,14 +27,10 @@
     },
     {
       "card": "black_level_clearance",
-      "count": 2
-    },
-    {
-      "card": "next_gold",
       "count": 1
     },
     {
-      "card": "turing",
+      "card": "next_gold",
       "count": 1
     },
     {
@@ -171,6 +163,22 @@
     },
     {
       "card": "server_diagnostics",
+      "count": 1
+    },
+    {
+      "card": "fenris",
+      "count": 1
+    },
+    {
+      "card": "wotan",
+      "count": 1
+    },
+    {
+      "card": "paper_wall",
+      "count": 1
+    },
+    {
+      "card": "blue_level_clearance",
       "count": 1
     }
   ]

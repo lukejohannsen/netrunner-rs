@@ -1,0 +1,23 @@
+{
+  "id": "restructure",
+  "title": "Restructure",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 10,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            15
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 4040,
+  "is_playable": true
+}

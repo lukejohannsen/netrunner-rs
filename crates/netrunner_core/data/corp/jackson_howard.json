@@ -1,0 +1,44 @@
+{
+  "id": "jackson_howard",
+  "title": "Jackson Howard",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 3,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "DrawCards": [
+          "Corp",
+          2
+        ]
+      },
+      "text": "[click]: Draw 2 cards."
+    },
+    {
+      "trigger": "Paid",
+      "cost": "RemoveSelfFromGame",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnArchives",
+          "filter": "Any",
+          "min": 0,
+          "max": 3,
+          "reveal": false,
+          "shuffle_after": true,
+          "destination": "OwnRAndD"
+        }
+      },
+      "text": "Remove Jackson Howard from the game: Shuffle up to 3 cards from Archives into R&D."
+    }
+  ],
+  "built_from": 4015,
+  "is_playable": true
+}
