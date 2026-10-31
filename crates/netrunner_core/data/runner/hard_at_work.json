@@ -1,0 +1,26 @@
+{
+  "id": "hard_at_work",
+  "title": "Hard at Work",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 5,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            2
+          ]
+        },
+        {
+          "LoseClicks": 1
+        }
+      ],
+      "text": "When your turn begins, gain 2[credit] and lose [click]."
+    }
+  ],
+  "built_from": 4023,
+  "is_playable": true
+}
