@@ -1,0 +1,35 @@
+{
+  "id": "new_angeles_city_hall",
+  "title": "New Angeles City Hall",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "When you steal an agenda, trash this resource."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → 2[credit]: Prevent 1 tag.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "Prevent": {
+          "Tags": 1
+        }
+      }
+    }
+  ],
+  "built_from": 2109,
+  "is_playable": true
+}

@@ -1,0 +1,47 @@
+{
+  "id": "eve_campaign",
+  "title": "Eve Campaign",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 5,
+  "trash_cost": 5,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 16
+        }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RemoveCounters": {
+            "Fixed": 2
+          }
+        },
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 2092,
+  "is_playable": true
+}

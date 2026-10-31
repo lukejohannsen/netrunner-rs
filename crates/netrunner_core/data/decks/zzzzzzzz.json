@@ -3,7 +3,7 @@
   "name": "Zzzzzzzz",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Leela Patel: Trained Pragmatist, Honor and Profit's Criminal identity, who adds an unrezzed card to HQ whenever an agenda is scored or stolen. Zero-Day Heist's list, its identity swapped. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Honor and Profit is in neither pool. FFG F8 (Lunar) Stage 3.",
+  "description": "Not a published list: built so the sweeps reach Leela Patel: Trained Pragmatist, Honor and Profit's Criminal identity, who adds an unrezzed card to HQ whenever an agenda is scored or stolen. Zero-Day Heist's list, its identity swapped. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Honor and Profit is in neither pool. FFG F8 (Lunar) Stage 3. Genesis (F11) swaps in Compromised Employee, Satellite Uplink and Muresh Bodysuit.",
   "style": [
     "pressure"
   ],
@@ -11,11 +11,11 @@
   "cards": [
     {
       "card": "shibboleth",
-      "count": 2
+      "count": 1
     },
     {
       "card": "femme_fatale",
-      "count": 2
+      "count": 1
     },
     {
       "card": "mu_safecracker",
@@ -23,7 +23,7 @@
     },
     {
       "card": "afterimage",
-      "count": 2
+      "count": 1
     },
     {
       "card": "aurora",
@@ -119,6 +119,18 @@
     },
     {
       "card": "uninstall",
+      "count": 1
+    },
+    {
+      "card": "compromised_employee",
+      "count": 1
+    },
+    {
+      "card": "satellite_uplink",
+      "count": 1
+    },
+    {
+      "card": "muresh_bodysuit",
       "count": 1
     }
   ]

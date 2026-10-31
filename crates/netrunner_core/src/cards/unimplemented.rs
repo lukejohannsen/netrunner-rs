@@ -553,53 +553,33 @@ pub(crate) const DT_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *What Lies Ahead* (`what_lies_ahead`): tranche F11 of the FFG plan.
 pub(crate) const WLA_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("whizzard_master_gamer", "Whizzard: Master Gamer"),
     ("cortez_chip", "Cortez Chip"),
     ("zu_13_key_master", "ZU.13 Key Master"),
     ("the_helpful_ai", "The Helpful AI"),
-    ("plascrete_carapace", "Plascrete Carapace"),
-    ("mandatory_upgrades", "Mandatory Upgrades"),
-    ("janus_1_0", "Janus 1.0"),
-    ("snowflake", "Snowflake"),
-    ("restructured_datapool", "Restructured Datapool"),
     ("tmi", "TMI"),
-    ("draco", "Dracō"),
 ];
 
 /// *Trace Amount* (`trace_amount`): tranche F11 of the FFG plan.
 pub(crate) const TA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("vamp", "Vamp"),
-    ("satellite_uplink", "Satellite Uplink"),
-    ("compromised_employee", "Compromised Employee"),
     ("snowball", "Snowball"),
     ("encryption_protocol", "Encryption Protocol"),
-    ("sherlock_1_0", "Sherlock 1.0"),
     ("jinteki_replicating_perfection", "Jinteki: Replicating Perfection"),
     ("fetal_ai", "Fetal AI"),
     ("sensei", "Sensei"),
-    ("big_brother", "Big Brother"),
     ("chilo_city_grid", "ChiLo City Grid"),
     ("power_grid_overload", "Power Grid Overload"),
     ("amazon_industrial_zone", "Amazon Industrial Zone"),
     ("executive_retreat", "Executive Retreat"),
-    ("freelancer", "Freelancer"),
 ];
 
 /// *Cyber Exodus* (`cyber_exodus`): tranche F11 of the FFG plan.
 pub(crate) const CE_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("nerve_agent", "Nerve Agent"),
-    ("joshua_b", "Joshua B."),
-    ("muresh_bodysuit", "Muresh Bodysuit"),
     ("snitch", "Snitch"),
     ("personal_workshop", "Personal Workshop"),
-    ("public_sympathy", "Public Sympathy"),
-    ("viper", "Viper"),
-    ("edge_of_world", "Edge of World"),
     ("sunset", "Sunset"),
-    ("marked_accounts", "Marked Accounts"),
     ("woodcutter", "Woodcutter"),
-    ("commercialization", "Commercialization"),
-    ("private_contracts", "Private Contracts"),
     ("chimera", "Chimera"),
 ];
 
@@ -608,14 +588,10 @@ pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("disrupter", "Disrupter"),
     ("crescentus", "Crescentus"),
     ("deus_x", "Deus X"),
-    ("inside_man", "Inside Man"),
-    ("hourglass", "Hourglass"),
     ("dedicated_server", "Dedicated Server"),
     ("bullfrog", "Bullfrog"),
-    ("uroboros", "Uroboros"),
     ("net_police", "Net Police"),
     ("weyland_consortium_because_we_built_it", "Weyland Consortium: Because We Built It"),
-    ("government_contracts", "Government Contracts"),
     ("tyrant", "Tyrant"),
     ("oversight_ai", "Oversight AI"),
 ];
@@ -624,31 +600,22 @@ pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const HS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("surge", "Surge"),
     ("andromeda_dispossessed_ristie", "Andromeda: Dispossessed Ristie"),
-    ("quality_time", "Quality Time"),
     ("replicator", "Replicator"),
     ("creeper", "Creeper"),
     ("kraken", "Kraken"),
     ("kati_jones", "Kati Jones"),
-    ("eve_campaign", "Eve Campaign"),
-    ("rework", "Rework"),
     ("data_hound", "Data Hound"),
     ("salvage", "Salvage"),
     ("simone_diego", "Simone Diego"),
-    ("foxfire", "Foxfire"),
 ];
 
 /// *Future Proof* (`future_proof`): tranche F11 of the FFG plan.
 pub(crate) const FP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("data_leak_reversal", "Data Leak Reversal"),
-    ("r_d_interface", "R&D Interface"),
     ("deep_thought", "Deep Thought"),
-    ("new_angeles_city_hall", "New Angeles City Hall"),
-    ("ruhr_valley", "Ruhr Valley"),
     ("midori", "Midori"),
     ("nbn_the_world_is_yours", "NBN: The World is Yours*"),
     ("midseason_replacements", "Midseason Replacements"),
-    ("burke_bugs", "Burke Bugs"),
-    ("corporate_war", "Corporate War"),
 ];
 
 /// *NAPD Multiplayer* (`napd_multiplayer`): tranche F12 of the FFG plan.
@@ -667,7 +634,6 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
     ("quest_completed", "Quest Completed"),
     ("hostage", "Hostage"),
-    ("r_d_interface", "R&D Interface"),
     ("deus_x", "Deus X"),
     ("john_masanori", "John Masanori"),
     ("kati_jones", "Kati Jones"),
@@ -676,7 +642,6 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("fetal_ai", "Fetal AI"),
     ("sundew", "Sundew"),
     ("spark_agency_worldswide_reach", "Spark Agency: Worldswide Reach"),
-    ("marked_accounts", "Marked Accounts"),
     ("blue_sun_powering_the_future", "Blue Sun: Powering the Future"),
     ("oversight_ai", "Oversight AI"),
 ];

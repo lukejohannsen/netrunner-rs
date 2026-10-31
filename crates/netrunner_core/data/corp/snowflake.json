@@ -1,0 +1,26 @@
+{
+  "id": "snowflake",
+  "title": "Snowflake",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 1,
+  "strength": 3,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "You and the Runner secretly spend 0[credit], 1[credit], or 2[credit]. Reveal spent credits. End the run if you and the Runner spent a different number of credits.",
+      "effect": {
+        "PsiGame": {
+          "on_match": {
+            "Sequence": []
+          },
+          "on_differ": "EndTheRun"
+        }
+      }
+    }
+  ],
+  "built_from": 2015,
+  "is_playable": true
+}

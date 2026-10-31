@@ -1,0 +1,52 @@
+{
+  "id": "plascrete_carapace",
+  "title": "Plascrete Carapace",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 4
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → Hosted power counter: Prevent 1 meat damage.",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "Prevent": {
+              "Damage": {
+                "kind": "Meat",
+                "up_to": 1
+              }
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "ThisCardCountersAtMost": 0
+              },
+              "effect": {
+                "TrashCard": "ThisCard"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 2009,
+  "is_playable": true
+}

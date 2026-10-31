@@ -1,0 +1,38 @@
+{
+  "id": "uroboros",
+  "title": "Uroboros",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 6,
+  "strength": 4,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Trace[4]. If successful, the Runner cannot make another run this turn.",
+      "effect": {
+        "Trace": {
+          "base": 4,
+          "on_success": {
+            "Prohibit": {
+              "what": "Run",
+              "until": "Turn"
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "Trace[4]. If successful, end the run.",
+      "effect": {
+        "Trace": {
+          "base": 4,
+          "on_success": "EndTheRun"
+        }
+      }
+    }
+  ],
+  "built_from": 2074,
+  "is_playable": true
+}

@@ -1,0 +1,29 @@
+{
+  "id": "satellite_uplink",
+  "title": "Satellite Uplink",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OpponentInstalled",
+            "filter": "Unrezzed",
+            "min": 0,
+            "max": 2,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": "Expose"
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 2023,
+  "is_playable": true
+}

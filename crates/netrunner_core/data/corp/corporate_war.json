@@ -1,0 +1,46 @@
+{
+  "id": "corporate_war",
+  "title": "Corporate War",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                {
+                  "Credits": "Corp"
+                },
+                7
+              ]
+            },
+            "effect": {
+              "GainCredits": [
+                "Corp",
+                7
+              ]
+            },
+            "otherwise": {
+              "LoseCreditsAmount": [
+                "Corp",
+                {
+                  "Credits": "Corp"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "If you have at least 7[credit] when you score Corporate War, gain 7[credit]; otherwise, lose all credits in your credit pool."
+    }
+  ],
+  "built_from": 2120,
+  "is_playable": true
+}

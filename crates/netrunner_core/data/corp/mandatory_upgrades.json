@@ -1,0 +1,23 @@
+{
+  "id": "mandatory_upgrades",
+  "title": "Mandatory Upgrades",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 6,
+  "agenda_points": 2,
+  "continuous": [
+    {
+      "kind": {
+        "AllottedClicks": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "You have 1 additional [click] to spend each turn."
+    }
+  ],
+  "triggers": [],
+  "built_from": 2011,
+  "is_playable": true
+}

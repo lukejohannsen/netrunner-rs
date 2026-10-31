@@ -1,0 +1,69 @@
+{
+  "id": "janus_1_0",
+  "title": "Janus 1.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 15,
+  "strength": 8,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 1
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "text": "Lose [click]: Break 1 subroutine on this ice. Only the Runner can use this ability."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 1 core damage.",
+      "effect": {
+        "DealDamage": [
+          "Brain",
+          1
+        ]
+      }
+    },
+    {
+      "text": "Do 1 core damage.",
+      "effect": {
+        "DealDamage": [
+          "Brain",
+          1
+        ]
+      }
+    },
+    {
+      "text": "Do 1 core damage.",
+      "effect": {
+        "DealDamage": [
+          "Brain",
+          1
+        ]
+      }
+    },
+    {
+      "text": "Do 1 core damage.",
+      "effect": {
+        "DealDamage": [
+          "Brain",
+          1
+        ]
+      }
+    }
+  ],
+  "built_from": 2012,
+  "is_playable": true
+}

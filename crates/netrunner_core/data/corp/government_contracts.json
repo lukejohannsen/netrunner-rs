@@ -1,0 +1,27 @@
+{
+  "id": "government_contracts",
+  "title": "Government Contracts",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 2
+      },
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          4
+        ]
+      },
+      "text": "[click], [click]: Gain 4[credit]."
+    }
+  ],
+  "built_from": 2077,
+  "is_playable": true
+}
