@@ -659,6 +659,9 @@ mod tests {
             // FFG F9 Stage 1: Creation and Control's Corp deck, on Zzzz's list.
             ("zzzzzzzzzzz", &neither),
             ("zzzzzzzzzzzz", &neither),
+            ("zzzzzzzzzzzzz", &neither),
+            ("zzzzzzzzzzzzzz", &neither),
+            ("zzzzzzzzzzzzzzz", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.

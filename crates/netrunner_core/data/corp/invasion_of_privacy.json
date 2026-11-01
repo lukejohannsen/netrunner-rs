@@ -1,0 +1,59 @@
+{
+  "id": "invasion_of_privacy",
+  "title": "Invasion of Privacy",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 2,
+            "on_success": {
+              "Sequence": [
+                {
+                  "RevealHand": "Runner"
+                },
+                {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OpponentHand",
+                    "filter": {
+                      "AnyOf": [
+                        {
+                          "CardType": "Resource"
+                        },
+                        {
+                          "CardType": "Event"
+                        }
+                      ]
+                    },
+                    "min": 0,
+                    "max": 0,
+                    "reveal": true,
+                    "shuffle_after": false,
+                    "destination": "OpponentDiscard",
+                    "count": "TraceMargin"
+                  }
+                }
+              ]
+            },
+            "on_failure": {
+              "GiveBadPublicity": {
+                "Fixed": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 4016,
+  "is_playable": true
+}

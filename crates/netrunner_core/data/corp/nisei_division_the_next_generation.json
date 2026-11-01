@@ -1,0 +1,24 @@
+{
+  "id": "nisei_division_the_next_generation",
+  "title": "Nisei Division: The Next Generation",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnSecretCreditsRevealed",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever you and the Runner reveal secretly spent credits, gain 1[credit]."
+    }
+  ],
+  "built_from": 5002,
+  "is_playable": true
+}

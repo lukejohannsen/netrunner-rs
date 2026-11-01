@@ -1,0 +1,22 @@
+{
+  "id": "nbn_the_world_is_yours",
+  "title": "NBN: The World is Yours*",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 40,
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your maximum hand size is increased by 1."
+    }
+  ],
+  "triggers": [],
+  "built_from": 2114,
+  "is_playable": true
+}

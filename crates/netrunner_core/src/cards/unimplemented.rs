@@ -302,7 +302,6 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("domestic_sleepers", "Domestic Sleepers"),
     ("mutate", "Mutate"),
-    ("midway_station_grid", "Midway Station Grid"),
     ("the_root", "The Root"),
     ("taurus", "Taurus"),
     ("mother_goddess", "Mother Goddess"),
@@ -336,7 +335,6 @@ pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *First Contact* (`first_contact`): tranche F8 of the FFG plan.
 pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("kitsune", "Kitsune"),
-    ("port_anson_grid", "Port Anson Grid"),
     ("the_news_now_hour", "The News Now Hour"),
     ("wendigo", "Wendigo"),
     ("chronos_project", "Chronos Project"),
@@ -393,7 +391,6 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Honor and Profit* (`honor_and_profit`): tranche F8 of the FFG plan.
 pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("harmony_medtech_biomedical_pioneer", "Harmony Medtech: Biomedical Pioneer"),
-    ("nisei_division_the_next_generation", "Nisei Division: The Next Generation"),
     ("medical_breakthrough", "Medical Breakthrough"),
     ("the_future_perfect", "The Future Perfect"),
     ("psychic_field", "Psychic Field"),
@@ -406,7 +403,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("neotokyo_grid", "NeoTokyo Grid"),
     ("tori_hanzo", "Tori Hanzō"),
     ("plan_b", "Plan B"),
-    ("rainbow", "Rainbow"),
     ("diversified_portfolio", "Diversified Portfolio"),
     ("iain_stirling_retired_spook", "Iain Stirling: Retired Spook"),
     ("early_bird", "Early Bird"),
@@ -460,11 +456,9 @@ pub(crate) const OM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("pawn", "Pawn"),
     ("rook", "Rook"),
     ("hostage", "Hostage"),
-    ("gorman_drip_v1", "Gorman Drip v1"),
     ("false_echo", "False Echo"),
     ("motivation", "Motivation"),
     ("john_masanori", "John Masanori"),
-    ("invasion_of_privacy", "Invasion of Privacy"),
     ("geothermal_fracking", "Geothermal Fracking"),
     ("swarm", "Swarm"),
 ];
@@ -550,7 +544,6 @@ pub(crate) const TA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("vamp", "Vamp"),
     ("snowball", "Snowball"),
     ("encryption_protocol", "Encryption Protocol"),
-    ("jinteki_replicating_perfection", "Jinteki: Replicating Perfection"),
     ("fetal_ai", "Fetal AI"),
     ("sensei", "Sensei"),
     ("amazon_industrial_zone", "Amazon Industrial Zone"),
@@ -598,7 +591,6 @@ pub(crate) const FP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("data_leak_reversal", "Data Leak Reversal"),
     ("deep_thought", "Deep Thought"),
     ("midori", "Midori"),
-    ("nbn_the_world_is_yours", "NBN: The World is Yours*"),
 ];
 
 /// *NAPD Multiplayer* (`napd_multiplayer`): tranche F12 of the FFG plan.
@@ -621,7 +613,6 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("john_masanori", "John Masanori"),
     ("kati_jones", "Kati Jones"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
-    ("jinteki_replicating_perfection", "Jinteki: Replicating Perfection"),
     ("fetal_ai", "Fetal AI"),
     ("sundew", "Sundew"),
     ("spark_agency_worldswide_reach", "Spark Agency: Worldswide Reach"),

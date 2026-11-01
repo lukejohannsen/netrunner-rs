@@ -1,0 +1,41 @@
+{
+  "id": "jinteki_replicating_perfection",
+  "title": "Jinteki: Replicating Perfection",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "RunOnRemote"
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "while": {
+        "Not": {
+          "AmountAtLeast": [
+            {
+              "TimesThisTurnWhen": {
+                "trigger": "OnRunStart",
+                "when": {
+                  "Server": [
+                    "Archives",
+                    "RnD",
+                    "Hq"
+                  ]
+                }
+              }
+            },
+            1
+          ]
+        }
+      },
+      "text": "The Runner cannot run on remote servers. Ignore this ability until the end of the turn whenever the Runner runs on a central server."
+    }
+  ],
+  "triggers": [],
+  "built_from": 2031,
+  "is_playable": true
+}

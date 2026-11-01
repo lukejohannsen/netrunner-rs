@@ -1,0 +1,31 @@
+{
+  "id": "midway_station_grid",
+  "title": "Midway Station Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 4,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnRunStart",
+      "subject": "Any",
+      "requirement": "RunAgainstThisServer",
+      "effects": [
+        {
+          "ImposeAdditionalCost": {
+            "on": [
+              "IcebreakerBreak"
+            ],
+            "cost": {
+              "Credits": 1
+            },
+            "until": "Run"
+          }
+        }
+      ],
+      "text": "During runs on this server, the Runner must pay 1[credit] as an additional cost to use an icebreaker ability to break subroutines."
+    }
+  ],
+  "built_from": 6007,
+  "is_playable": true
+}
