@@ -1549,6 +1549,12 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         card: Option<CardId>,
         from: crate::dsl::CardZoneRef,
+        /// "Ignoring the install cost" — London Library's "[click]: Install
+        /// a non-virus program from your grip on London Library, ignoring
+        /// the install cost": no credits are asked or paid, and the memory
+        /// limit still holds (CR 1.16.6 ignores a cost, not a rule).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        ignoring_install_cost: bool,
     },
     /// Adds the acting card to its controller's score area "as an agenda"
     /// (CR 10.1.3) — Myōshu's "Add this operation to your score area as an
@@ -4591,7 +4597,11 @@ impl Effect {
         let mut acts = false;
         self.for_each_effect(&mut |effect| {
             acts |= matches!(effect, Effect::TrashCard(CardTarget::HostedOnThisCard))
-                || matches!(effect, Effect::ShuffleIntoDeck(zones) if zones.contains(&crate::dsl::CardZoneRef::HostedOnSource));
+                || matches!(effect, Effect::ShuffleIntoDeck(zones) if zones.contains(&crate::dsl::CardZoneRef::HostedOnSource))
+                // Bookmark's "add all hosted cards to your grip" and Street
+                // Peddler's "install 1 card hosted on Street Peddler".
+                || matches!(effect, Effect::PromptChooseCards { source: crate::dsl::CardZoneRef::HostedOnSource, .. })
+                || matches!(effect, Effect::InstallRunnerCardFromZone { from: crate::dsl::CardZoneRef::HostedOnSource, .. });
         });
         acts
     }

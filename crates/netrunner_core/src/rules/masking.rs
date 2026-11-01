@@ -289,6 +289,11 @@ pub struct PublicRunnerState {
     /// Corp sees how many.
     #[serde(default = "MaskedZone::empty")]
     pub set_aside_facedown: MaskedZone,
+    /// `RunnerState::set_aside_by_host`: the host's handle, and its cards
+    /// masked as they were on the host — counted for the Corp when it
+    /// hosted them facedown (Street Peddler), open when faceup.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set_aside_by_host: Option<(crate::rules::state::InstallId, MaskedZone)>,
     /// `RunnerState::installed_facedown`, masked as the grip is: secret
     /// information the Runner controls (CR 4.6.3), counted for the Corp.
     #[serde(default = "MaskedZone::empty")]
@@ -1737,6 +1742,7 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         removed_from_game: runner.removed_from_game.clone(),
         set_aside: runner.set_aside.clone(),
         set_aside_facedown: mask_zone(&runner.set_aside_facedown, owner_view),
+        set_aside_by_host: runner.set_aside_by_host.as_ref().map(|aside| (aside.host, mask_zone(&aside.cards, owner_view || !aside.facedown))),
         installed_facedown: mask_zone(&runner.installed_facedown, owner_view),
         other_identities: runner.other_identities.clone(),
         hosted_identities: runner.hosted_identities.clone(),

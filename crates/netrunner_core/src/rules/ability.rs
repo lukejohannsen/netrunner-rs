@@ -147,12 +147,6 @@ pub struct ResolutionContext<'a> {
     /// The cards that were hosted on the acting install when its own cost
     /// took it off the table, set aside rather than trashed with it because
     /// the effect acts on them (CR 9.5.5: "set aside any hosted cards ...
-    /// as the trigger cost is paid") — Read-Write Share's "[trash]: Shuffle
-    /// all hosted cards into your stack". Filled by the payer
-    /// (`engine::activate_ability`), which trashes whatever the effect
-    /// leaves. On the context because the effect that reads it resolves
-    /// without parking.
-    pub set_aside: Vec<CardId>,
     /// This resolution is a run's breach being replaced ("If successful,
     /// instead of breaching Archives, …", `run::access::try_replace_access`),
     /// so an `Effect::Breach` in it names the server the run breaches
@@ -490,6 +484,24 @@ fn acting_rig_position(state: &GameState, ctx: &ResolutionContext<'_>) -> Option
     match ctx.acting_install {
         Some(install) => state.runner.rig.iter().position(|c| c.install_id == install),
         None => ctx.acting_card.and_then(|card| state.runner.rig.iter().position(|c| &c.card == card)),
+    }
+}
+
+/// Trashes what a host's cost set aside and the ability that paid it left
+/// there (CR 9.5.5: "trashed at the next checkpoint"), once nothing is
+/// parked that could still put them elsewhere — asked as every action
+/// ends (`engine::apply_action_once`). Only a rig card hosts cards this
+/// way, and only its owner's, so they go to the heap. Not an event a card
+/// hears as a trash by anybody (`by: None`), as before.
+pub(crate) fn trash_set_aside_by_host(state: &mut GameState, events: &mut Vec<GameEvent>) {
+    let parked = state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.pending_payment.is_some();
+    if parked {
+        return;
+    }
+    let Some(aside) = state.runner.set_aside_by_host.take() else { return };
+    for card in aside.cards {
+        state.runner.heap.push(card.clone());
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card, from: crate::dsl::TrashedFrom::Elsewhere, by: None, install: None, damage: None });
     }
 }
 
@@ -1814,7 +1826,7 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
-        Effect::InstallProgramOnHost { card, from } => {
+        Effect::InstallProgramOnHost { card, from, ignoring_install_cost } => {
             use crate::rules::engine::{can_install_program_onto, install_program_onto, ProgramHost, RunnerCardSource};
             let source = match from {
                 crate::dsl::CardZoneRef::OwnGrip => RunnerCardSource::Grip,
@@ -1830,19 +1842,19 @@ pub fn evaluate_effect(
                 // The ice was chosen: this resolves as it.
                 Some(program) => {
                     let host = host()?;
-                    if !can_install_program_onto(state, registry, program, source, true) || state.find_corp_install(host).is_none() {
+                    if !can_install_program_onto(state, registry, program, source, true, *ignoring_install_cost) || state.find_corp_install(host).is_none() {
                         return Ok(Vec::new());
                     }
-                    install_program_onto(state, registry, program.clone(), source, ProgramHost::Ice(host))
+                    install_program_onto(state, registry, program.clone(), source, ProgramHost::Ice(host), *ignoring_install_cost)
                 }
                 None => {
                     let program = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
                     let trojan = registry.get(&program).is_some_and(|def| def.installs_on_ice);
-                    if !can_install_program_onto(state, registry, &program, source, trojan) {
+                    if !can_install_program_onto(state, registry, &program, source, trojan, *ignoring_install_cost) {
                         return Ok(Vec::new());
                     }
                     if !trojan {
-                        return install_program_onto(state, registry, program, source, ProgramHost::RigCard(host()?));
+                        return install_program_onto(state, registry, program, source, ProgramHost::RigCard(host()?), *ignoring_install_cost);
                     }
                     let choose_ice = Effect::PromptChooseCards {
                         side: Side::Runner,
@@ -1853,7 +1865,7 @@ pub fn evaluate_effect(
                         reveal: false,
                         shuffle_after: false,
                         destination: None,
-                        then: Some(Box::new(Effect::InstallProgramOnHost { card: Some(program), from: from.clone() })),
+                        then: Some(Box::new(Effect::InstallProgramOnHost { card: Some(program), from: from.clone(), ignoring_install_cost: *ignoring_install_cost })),
                         count: None,
                         up_to: None,
                     };
@@ -1926,12 +1938,11 @@ pub fn evaluate_effect(
             let mut cards = Vec::new();
             for zone in zones {
                 match zone {
-                    crate::dsl::CardZoneRef::HostedOnSource if ctx.set_aside.is_empty() => {
-                        if let Some(position) = acting_rig_position(state, ctx) {
-                            cards.extend(std::mem::take(&mut state.runner.rig[position].hosted_cards));
+                    crate::dsl::CardZoneRef::HostedOnSource => {
+                        if let Some(hosted) = crate::rules::pending_choice::hosted_cards_of_mut(state, ctx.acting_install) {
+                            cards.append(hosted);
                         }
                     }
-                    crate::dsl::CardZoneRef::HostedOnSource => cards.extend(std::mem::take(&mut ctx.set_aside)),
                     crate::dsl::CardZoneRef::OwnGrip => cards.append(&mut state.runner.grip),
                     crate::dsl::CardZoneRef::OwnHeap => cards.append(&mut state.runner.heap),
                     crate::dsl::CardZoneRef::OwnSetAside => cards.append(&mut state.runner.set_aside),
@@ -6600,10 +6611,16 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             None => counters_of(state, ctx).unwrap_or(0),
         },
         Amount::HostedAdvancementTokens => advancement_tokens_of(state, ctx).unwrap_or(0),
-        Amount::HostedCards => acting_rig_card(state, ctx).map_or(0, |host| {
-            let installed = state.runner.rig.iter().filter(|card| card.hosted_on_rig_card == Some(host.install_id)).count();
-            (host.hosted_cards.len() + installed) as u32
-        }),
+        // A host its own cost took off the table still counts what it set
+        // aside (`RunnerState::set_aside_by_host`): Bookmark's "[trash]: Add
+        // all hosted cards to your grip".
+        Amount::HostedCards => match acting_rig_card(state, ctx) {
+            Some(host) => {
+                let installed = state.runner.rig.iter().filter(|card| card.hosted_on_rig_card == Some(host.install_id)).count();
+                (host.hosted_cards.len() + installed) as u32
+            }
+            None => crate::rules::pending_choice::hosted_cards_of(state, ctx.acting_install).map_or(0, |cards| cards.len() as u32),
+        },
         Amount::InstalledIcebreakerCount => installed_icebreaker_count(state, registry),
         Amount::FacedownCardsInArchives => state.corp.archives.iter().filter(|a| a.facedown).count() as u32,
         Amount::RevealedThisEncounterSharingAType => {

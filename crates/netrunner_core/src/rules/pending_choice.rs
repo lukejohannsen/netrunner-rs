@@ -246,14 +246,27 @@ pub(crate) struct SelectionPositions {
 }
 
 /// The cards hosted on the Runner rig install `source`, if it is one.
-fn hosted_cards_of(state: &GameState, source: Option<InstallId>) -> Option<&Vec<CardId>> {
+/// The cards hosted on `source`, or, once its own cost has taken it out of
+/// the rig, the ones that cost set aside (`RunnerState::set_aside_by_host`,
+/// CR 9.5.5): Street Peddler's choice of a card to install is parked after
+/// Street Peddler is trashed.
+pub(crate) fn hosted_cards_of(state: &GameState, source: Option<InstallId>) -> Option<&Vec<CardId>> {
     let source = source?;
-    state.runner.rig.iter().find(|c| c.install_id == source).map(|c| &c.hosted_cards)
+    state
+        .runner
+        .rig
+        .iter()
+        .find(|c| c.install_id == source)
+        .map(|c| &c.hosted_cards)
+        .or_else(|| state.runner.set_aside_by_host.as_ref().filter(|aside| aside.host == source).map(|aside| &aside.cards))
 }
 
-fn hosted_cards_of_mut(state: &mut GameState, source: Option<InstallId>) -> Option<&mut Vec<CardId>> {
+pub(crate) fn hosted_cards_of_mut(state: &mut GameState, source: Option<InstallId>) -> Option<&mut Vec<CardId>> {
     let source = source?;
-    state.runner.rig.iter_mut().find(|c| c.install_id == source).map(|c| &mut c.hosted_cards)
+    if state.runner.rig.iter().any(|c| c.install_id == source) {
+        return state.runner.rig.iter_mut().find(|c| c.install_id == source).map(|c| &mut c.hosted_cards);
+    }
+    state.runner.set_aside_by_host.as_mut().filter(|aside| aside.host == source).map(|aside| &mut aside.cards)
 }
 
 /// The **positions** within `zone_card_ids(chooser, zone)` currently
@@ -583,6 +596,12 @@ fn instance_matches_filter(
         CardFilter::ThisCardsHost => {
             let host = source.and_then(|source| state.find_rig_install(source)).and_then(|card| card.hosted_on_rig_card.or(card.hosted_on_ice));
             host.is_some() && zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied()) == host
+        }
+        // London Library's "a program on London Library": a rig card
+        // installed on the parking card.
+        CardFilter::HostedOnThisCard => {
+            let install = zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied());
+            source.is_some() && install.and_then(|install| state.find_rig_install(install)).is_some_and(|card| card.hosted_on_rig_card == source)
         }
         // Restore's "other copies of that card": the parking card is the
         // install that left the zone, so any card there by its id is

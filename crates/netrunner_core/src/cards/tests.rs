@@ -53871,3 +53871,163 @@ mod engine_words_stage_6 {
         assert!(crate::rules::active::lost_abilities(&state, &registry, crate::rules::InstallId::RUNNER_IDENTITY));
     }
 }
+
+mod engine_words_stage_7 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    /// Chooses the cards at `positions` and confirms.
+    fn choose(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for &position in positions {
+            state = act(&state, registry, PlayerAction::ToggleCardSelection { position });
+        }
+        act(&state, registry, PlayerAction::ConfirmCardSelection)
+    }
+
+    #[test]
+    fn bookmark_hosts_from_the_grip_and_its_trash_brings_them_back_after_the_park() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("bookmark", 1)];
+        state.next_install_id = 2;
+        state.runner.grip = vec![id("sure_gamble"), id("corroder"), id("cleaver")];
+        let state = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 });
+        let state = choose(&state, &registry, &[0, 2]);
+        assert_eq!(state.runner.rig[0].hosted_cards, vec![id("sure_gamble"), id("cleaver")]);
+        assert_eq!(state.runner.grip, vec![id("corroder")]);
+
+        // [trash]: the hardware is gone before the cards are chosen, and the
+        // choice parks — what it hosted waits set aside, not in the heap.
+        let parked = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 2 });
+        assert!(parked.runner.rig.is_empty());
+        assert_eq!(parked.runner.heap, vec![id("bookmark")]);
+        assert_eq!(parked.runner.set_aside_by_host.as_ref().map(|aside| aside.cards.len()), Some(2), "survives the park");
+        let back = choose(&parked, &registry, &[0, 1]);
+        assert_eq!(back.runner.grip.len(), 3, "{:?}", back.runner.grip);
+        assert!(back.runner.set_aside_by_host.is_none());
+        assert_eq!(back.runner.heap, vec![id("bookmark")], "nothing left over to trash");
+    }
+
+    #[test]
+    fn street_peddler_installs_one_hosted_card_for_one_less_and_trashes_the_rest() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("street_peddler")];
+        // The top of the stack is the end of the list.
+        state.runner.stack = vec![id("corroder"), id("sure_gamble"), id("cleaver"), id("akamatsu_mem_chip")];
+        let state = act(&state, &registry, PlayerAction::InstallResource { card_id: id("street_peddler"), host: None });
+        let (state, _) = close_all_windows(state, &registry);
+        let peddler = state.runner.rig[0].install_id;
+        assert_eq!(state.runner.rig[0].hosted_cards.len(), 3);
+        assert_eq!(state.runner.stack.len(), 1);
+        let credits = state.runner.resources.credits;
+
+        let parked = act(&state, &registry, PlayerAction::ActivateAbility { target: peddler, ability_index: 0 });
+        assert!(parked.runner.rig.is_empty());
+        let position = parked.runner.set_aside_by_host.as_ref().expect("set aside").cards.iter().position(|card| card.0 == "cleaver").expect("the top three, cleaver among them");
+        let installed = choose(&parked, &registry, &[position]);
+        let (installed, _) = close_all_windows(installed, &registry);
+        assert!(installed.runner.rig.iter().any(|card| card.card.0 == "cleaver"));
+        assert_eq!(installed.runner.resources.credits, Credits(credits.0 - 2), "3 less 1");
+        assert!(installed.runner.set_aside_by_host.is_none());
+        assert_eq!(installed.runner.heap.len(), 3, "Street Peddler and the two left over: {:?}", installed.runner.heap);
+    }
+
+    #[test]
+    fn the_supplier_hosts_a_resource_or_hardware_from_the_grip() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("the_supplier", 1)];
+        state.next_install_id = 2;
+        state.runner.grip = vec![id("corroder"), id("akamatsu_mem_chip")];
+        let state = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 });
+        assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).is_err(), "not a program");
+        let state = choose(&state, &registry, &[1]);
+        assert_eq!(state.runner.rig[0].hosted_cards, vec![id("akamatsu_mem_chip")]);
+    }
+
+    #[test]
+    fn scheherazade_pays_one_for_a_program_installed_on_it_and_nothing_for_one_elsewhere() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("scheherazade", 1)];
+        state.next_install_id = 2;
+        state.runner.grip = vec![id("corroder"), id("cleaver")];
+        let hosted = act(&state, &registry, PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false, host: Some(InstallId(1)) });
+        let (hosted, _) = close_all_windows(hosted, &registry);
+        assert_eq!(hosted.runner.resources.credits, Credits(10 - 2 + 1));
+        let elsewhere = act(&hosted, &registry, PlayerAction::InstallProgram { card_id: id("cleaver"), trash_first: false, host: None });
+        let (elsewhere, _) = close_all_windows(elsewhere, &registry);
+        assert_eq!(elsewhere.runner.resources.credits, Credits(10 - 2 + 1 - 3));
+    }
+
+    #[test]
+    fn off_campus_apartment_draws_for_a_connection_installed_on_it() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("off_campus_apartment", 1)];
+        state.next_install_id = 2;
+        state.runner.grip = vec![id("professional_contacts")];
+        state.runner.stack = vec![id("sure_gamble")];
+        let state = act(&state, &registry, PlayerAction::InstallResource { card_id: id("professional_contacts"), host: Some(InstallId(1)) });
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.grip, vec![id("sure_gamble")]);
+    }
+
+    #[test]
+    fn london_library_installs_free_takes_back_and_trashes_its_programs_at_the_turn_end() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("london_library", 1)];
+        state.next_install_id = 2;
+        state.runner.grip = vec![id("cleaver"), id("corroder")];
+        let state = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 });
+        let state = choose(&state, &registry, &[0]);
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.resources.credits, Credits(10), "ignoring the install cost");
+        assert!(state.runner.rig.iter().any(|card| card.card.0 == "cleaver" && card.hosted_on_rig_card == Some(InstallId(1))));
+
+        let back = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 1 });
+        let back = choose(&back, &registry, &[1]);
+        assert!(back.runner.grip.contains(&id("cleaver")));
+
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert!(!ended.runner.rig.iter().any(|card| card.card.0 == "cleaver"), "trashed when your turn ends");
+        assert!(ended.runner.heap.contains(&id("cleaver")));
+    }
+
+    #[test]
+    fn omni_drive_hosts_one_program_of_one_mu_outside_the_limit() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("omni_drive", 1)];
+        state.next_install_id = 2;
+        state.runner.grip = vec![id("corroder"), id("cleaver")];
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+        assert!(offered.contains(&PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false, host: Some(InstallId(1)) }));
+        let state = act(&state, &registry, PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false, host: Some(InstallId(1)) });
+        let (state, _) = close_all_windows(state, &registry);
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+        assert!(!offered.contains(&PlayerAction::InstallProgram { card_id: id("cleaver"), trash_first: false, host: Some(InstallId(1)) }), "a single program");
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), 4, "outside the limit");
+    }
+}

@@ -1,0 +1,45 @@
+{
+  "id": "off_campus_apartment",
+  "title": "Off-Campus Apartment",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "continuous": [
+    {
+      "kind": "MayHost",
+      "applies_to": {
+        "InstallingOntoThis": {
+          "HasSubtype": "Connection"
+        }
+      },
+      "text": "Off-Campus Apartment can host any number of connections."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "Any",
+      "when": {
+        "All": [
+          "OntoThis",
+          {
+            "Card": {
+              "HasSubtype": "Connection"
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever you install a connection on Off-Campus Apartment, draw 1 card."
+    }
+  ],
+  "built_from": 8022,
+  "is_playable": true
+}

@@ -243,8 +243,6 @@ pub(crate) const VAL_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Breaker Bay* (`breaker_bay`): tranche F7 of the FFG plan.
 pub(crate) const BB_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("off_campus_apartment", "Off-Campus Apartment"),
-    ("london_library", "London Library"),
     ("recruiting_trip", "Recruiting Trip"),
     ("blacklist", "Blacklist"),
 ];
@@ -258,7 +256,6 @@ pub(crate) const CC_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Underway* (`the_underway`): tranche F7 of the FFG plan.
 pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("street_peddler", "Street Peddler"),
     ("allele_repression", "Allele Repression"),
 ];
 
@@ -272,7 +269,6 @@ pub(crate) const OH_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *The Universe of Tomorrow* (`the_universe_of_tomorrow`): tranche F7 of the FFG plan.
 pub(crate) const UOT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("surfer", "Surfer"),
-    ("bookmark", "Bookmark"),
     ("chronos_protocol_selective_mind_mapping", "Chronos Protocol: Selective Mind-mapping"),
     ("worlds_plaza", "Worlds Plaza"),
 ];
@@ -324,7 +320,6 @@ pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("chronos_project", "Chronos Project"),
     ("lancelot", "Lancelot"),
     ("blackat", "BlacKat"),
-    ("the_supplier", "The Supplier"),
     ("order_of_sol", "Order of Sol"),
     ("hades_shard", "Hades Shard"),
 ];
@@ -394,7 +389,6 @@ pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("escher", "Escher"),
     ("scavenge", "Scavenge"),
     ("monolith", "Monolith"),
-    ("omni_drive", "Omni-drive"),
     ("cyber_cypher", "Cyber-Cypher"),
 ];
 
@@ -409,7 +403,6 @@ pub(crate) const OM_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Second Thoughts* (`second_thoughts`): tranche F10 of the FFG plan.
 pub(crate) const ST_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("bishop", "Bishop"),
-    ("scheherazade", "Scheherazade"),
     ("recon", "Recon"),
     ("copycat", "Copycat"),
 ];

@@ -291,6 +291,13 @@ pub enum CardFilter {
     /// is. Composition didn't work: `BoostStrength` boosts the acting card,
     /// which in an ability is the hardware, and no filter named the host.
     ThisCardsHost,
+    /// Only a card installed on the parking card — London Library's "Trash
+    /// all programs hosted on London Library" and "Add a program on London
+    /// Library to your grip" (`InstalledRunnerCard::hosted_on_rig_card`).
+    /// `ThisCardsHost` turned round; instance-level, compared by install.
+    /// Composition didn't work: `HostedOnSource` is the cards a host holds
+    /// uninstalled, and these are in the rig.
+    HostedOnThisCard,
     /// Another copy of the parking card — Restore's "Remove all other
     /// copies of **that card** in Archives from the game", asked as the
     /// card Restore installed (`PromptInstallCorpCard::if_installed`), which
@@ -909,6 +916,7 @@ impl CardFilter {
                 | CardFilter::NotSourceCard
                 | CardFilter::NotThisCardsHost
                 | CardFilter::ThisCardsHost
+                | CardFilter::HostedOnThisCard
                 | CardFilter::CopyOfThisCard
                 | CardFilter::NotRelaying
                 | CardFilter::TrashableBy(_)
@@ -1061,6 +1069,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::NotSourceCard => true,
         CardFilter::NotThisCardsHost => true,
         CardFilter::ThisCardsHost => true,
+        CardFilter::HostedOnThisCard => true,
         CardFilter::CopyOfThisCard => true,
         CardFilter::NotRelaying => true,
         CardFilter::TrashableBy(_) => true,

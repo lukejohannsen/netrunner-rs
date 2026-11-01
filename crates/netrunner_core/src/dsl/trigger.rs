@@ -1008,6 +1008,16 @@ pub enum EventFilter {
     /// (`EncounteringHostIce`) is an intervening if about the run, which a
     /// rez is not.
     Host,
+    /// The card the moment is about is installed **on this card** —
+    /// Scheherazade's "Whenever you install a program on Scheherazade" and
+    /// Off-Campus Apartment's "Whenever you install a connection on
+    /// Off-Campus Apartment". `Host` turned round: asked of the installed
+    /// copy, where it sits as the moment is heard
+    /// (`InstalledRunnerCard::hosted_on_rig_card`). Only on `OnInstall`, by
+    /// a card that may host one (`ContinuousKind::MayHost`). Composition
+    /// didn't work: a `Card` filter is about the kind of card, and nothing
+    /// else a filter reads says where it went.
+    OntoThis,
     /// The Corp installed the card in the root of a server — Lago Paranoá
     /// Shelter's "The first time each turn **the Corp installs a card in
     /// the root of a server**". Read off the card installed: ice is the only

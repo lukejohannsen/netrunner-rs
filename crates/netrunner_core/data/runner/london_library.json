@@ -1,0 +1,87 @@
+{
+  "id": "london_library",
+  "title": "London Library",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "when": {
+        "Whose": "Runner"
+      },
+      "effects": [
+        {
+          "TrashCard": "HostedOnThisCard"
+        }
+      ],
+      "text": "Trash all programs hosted on London Library when your turn ends."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnGrip",
+          "filter": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              {
+                "Not": {
+                  "HasSubtype": "Virus"
+                }
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "InstallProgramOnHost": {
+              "from": "OwnGrip",
+              "ignoring_install_cost": true
+            }
+          }
+        }
+      },
+      "text": "[click]: Install a non-virus program from your grip on London Library, ignoring the install cost."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnInstalled",
+          "filter": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              "HostedOnThisCard"
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnGrip"
+        }
+      },
+      "text": "[click]: Add a program on London Library to your grip."
+    }
+  ],
+  "built_from": 8029,
+  "is_playable": true
+}

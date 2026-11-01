@@ -1,0 +1,47 @@
+{
+  "id": "scheherazade",
+  "title": "Scheherazade",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 0,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": "MayHost",
+      "applies_to": {
+        "InstallingOntoThis": {
+          "CardType": "Program"
+        }
+      },
+      "text": "Scheherazade can host any number of programs."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "Any",
+      "when": {
+        "All": [
+          "OntoThis",
+          {
+            "Card": {
+              "CardType": "Program"
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever you install a program on Scheherazade, gain 1[credit]."
+    }
+  ],
+  "built_from": 4022,
+  "is_playable": true
+}

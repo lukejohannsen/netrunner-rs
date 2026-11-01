@@ -74,7 +74,7 @@ pub use state::{MatchRules, DEFAULT_WINNING_AGENDA_POINTS,
     ArchivedCard, DeferredTrigger,
     AgendaPoints, Clicks, CorpState, Credits, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard,
     MemoryUnits, OncePerTurnKey, PaidAbilityWindow, PendingChoiceResume, PendingDecision, PsiBid, PendingPaidChoice, PendingPaidChoiceResume, PendingPayment,
-    PendingPrevention, PlayedOperation, HostedCondition, HostedIdentity, PlayerResources, PreventionResume, RevealedCard, RunnerState, ScoredAgenda, Side,
+    PendingPrevention, PlayedOperation, SetAsideByHost, HostedCondition, HostedIdentity, PlayerResources, PreventionResume, RevealedCard, RunnerState, ScoredAgenda, Side,
     TraceResume, TraceState, WindowCheckpoint, WouldHappen,
 };
 pub use turn::end_turn;

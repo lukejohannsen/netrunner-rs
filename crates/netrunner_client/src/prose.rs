@@ -862,6 +862,7 @@ fn describe_when(filter: &EventFilter) -> String {
         EventFilter::OwnedBy { owner, whose } => format!("the {whose:?}'s, of a {owner:?} card"),
         EventFilter::ByThis => "by this card".to_string(),
         EventFilter::Host => "of host ice".to_string(),
+        EventFilter::OntoThis => "onto this card".to_string(),
         EventFilter::InRoot => "by the Corp, in the root of a server".to_string(),
         EventFilter::InRootOfThisServer => "by the Corp, in the root of this server".to_string(),
         EventFilter::InOrProtectingThisServer => "by the Corp, in or protecting this server".to_string(),
