@@ -1,0 +1,73 @@
+{
+  "id": "breach",
+  "title": "Breach",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "strength": 2,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break up to 3 barrier subroutines.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 3
+          },
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "Not": {
+              "And": [
+                {
+                  "Not": {
+                    "DuringRunOn": "Hq"
+                  }
+                },
+                {
+                  "And": [
+                    {
+                      "Not": {
+                        "DuringRunOn": "RnD"
+                      }
+                    },
+                    {
+                      "Not": {
+                        "DuringRunOn": "Archives"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +4 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 4,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 5042,
+  "is_playable": true
+}

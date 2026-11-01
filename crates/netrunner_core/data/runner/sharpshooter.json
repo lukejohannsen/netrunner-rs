@@ -1,0 +1,49 @@
+{
+  "id": "sharpshooter",
+  "title": "Sharpshooter",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "strength": 3,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → [trash]: Break any number of destroyer subroutines.",
+      "cost": "TrashSelf",
+      "effect": {
+        "BreakSubroutines": {
+          "count": "All",
+          "restrict_to": null
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "EncounteredIce": {
+              "HasSubtype": "Destroyer"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +2 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 4067,
+  "is_playable": true
+}

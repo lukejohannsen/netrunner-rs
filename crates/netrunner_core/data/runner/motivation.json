@@ -1,0 +1,37 @@
+{
+  "id": "motivation",
+  "title": "Motivation",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "LookAtTopOfDeck": {
+                  "deck": "Runner",
+                  "count": 1
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may look at the top card of your stack",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may look at the top card of your stack."
+    }
+  ],
+  "built_from": 4008,
+  "is_playable": true
+}

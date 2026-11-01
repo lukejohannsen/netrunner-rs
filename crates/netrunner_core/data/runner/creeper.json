@@ -1,0 +1,61 @@
+{
+  "id": "creeper",
+  "title": "Creeper",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 5,
+  "strength": 2,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break 1 sentry subroutine.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 2089,
+  "continuous": [
+    {
+      "kind": {
+        "MemoryCost": {
+          "per": -1
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "AmountAtLeast": [
+          "Link",
+          2
+        ]
+      },
+      "text": "If you have at least 2[link], the memory cost of this program is 0[mu], even if it is not installed."
+    }
+  ],
+  "is_playable": true
+}

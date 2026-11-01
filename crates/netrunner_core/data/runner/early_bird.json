@@ -1,0 +1,40 @@
+{
+  "id": "early_bird",
+  "title": "Early Bird",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "play_requirement": {
+    "Not": {
+      "AmountAtLeast": [
+        {
+          "TimesThisTurn": "OnActionFinished"
+        },
+        1
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainClicks": [
+            "Runner",
+            1
+          ]
+        },
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 5032,
+  "is_playable": true
+}

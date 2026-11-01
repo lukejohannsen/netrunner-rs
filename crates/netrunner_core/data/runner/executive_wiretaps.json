@@ -1,0 +1,23 @@
+{
+  "id": "executive_wiretaps",
+  "title": "Executive Wiretaps",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 4,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "RevealHand": "Corp"
+        }
+      ]
+    }
+  ],
+  "built_from": 4084,
+  "is_playable": true
+}

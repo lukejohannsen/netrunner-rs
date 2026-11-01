@@ -308,7 +308,6 @@ pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("galahad", "Galahad"),
     ("bad_times", "Bad Times"),
     ("cyber_threat", "Cyber Threat"),
-    ("paper_tripping", "Paper Tripping"),
     ("power_tap", "Power Tap"),
     ("nasir_meidan_cyber_explorer", "Nasir Meidan: Cyber Explorer"),
     ("social_engineering", "Social Engineering"),
@@ -350,7 +349,6 @@ pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const UAO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("architect", "Architect"),
     ("labyrinthine_servers", "Labyrinthine Servers"),
-    ("ashigaru", "Ashigaru"),
     ("mamba", "Mamba"),
     ("blue_sun_powering_the_future", "Blue Sun: Powering the Future"),
     ("changeling", "Changeling"),
@@ -405,17 +403,12 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("plan_b", "Plan B"),
     ("diversified_portfolio", "Diversified Portfolio"),
     ("iain_stirling_retired_spook", "Iain Stirling: Retired Spook"),
-    ("early_bird", "Early Bird"),
     ("feint", "Feint"),
     ("planned_assault", "Planned Assault"),
     ("unregistered_s_w_35", "Unregistered S&W '35"),
     ("window", "Window"),
-    ("alias", "Alias"),
-    ("breach", "Breach"),
     ("bug", "Bug"),
-    ("gingerbread", "Gingerbread"),
     ("grappling_hook", "Grappling Hook"),
-    ("passport", "Passport"),
     ("push_your_luck", "Push Your Luck"),
     ("theophilius_bagbiter", "Theophilius Bagbiter"),
     ("overmind", "Overmind"),
@@ -431,7 +424,6 @@ pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("project_wotan", "Project Wotan"),
     ("haas_arcology_ai", "Haas Arcology AI"),
     ("bioroid_efficiency_research", "Bioroid Efficiency Research"),
-    ("successful_demonstration", "Successful Demonstration"),
     ("howler", "Howler"),
     ("minelayer", "Minelayer"),
     ("awakening_center", "Awakening Center"),
@@ -454,9 +446,7 @@ pub(crate) const OM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("pawn", "Pawn"),
     ("rook", "Rook"),
     ("false_echo", "False Echo"),
-    ("motivation", "Motivation"),
     ("john_masanori", "John Masanori"),
-    ("geothermal_fracking", "Geothermal Fracking"),
     ("swarm", "Swarm"),
 ];
 
@@ -477,25 +467,20 @@ pub(crate) const MT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("knight", "Knight"),
     ("running_interference", "Running Interference"),
     ("expert_schedule_analyzer", "Expert Schedule Analyzer"),
-    ("woman_in_the_red_dress", "Woman in the Red Dress"),
     ("raymond_flint", "Raymond Flint"),
     ("accelerated_diagnostics", "Accelerated Diagnostics"),
     ("unorthodox_predictions", "Unorthodox Predictions"),
     ("sundew", "Sundew"),
     ("snoop", "Snoop"),
-    ("ireress", "Ireress"),
     ("power_shutdown", "Power Shutdown"),
 ];
 
 /// *True Colors* (`true_colors`): tranche F10 of the FFG plan.
 pub(crate) const TC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("keyhole", "Keyhole"),
     ("leverage", "Leverage"),
     ("llds_processor", "LLDS Processor"),
-    ("sharpshooter", "Sharpshooter"),
     ("capstone", "Capstone"),
     ("starlight_crusade_funding", "Starlight Crusade Funding"),
-    ("rex_campaign", "Rex Campaign"),
     ("panic_button", "Panic Button"),
     ("rsvp", "RSVP"),
     ("curtain_wall", "Curtain Wall"),
@@ -505,7 +490,6 @@ pub(crate) const TC_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const FAL_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("quest_completed", "Quest Completed"),
     ("tallie_perrault", "Tallie Perrault"),
-    ("executive_wiretaps", "Executive Wiretaps"),
     ("blackguard", "Blackguard"),
     ("blackmail", "Blackmail"),
     ("toshiyuki_sakai", "Toshiyuki Sakai"),
@@ -520,7 +504,6 @@ pub(crate) const DT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("reclamation_order", "Reclamation Order"),
     ("broadcast_square", "Broadcast Square"),
     ("corporate_shuffle", "Corporate Shuffle"),
-    ("caprice_nisei", "Caprice Nisei"),
     ("marker", "Marker"),
     ("napd_contract", "NAPD Contract"),
 ];
@@ -528,14 +511,12 @@ pub(crate) const DT_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *What Lies Ahead* (`what_lies_ahead`): tranche F11 of the FFG plan.
 pub(crate) const WLA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("cortez_chip", "Cortez Chip"),
-    ("zu_13_key_master", "ZU.13 Key Master"),
     ("the_helpful_ai", "The Helpful AI"),
 ];
 
 /// *Trace Amount* (`trace_amount`): tranche F11 of the FFG plan.
 pub(crate) const TA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("vamp", "Vamp"),
-    ("snowball", "Snowball"),
     ("encryption_protocol", "Encryption Protocol"),
     ("fetal_ai", "Fetal AI"),
     ("sensei", "Sensei"),
@@ -545,7 +526,6 @@ pub(crate) const TA_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Cyber Exodus* (`cyber_exodus`): tranche F11 of the FFG plan.
 pub(crate) const CE_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("nerve_agent", "Nerve Agent"),
     ("snitch", "Snitch"),
     ("personal_workshop", "Personal Workshop"),
     ("sunset", "Sunset"),
@@ -557,7 +537,6 @@ pub(crate) const CE_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("disrupter", "Disrupter"),
     ("crescentus", "Crescentus"),
-    ("deus_x", "Deus X"),
     ("dedicated_server", "Dedicated Server"),
     ("bullfrog", "Bullfrog"),
     ("net_police", "Net Police"),
@@ -571,7 +550,6 @@ pub(crate) const HS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("surge", "Surge"),
     ("andromeda_dispossessed_ristie", "Andromeda: Dispossessed Ristie"),
     ("replicator", "Replicator"),
-    ("creeper", "Creeper"),
     ("kraken", "Kraken"),
     ("kati_jones", "Kati Jones"),
     ("data_hound", "Data Hound"),
@@ -601,7 +579,6 @@ pub(crate) const MO_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
     ("quest_completed", "Quest Completed"),
-    ("deus_x", "Deus X"),
     ("john_masanori", "John Masanori"),
     ("kati_jones", "Kati Jones"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),

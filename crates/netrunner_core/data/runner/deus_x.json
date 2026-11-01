@@ -1,0 +1,48 @@
+{
+  "id": "deus_x",
+  "title": "Deus X",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 10,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → [trash]: Break any number of AP subroutines.",
+      "cost": "TrashSelf",
+      "effect": {
+        "BreakSubroutines": {
+          "count": "All",
+          "restrict_to": null
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "EncounteredIce": {
+              "HasSubtype": "AP"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → [trash]: Prevent any amount of net damage.",
+      "cost": "TrashSelf",
+      "effect": {
+        "Prevent": {
+          "Damage": {
+            "kind": "Net",
+            "up_to": 4294967295
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 2066,
+  "is_playable": true
+}

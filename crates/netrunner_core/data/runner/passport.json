@@ -1,0 +1,73 @@
+{
+  "id": "passport",
+  "title": "Passport",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "strength": 2,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 code gate subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "Not": {
+              "And": [
+                {
+                  "Not": {
+                    "DuringRunOn": "Hq"
+                  }
+                },
+                {
+                  "And": [
+                    {
+                      "Not": {
+                        "DuringRunOn": "RnD"
+                      }
+                    },
+                    {
+                      "Not": {
+                        "DuringRunOn": "Archives"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +2 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 5046,
+  "is_playable": true
+}

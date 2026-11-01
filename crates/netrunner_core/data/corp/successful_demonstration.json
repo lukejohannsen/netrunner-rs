@@ -1,0 +1,36 @@
+{
+  "id": "successful_demonstration",
+  "title": "Successful Demonstration",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "play_requirement": {
+    "MoreThan": [
+      {
+        "TimesLastTurn": "OnRunEnded"
+      },
+      {
+        "TimesLastTurnWhen": {
+          "trigger": "OnRunEnded",
+          "when": "Successful"
+        }
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            7
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 3014,
+  "is_playable": true
+}

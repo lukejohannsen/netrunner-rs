@@ -1,0 +1,54 @@
+{
+  "id": "snowball",
+  "title": "Snowball",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 1,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 barrier subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "BreakSubroutines": {
+              "count": {
+                "Fixed": 1
+              },
+              "restrict_to": "Barrier"
+            }
+          },
+          {
+            "BoostStrength": {
+              "amount": 1,
+              "duration": "Run"
+            }
+          }
+        ]
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 2027,
+  "is_playable": true
+}

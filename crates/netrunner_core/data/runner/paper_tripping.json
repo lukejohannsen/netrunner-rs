@@ -1,0 +1,30 @@
+{
+  "id": "paper_tripping",
+  "title": "Paper Tripping",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 4,
+  "play_requirement": {
+    "Not": {
+      "AmountAtLeast": [
+        {
+          "TimesThisTurn": "OnActionFinished"
+        },
+        1
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "RemoveTags": "RunnerTags"
+        }
+      ]
+    }
+  ],
+  "built_from": 6015,
+  "is_playable": true
+}
