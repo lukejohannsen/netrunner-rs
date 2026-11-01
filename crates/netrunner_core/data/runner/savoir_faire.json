@@ -1,0 +1,58 @@
+{
+  "id": "savoir_faire",
+  "title": "Savoir-faire",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 2
+      },
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          {
+            "ZoneHasAtLeast": {
+              "zone": "OwnGrip",
+              "count": 1,
+              "filter": {
+                "All": [
+                  {
+                    "CardType": "Program"
+                  },
+                  "InstallableRunnerCard"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnGrip",
+          "filter": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              "InstallableRunnerCard"
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": "InstallRunnerCardFromGrip"
+        }
+      },
+      "text": "2[credit]: Install a program from your grip, paying the install cost."
+    }
+  ],
+  "built_from": 4105,
+  "is_playable": true
+}
