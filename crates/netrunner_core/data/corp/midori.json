@@ -1,0 +1,79 @@
+{
+  "id": "midori",
+  "title": "Midori",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnIceApproached",
+      "subject": "This",
+      "requirement": {
+        "And": [
+          "OncePerRun",
+          {
+            "ZoneHasAtLeast": {
+              "zone": "OwnHq",
+              "filter": "Ice",
+              "count": 1
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnHq",
+                  "filter": "Ice",
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "Sequence": [
+                      {
+                        "SwapApproachedIceWithCard": {
+                          "origin": "OwnHq"
+                        }
+                      },
+                      {
+                        "OfferPaidChoice": {
+                          "side": "Runner",
+                          "cost": "JackOut",
+                          "if_paid": {
+                            "Sequence": []
+                          },
+                          "if_declined": {
+                            "Sequence": []
+                          },
+                          "text": "the Runner may jack out"
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may swap that ice with 1 piece of ice from HQ",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever the Runner approaches a piece of ice protecting this server, you may swap that ice with 1 piece of ice from HQ."
+    }
+  ],
+  "built_from": 2113,
+  "is_playable": true
+}

@@ -522,6 +522,21 @@ fn instance_matches_filter(
             c.slot == InstallSlot::Ice && from_innermost.is_some() && run::ice_from_innermost(state, c.install_id) == from_innermost
         }),
         CardFilter::SamePositionAs(_) => false,
+        // Directly before or after, in `corp.installed`'s outermost-first
+        // order of one server's ice.
+        CardFilter::NextToThis => corp_install.is_some_and(|c| {
+            let Some(place) = source.and_then(|source| state.find_corp_install(source)).filter(|place| place.slot == InstallSlot::Ice) else { return false };
+            let protecting: Vec<_> = state.corp.installed.iter().filter(|other| other.server == place.server && other.slot == InstallSlot::Ice).map(|other| other.install_id).collect();
+            let (Some(this), Some(that)) = (protecting.iter().position(|id| Some(*id) == source), protecting.iter().position(|id| *id == c.install_id)) else { return false };
+            this.abs_diff(that) == 1
+        }),
+        // The ice at that place now, read against the table: another
+        // install of the same card.
+        CardFilter::CopyOf(crate::dsl::MovedTo::Ice { server, position }) => corp_install.is_some_and(|c| {
+            let there = state.corp.installed.iter().filter(|other| other.server == *server && other.slot == InstallSlot::Ice).nth(*position as usize);
+            c.slot == InstallSlot::Ice && there.is_some_and(|there| there.card == c.card && there.install_id != c.install_id)
+        }),
+        CardFilter::CopyOf(_) => false,
         CardFilter::InThisServer => false,
         CardFilter::InChosenServer => false,
         CardFilter::Advanced => corp_install.is_some_and(|c| c.advancement_tokens > 0),
@@ -2285,6 +2300,10 @@ pub(crate) fn resolve_choose_server(
             Some(handle) if in_play.is_none() => crate::rules::lingering::On::Install(handle),
             _ => crate::rules::lingering::On::Player(chooser),
         };
+        // A second choice by the same copy is "the chosen server" from
+        // now on: a second Sunset in a turn would otherwise have read the
+        // first one's server back (`chosen_server` takes the first held).
+        crate::rules::lingering::spend_chosen_server(state, &card, source_install.filter(|_| in_play.is_none()));
         state.lingering.push(crate::rules::lingering::LingeringEffect {
             what: crate::rules::lingering::Lingering::ChosenServer(server),
             on,

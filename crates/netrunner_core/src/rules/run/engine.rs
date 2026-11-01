@@ -1277,10 +1277,15 @@ pub(crate) fn ice_from_innermost(state: &GameState, ice: crate::rules::state::In
 /// attacked server, its ice the run's, as `move_run_to_outermost` makes
 /// it; then everything follows as after a pass (CR 6.9.4c–f). A no-op
 /// outside the movement phase, or once the ice has left the table.
+///
+/// `past` puts the Runner behind the ice instead, as if they had just
+/// passed it — Copycat (`Effect::MoveRunPast`): the same movement phase,
+/// one position inward.
 pub(crate) fn move_run_in_front_of_install(
     state: &mut GameState,
     registry: &CardRegistry,
     ice: crate::rules::state::InstallId,
+    past: bool,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let Some(target) = state.find_corp_install(ice).filter(|place| place.slot == InstallSlot::Ice).map(|place| place.server) else { return Ok(Vec::new()) };
     let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
@@ -1310,7 +1315,7 @@ pub(crate) fn move_run_in_front_of_install(
     }
     let run = state.active_run.as_mut().expect("checked above");
     if let Some(position) = run.ice.iter().position(|run_ice| run_ice.install_id == ice) {
-        enter_movement(run, position);
+        enter_movement(run, position + usize::from(past));
     }
     Ok(events)
 }
@@ -1353,6 +1358,63 @@ pub(crate) fn move_run_with_ice(
         state.runner.servers_run_this_turn.push(target);
     }
     Ok(vec![GameEvent::RunRedirected { from, to: target }])
+}
+
+/// Brings the run into step with two pieces of ice that have just traded
+/// places (`Effect::SwapInstalledIce`), by the rule for each step of a run
+/// (CR 6.2.7). **The encountered ice is followed** (6.2.7d: "the Runner is
+/// now encountering that ice in its new position") — to another server
+/// with the run (`move_run_with_ice`), or within one by its handle, which
+/// is what `reconcile_ice` keeps. **Anywhere else the Runner keeps their
+/// position, not the ice** (6.2.7b: approaching, "the Runner is now
+/// approaching the new ice"; 6.2.7e: initiation and movement are defined
+/// by position): the two entries of the run's own list trade handles, so
+/// the place the Runner stood, and every place they have passed, now
+/// names the ice that is there. Surfer's "the run continues from this new
+/// position. You are still encountering that ice" is the first half;
+/// Mumbad City Grid's, Sipa's and Inversificator's swaps of the ice just
+/// passed are the second, and **before this the run followed the ice in
+/// every phase**: the passed set kept the passed ice's handle, so a passed
+/// ice swapped inward was skipped where the rules have it approached
+/// again, and a passed ice swapped away left its replacement to be
+/// approached a second time.
+///
+/// The run's entry for a position that took a new piece of ice is built
+/// fresh from it (nothing broken on it, its own subroutines), as a new
+/// approach finds it. Then `reconcile_ice`, which every swap already
+/// relied on, does the rest.
+pub(crate) fn follow_ice_swap(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    a: crate::rules::state::InstallId,
+    b: crate::rules::state::InstallId,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
+    if !run.suspended.is_empty() || matches!(run.phase, RunPhase::AccessingCard | RunPhase::Ended) {
+        return Ok(Vec::new());
+    }
+    let encountered = (run.phase == RunPhase::EncounterIce).then(|| run.ice.get(run.position).map(|ice| ice.install_id)).flatten();
+    if let Some(encountered) = encountered.filter(|ice| *ice == a || *ice == b) {
+        let mut events = move_run_with_ice(state, registry, encountered)?;
+        events.extend(reconcile_ice(state, registry)?.unwrap_or_default());
+        return Ok(events);
+    }
+    let fresh = |install| state.corp.installed.iter().find(|c| c.install_id == install).map(|installed| build_run_ice(installed, registry)).transpose();
+    let (into_a, into_b) = (fresh(b)?.flatten(), fresh(a)?.flatten());
+    let run = state.active_run.as_mut().expect("checked above");
+    for entry in run.ice.iter_mut() {
+        let replacement = if entry.install_id == a {
+            into_a.clone()
+        } else if entry.install_id == b {
+            into_b.clone()
+        } else {
+            continue;
+        };
+        if let Some(replacement) = replacement {
+            *entry = replacement;
+        }
+    }
+    Ok(reconcile_ice(state, registry)?.unwrap_or_default())
 }
 
 /// Whether `card_id` may be swapped into the place of `install`, a Corp

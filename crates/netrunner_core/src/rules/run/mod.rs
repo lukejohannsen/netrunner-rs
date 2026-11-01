@@ -13,7 +13,7 @@ pub use action::RunAction;
 pub use engine::{advance_run, start_run, start_run_ignoring_costs};
 pub(crate) use engine::{encounter_accessed_ice, force_encounter, move_innermost_and_encounter, may_pay_run_cost, redirect_to, resolving_subroutines_of, start_breach};
 pub(crate) use engine::{
-    break_subroutine, bypass_encountered_ice, check_run_may_begin, encounter_ends, end_run, move_run_to_outermost, move_run_to_outermost_then, move_run_in_front_of, move_run_in_front_of_install, move_run_back_to_ice, move_run_with_ice, ice_from_innermost, reconcile_ice, renumber_subroutines,
+    break_subroutine, bypass_encountered_ice, check_run_may_begin, encounter_ends, end_run, move_run_to_outermost, move_run_to_outermost_then, move_run_in_front_of, move_run_in_front_of_install, move_run_back_to_ice, move_run_with_ice, follow_ice_swap, ice_from_innermost, reconcile_ice, renumber_subroutines,
     swap_approached_ice_with_card, swappable_into, transition_subroutine,
 };
 pub use state::{

@@ -2394,6 +2394,16 @@ pub enum Effect {
     /// `MoveRunToOutermost` puts the Runner in front of a server's
     /// outermost ice, and nothing moved the run outward on its own server.
     MoveRunToIce(MovedTo),
+    /// Moves the run to just past a piece of ice, in the movement phase
+    /// after it, on whichever server it protects — Copycat's "the run
+    /// continues **as if you had just passed** the chosen piece of ice (you
+    /// are now running from the new position)": the Runner's jack-out
+    /// decision, the Corp's window, then the next ice inward or the server
+    /// (CR 6.9.4c–f). A server other than the attacked one becomes the
+    /// attacked server, as Slipstream's move makes it. Which ice is
+    /// `MovedTo`. Composition didn't work: `MoveRunToIce` stands the
+    /// Runner in front of the ice, to approach it, and this one behind it.
+    MoveRunPast(MovedTo),
     /// Takes the acting card — an agenda the Runner has scored — out of
     /// the Runner's score area, removes tags equal to its printed points,
     /// and installs it unrezzed in a fresh remote. IP Enforcement's "as an
@@ -3330,6 +3340,16 @@ pub enum EffectDuration {
     /// Composition didn't work: `Run` holds through every later encounter,
     /// and `Encounter` is the one under way.
     NextEncounter,
+    /// Until the next encounter of this run begins — Susanoo-no-Mikoto's
+    /// "the Runner cannot jack out this run **until after they encounter a
+    /// piece of ice**" (`Until::ThroughEncounter` of the encounter under
+    /// way, or of the last one). A jack-out is decided only between
+    /// encounters (CR 6.9.4c), so the moment the next one begins is "after"
+    /// for everything this can forbid. It ends with the run if no ice is
+    /// encountered. Composition didn't work: `NextEncounter` holds through
+    /// that encounter and the movement after it, where the Runner may jack
+    /// out again.
+    UntilNextEncounter,
 }
 
 /// What an `Effect::Prevent` prevents, as the card prints it after the word
@@ -3988,6 +4008,10 @@ impl Effect {
                 [chosen] => Effect::MoveRunToIce(MovedTo::Install(*chosen)),
                 _ => Effect::MoveRunToIce(MovedTo::ChosenThisWay),
             },
+            Effect::MoveRunPast(MovedTo::ChosenThisWay) => match installs {
+                [chosen] => Effect::MoveRunPast(MovedTo::Install(*chosen)),
+                _ => Effect::MoveRunPast(MovedTo::ChosenThisWay),
+            },
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
@@ -4567,6 +4591,7 @@ impl Effect {
             | Effect::MoveRunToOutermost(..)
             | Effect::MoveRunToOutermostAndEncounter(..)
             | Effect::MoveRunToIce(..)
+            | Effect::MoveRunPast(..)
             | Effect::InstallAgendaFromRunnerScoreArea
             | Effect::SwapApproachedIceWithCard { .. }
             | Effect::AllottedClicksNextTurn(..)
