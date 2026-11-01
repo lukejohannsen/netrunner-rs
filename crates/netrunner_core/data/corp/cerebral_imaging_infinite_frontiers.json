@@ -1,0 +1,34 @@
+{
+  "id": "cerebral_imaging_infinite_frontiers",
+  "title": "Cerebral Imaging: Infinite Frontiers",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": -5
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your maximum hand size is equal to the number of credits in your credit pool."
+    },
+    {
+      "kind": {
+        "HandSize": {
+          "per": 1,
+          "of": {
+            "Credits": "Corp"
+          }
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your maximum hand size is equal to the number of credits in your credit pool."
+    }
+  ],
+  "triggers": [],
+  "built_from": 3001,
+  "is_playable": true
+}

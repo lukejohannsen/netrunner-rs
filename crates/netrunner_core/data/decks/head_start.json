@@ -3,7 +3,7 @@
   "name": "Head Start",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Chaos Theory: Wünderkind, the Revised Core Set's Shaper identity, one more [mu] on a forty-card deck, and Dinosaurus, the console that hosts one non-AI icebreaker outside the memory limit at +2 strength. Two Dinosaurus and three Dyson Mem Chip, memory and link, around three Shaper breakers to host — Gordian Blade, Battering Ram and Pipeline — Self-modifying Code to find them, and the money and runs of the Shaper Sweep decks. In faction throughout. Eternal-legal only: Chaos Theory is a Revised Core Set card. FFG F1 Stage 1. FFG F1 Stage 2: two All-nighter for its two Professional Contacts, two Notoriety, an agenda point after successful runs on all three centrals in a turn, for its two Dirty Laundry, and two Underworld Contact, a credit a turn on its Dyson Mem Chips' and Rabbit Holes' link, for its two Daily Casts. Other decks keep all three. Kitara Stage 7a: two Kongamato, two Cyberdelia and two Takobi for two Telework Contract, two Rabbit Hole and two Self-modifying Code. Kitara Stage 13c: two Emergent Creativity for its two Overclock, 10 of its 15 influence, trading programs and hardware in the grip for one from the stack. Kitara Stage 13d: one RNG Key for one of its three Sure Gamble. One Diesel made room for Gebrselassie, so a pump outlasts its run. Red Sand Stage 43: two System Seizure for two All-nighter, a current under which the turn's first pump lasts the run; Spare Parts keeps All-nighter.",
+  "description": "Not a published list: built so the sweeps reach Chaos Theory: Wünderkind, the Revised Core Set's Shaper identity, one more [mu] on a forty-card deck, and Dinosaurus, the console that hosts one non-AI icebreaker outside the memory limit at +2 strength. Two Dinosaurus and three Dyson Mem Chip, memory and link, around three Shaper breakers to host — Gordian Blade, Battering Ram and Pipeline — Self-modifying Code to find them, and the money and runs of the Shaper Sweep decks. In faction throughout. Eternal-legal only: Chaos Theory is a Revised Core Set card. FFG F1 Stage 1. FFG F1 Stage 2: two All-nighter for its two Professional Contacts, two Notoriety, an agenda point after successful runs on all three centrals in a turn, for its two Dirty Laundry, and two Underworld Contact, a credit a turn on its Dyson Mem Chips' and Rabbit Holes' link, for its two Daily Casts. Other decks keep all three. Kitara Stage 7a: two Kongamato, two Cyberdelia and two Takobi for two Telework Contract, two Rabbit Hole and two Self-modifying Code. Kitara Stage 13c: two Emergent Creativity for its two Overclock, 10 of its 15 influence, trading programs and hardware in the grip for one from the stack. Kitara Stage 13d: one RNG Key for one of its three Sure Gamble. One Diesel made room for Gebrselassie, so a pump outlasts its run. Red Sand Stage 43: two System Seizure for two All-nighter, a current under which the turn's first pump lasts the run; Spare Parts keeps All-nighter. Two LLDS Processor take Sure Gamble's place. Two Exploratory Romp take Jailbreak's place. Two The Helpful AI take Creative Commission's place.",
   "style": [
     "rig"
   ],
@@ -30,19 +30,7 @@
       "count": 2
     },
     {
-      "card": "sure_gamble",
-      "count": 2
-    },
-    {
       "card": "underworld_contact",
-      "count": 2
-    },
-    {
-      "card": "creative_commission",
-      "count": 2
-    },
-    {
-      "card": "jailbreak",
       "count": 2
     },
     {
@@ -92,6 +80,18 @@
     {
       "card": "gebrselassie",
       "count": 1
+    },
+    {
+      "card": "llds_processor",
+      "count": 2
+    },
+    {
+      "card": "exploratory_romp",
+      "count": 2
+    },
+    {
+      "card": "the_helpful_ai",
+      "count": 2
     }
   ]
 }

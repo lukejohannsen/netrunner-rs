@@ -1,0 +1,36 @@
+{
+  "id": "market_research",
+  "title": "Market Research",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "continuous": [
+    {
+      "kind": {
+        "AgendaPoints": {
+          "per": 1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "This",
+      "text": "Market Research is worth 1 additional agenda point while it has an agenda counter on it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "requirement": "IsTagged",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "If the Runner is tagged when you score Market Research, place 1 agenda counter on it."
+    }
+  ],
+  "built_from": 4095,
+  "is_playable": true
+}

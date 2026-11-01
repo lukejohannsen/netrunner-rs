@@ -662,6 +662,11 @@ mod tests {
             ("zzzzzzzzzzzzz", &neither),
             ("zzzzzzzzzzzzzz", &neither),
             ("zzzzzzzzzzzzzzz", &neither),
+            // FFG composable leftovers, Stage 4: Iain Stirling, GRNDL and
+            // Cerebral Imaging, each on another Sweep deck's list.
+            ("zzzzzzzzzzzzzzzz", &neither),
+            ("zzzzzzzzzzzzzzzzz", &neither),
+            ("zzzzzzzzzzzzzzzzzz", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.

@@ -1,0 +1,50 @@
+{
+  "id": "theophilius_bagbiter",
+  "title": "Theophilius Bagbiter",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": -5
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your maximum hand size is equal to the number of credits in your credit pool."
+    },
+    {
+      "kind": {
+        "HandSize": {
+          "per": 1,
+          "of": {
+            "Credits": "Runner"
+          }
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your maximum hand size is equal to the number of credits in your credit pool."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "LoseCreditsAmount": [
+            "Runner",
+            {
+              "Credits": "Runner"
+            }
+          ]
+        }
+      ],
+      "text": "When you install Theophilius Bagbiter, lose all credits in your credit pool."
+    }
+  ],
+  "built_from": 5049,
+  "is_playable": true
+}

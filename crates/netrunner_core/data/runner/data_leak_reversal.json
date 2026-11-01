@@ -1,0 +1,41 @@
+{
+  "id": "data_leak_reversal",
+  "title": "Data Leak Reversal",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "install_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesThisTurnWhen": {
+          "trigger": "OnSuccessfulRun",
+          "when": {
+            "ServerKind": "Central"
+          }
+        }
+      },
+      1
+    ]
+  },
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "IsTagged",
+      "effect": {
+        "Mill": {
+          "deck": "Corp",
+          "amount": {
+            "Fixed": 1
+          }
+        }
+      },
+      "text": "[click]: The Corp trashes the top card of R&D."
+    }
+  ],
+  "built_from": 2103,
+  "is_playable": true
+}

@@ -1,0 +1,137 @@
+{
+  "id": "zzzzzzzzzzzzzzzz",
+  "name": "Zzzzzzzzzzzzzzzz",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Iain Stirling: Retired Spook, who gains 2[credit] each turn he trails on points. Advance Fee's list, its identity swapped. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 4.",
+  "style": [
+    "pressure"
+  ],
+  "identity": "iain_stirling_retired_spook",
+  "cards": [
+    {
+      "card": "tremolo",
+      "count": 2
+    },
+    {
+      "card": "shibboleth",
+      "count": 1
+    },
+    {
+      "card": "laser_pointer",
+      "count": 1
+    },
+    {
+      "card": "saci",
+      "count": 2
+    },
+    {
+      "card": "mr_li",
+      "count": 1
+    },
+    {
+      "card": "matryoshka",
+      "count": 2
+    },
+    {
+      "card": "femme_fatale",
+      "count": 2
+    },
+    {
+      "card": "pan_weave",
+      "count": 1
+    },
+    {
+      "card": "no_free_lunch",
+      "count": 2
+    },
+    {
+      "card": "lemuria_codecracker",
+      "count": 2
+    },
+    {
+      "card": "penumbral_toolkit",
+      "count": 2
+    },
+    {
+      "card": "afterimage",
+      "count": 2
+    },
+    {
+      "card": "doppelganger",
+      "count": 1
+    },
+    {
+      "card": "aurora",
+      "count": 2
+    },
+    {
+      "card": "ninja",
+      "count": 2
+    },
+    {
+      "card": "bankroll",
+      "count": 2
+    },
+    {
+      "card": "thunder_art_gallery",
+      "count": 1
+    },
+    {
+      "card": "credit_kiting",
+      "count": 2
+    },
+    {
+      "card": "lewi_guilherme",
+      "count": 1
+    },
+    {
+      "card": "rogue_trading",
+      "count": 2
+    },
+    {
+      "card": "pad_tap",
+      "count": 2
+    },
+    {
+      "card": "kasi_string",
+      "count": 1
+    },
+    {
+      "card": "no_one_home",
+      "count": 2
+    },
+    {
+      "card": "zamba",
+      "count": 2
+    },
+    {
+      "card": "rip_deal",
+      "count": 2
+    },
+    {
+      "card": "peace_in_our_time",
+      "count": 1
+    },
+    {
+      "card": "process_automation",
+      "count": 1
+    },
+    {
+      "card": "brute_force_hack",
+      "count": 2
+    },
+    {
+      "card": "the_shadow_net",
+      "count": 1
+    },
+    {
+      "card": "cbi_raid",
+      "count": 2
+    },
+    {
+      "card": "high_stakes_job",
+      "count": 1
+    }
+  ]
+}

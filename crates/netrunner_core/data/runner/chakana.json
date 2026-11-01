@@ -1,0 +1,46 @@
+{
+  "id": "chakana",
+  "title": "Chakana",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever you make a successful run on R&D, place 1 virus counter on Chakana."
+    }
+  ],
+  "continuous": [
+    {
+      "kind": {
+        "AdvancementRequirement": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "CorpInstalled": {
+          "CardType": "Agenda"
+        }
+      },
+      "while": {
+        "ThisCardCountersAtLeast": 3
+      },
+      "text": "If there are at least 3 virus counters on Chakana, the advancement requirement of all agendas is increased by 1."
+    }
+  ],
+  "built_from": 3043,
+  "is_playable": true
+}

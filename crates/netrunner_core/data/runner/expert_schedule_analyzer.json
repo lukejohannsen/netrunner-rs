@@ -1,0 +1,36 @@
+{
+  "id": "expert_schedule_analyzer",
+  "title": "Expert Schedule Analyzer",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "InitiateRun": "Hq"
+          },
+          {
+            "SetAccessReplacement": {
+              "server": "Hq",
+              "optional": true,
+              "effect": {
+                "RevealHand": "Corp"
+              }
+            }
+          }
+        ]
+      },
+      "text": "[click]: Run HQ. If successful, instead of breaching HQ, you may reveal all cards in HQ."
+    }
+  ],
+  "built_from": 4045,
+  "is_playable": true
+}

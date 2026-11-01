@@ -1,0 +1,24 @@
+{
+  "id": "rsvp",
+  "title": "RSVP",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 4,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Runner cannot spend any credits for the remainder of this run.",
+      "effect": {
+        "Prohibit": {
+          "what": "SpendCredits",
+          "until": "Run"
+        }
+      }
+    }
+  ],
+  "built_from": 4077,
+  "is_playable": true
+}

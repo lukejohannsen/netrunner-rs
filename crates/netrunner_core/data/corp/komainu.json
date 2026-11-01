@@ -1,0 +1,41 @@
+{
+  "id": "komainu",
+  "title": "Komainu",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 5,
+  "strength": 1,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "GainSubroutine": {
+            "subroutine": {
+              "text": "Do 1 net damage.",
+              "effect": {
+                "DealDamage": [
+                  "Net",
+                  1
+                ]
+              }
+            },
+            "after": true,
+            "duration": "Run",
+            "count": {
+              "CardsInHand": "Runner"
+            }
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, it gains X \"[subroutine] Do 1 net damage.\" subroutines for the remainder of this run. X is equal to the number of cards in the grip."
+    }
+  ],
+  "subroutines": [],
+  "built_from": 5017,
+  "is_playable": true
+}

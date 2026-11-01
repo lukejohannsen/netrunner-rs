@@ -1,0 +1,34 @@
+{
+  "id": "iain_stirling_retired_spook",
+  "title": "Iain Stirling: Retired Spook",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "MoreThan": [
+          {
+            "AgendaPoints": "Corp"
+          },
+          {
+            "AgendaPoints": "Runner"
+          }
+        ]
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            2
+          ]
+        }
+      ],
+      "text": "When your turn begins, gain 2[credit] if the Corp has more scored agenda points than you."
+    }
+  ],
+  "built_from": 5028,
+  "is_playable": true
+}

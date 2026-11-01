@@ -1,0 +1,28 @@
+{
+  "id": "llds_processor",
+  "title": "LLDS Processor",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "Card": "Icebreaker"
+      },
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "BoostStrength": {
+            "amount": 1,
+            "duration": "Turn"
+          }
+        }
+      ],
+      "text": "Whenever you install an icebreaker, that icebreaker has +1 strength until the end of the turn."
+    }
+  ],
+  "built_from": 4066,
+  "is_playable": true
+}

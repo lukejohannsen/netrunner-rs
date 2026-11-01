@@ -1,0 +1,57 @@
+{
+  "id": "deep_thought",
+  "title": "Deep Thought",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever you make a successful run on R&D, place 1 virus counter on Deep Thought."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "ThisCardCountersAtLeast": 3
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "LookAtTopOfDeck": {
+                  "deck": "Corp",
+                  "count": 1
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may look at the top card of R&D",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "If there are at least 3 virus counters on Deep Thought, it gains \"When your turn begins, you may look at the top card of R&D.\""
+    }
+  ],
+  "built_from": 2108,
+  "is_playable": true
+}
