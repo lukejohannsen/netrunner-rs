@@ -151,6 +151,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
             advancement_requirement: _, // drawn: board::facts tile_tokens ("2/3") and install_facts ("Prints … its text makes it …"); the terminal's server line ("2/3 adv")
             seen_by_runner: _,     // drawn: facts::seen_face_down — "seen" on the Corp's tile, a line on its sheet, the terminal's server line
             this_turn: _,          // engine's: what a copy's "this turn" reads (Gatekeeper's strength, which the tile draws); the rez and the advances are in the log
+            ice_types: _,          // drawn: board::facts ice_kind (the tile's colour) and install_facts ("A sentry now; it prints barrier"); the terminal's server line
         } in ice.into_iter().chain(root)
         {}
     }
@@ -311,6 +312,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
                 corp_bid: _,       // drawn: Prompt::of — "the Corp is bidding" / "has bid"; the Corp's own "you bid 2"
                 corp_max: _,       // drawn: Prompt::of's detail and the buttons, to the Corp
                 runner_max: _,     // drawn: as corp_max, to the Runner
+                guess: _,          // drawn: Prompt::of — "guess whether the Runner spent an even (0) or odd (1)…"
                 on_match: _,       // engine's: what the outcome resolves (the card's text says it)
                 on_differ: _,      // engine's: as on_match
                 source_card: _,    // drawn: Prompt::of, Prompt::card

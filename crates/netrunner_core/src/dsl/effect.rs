@@ -2030,6 +2030,21 @@ pub enum Effect {
     PsiGame {
         on_match: Box<Effect>,
         on_differ: Box<Effect>,
+        /// The Runner alone bids and the Corp guesses — Rigged Results'
+        /// "Secretly spend up to 2[credit]. The Corp guesses how much you
+        /// spent" (`PsiGuess::Amount`) and Push Your Luck's "Secretly spend
+        /// any number of credits. The Corp guesses if you spent an even or
+        /// odd amount" (`Parity`). A bid by one player (CR 10.14.1), so
+        /// only the Runner's is spent, the Corp's guess is bounded by
+        /// nothing it holds, and no "you and the Runner reveal secretly
+        /// spent credits" is met. The guess is made first and concealed, as
+        /// the Corp's bid is: both are made in secret, so who is asked first
+        /// tells neither anything. `on_match` is a guess that was right;
+        /// both outcomes read the Runner's spend as `Amount::RevealedBid`.
+        /// A word rather than a second effect, because the parked decision,
+        /// its masking and its two answers are the psi game's.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        guess: Option<PsiGuess>,
     },
     /// Places `0` advancement counters on `acting_card` — e.g. Seamless
     /// Launch's "place 2 advancement counters on 1 installed card", Flood
@@ -3470,6 +3485,16 @@ impl StrengthOf {
     }
 }
 
+/// What the Corp guesses about the Runner's secret bid in a psi game that
+/// is a guess (`Effect::PsiGame::guess`). Only what a pool card prints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PsiGuess {
+    /// How much: 0, 1 or 2 (Rigged Results).
+    Amount,
+    /// Even or odd: 0 or 1 (Push Your Luck).
+    Parity,
+}
+
 /// Which piece of ice an `Effect::MoveRunToIce` moves the run in front of.
 /// Only what a pool card prints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -3788,7 +3813,9 @@ pub enum Prohibition {
     /// programs for the remainder of this run" and Jak Sinclair's "You
     /// cannot use programs during this run": a program's paid abilities,
     /// breakers' included. Asked of the user where an ability is used
-    /// (`engine::activate_ability`), as `InstalledCardAbilities` is.
+    /// (`engine::activate_ability`), as `InstalledCardAbilities` is. Bound
+    /// to one install (`Effect::Prohibit::this_install`), it is Wendigo's
+    /// "Choose a program. The Runner cannot use the chosen program".
     /// Composition didn't work: `InstalledCardAbilities` spares icebreakers
     /// and covers every installed card, and `BreakSubroutines` binds one
     /// install.
@@ -4322,7 +4349,7 @@ impl Effect {
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
-            Effect::PsiGame { on_match, on_differ } => Effect::PsiGame { on_match: boxed(on_match), on_differ: boxed(on_differ) },
+            Effect::PsiGame { on_match, on_differ, guess } => Effect::PsiGame { on_match: boxed(on_match), on_differ: boxed(on_differ), guess },
             // A trace's base only: its outcomes are another resolution's,
             // and `on_success` has its margin written in when it succeeds.
             Effect::Trace { base, on_success, on_failure } => Effect::Trace { base: amount(base), on_success, on_failure },
@@ -4366,7 +4393,7 @@ impl Effect {
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
-            Effect::PsiGame { on_match, on_differ } => Effect::PsiGame { on_match: boxed(on_match), on_differ: boxed(on_differ) },
+            Effect::PsiGame { on_match, on_differ, guess } => Effect::PsiGame { on_match: boxed(on_match), on_differ: boxed(on_differ), guess },
             other => other,
         }
     }
@@ -4463,7 +4490,7 @@ impl Effect {
                 if_paid.for_each_effect(f);
                 if_declined.for_each_effect(f);
             }
-            Effect::PsiGame { on_match, on_differ } => {
+            Effect::PsiGame { on_match, on_differ, .. } => {
                 on_match.for_each_effect(f);
                 on_differ.for_each_effect(f);
             }

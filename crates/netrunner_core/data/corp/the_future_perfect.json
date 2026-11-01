@@ -1,0 +1,37 @@
+{
+  "id": "the_future_perfect",
+  "title": "The Future Perfect",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": {
+        "Not": "ThisCardIsInstalled"
+      },
+      "effects": [
+        {
+          "PsiGame": {
+            "on_match": {
+              "Sequence": []
+            },
+            "on_differ": {
+              "Prohibit": {
+                "what": "StealOrTrashAgendas",
+                "until": "Run",
+                "copies_of_it": true
+              }
+            }
+          }
+        }
+      ],
+      "text": "When the Runner accesses this agenda while it is not installed, play a Psi Game."
+    }
+  ],
+  "built_from": 5007,
+  "is_playable": true
+}

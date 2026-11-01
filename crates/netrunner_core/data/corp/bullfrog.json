@@ -1,0 +1,31 @@
+{
+  "id": "bullfrog",
+  "title": "Bullfrog",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 4,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "You and the Runner secretly spend 0[credit], 1[credit] or 2[credit]. Reveal spent credits. If you and the Runner spent a different number of credits and this ice is installed, move this ice to the outermost position protecting another server.",
+      "effect": {
+        "PsiGame": {
+          "on_match": {
+            "Sequence": []
+          },
+          "on_differ": {
+            "EffectIf": {
+              "condition": "ThisCardIsInstalled",
+              "effect": "PromptMoveThisCardToAnotherRoot"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 2073,
+  "is_playable": true
+}

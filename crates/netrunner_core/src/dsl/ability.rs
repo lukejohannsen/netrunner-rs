@@ -292,6 +292,13 @@ pub enum EffectRequirement {
     /// `ThisCardCountersAtMost` (0 counters, so never satisfied for
     /// `amount >= 1`).
     ThisCardCountersAtLeast(u32),
+    /// The acting card is an install with an **odd** number of
+    /// advancement tokens on it — the morph ice's "while Changeling has an
+    /// odd number of advancement tokens on it" (Changeling, Lycan,
+    /// Wendigo), the `condition` of their `GainSubtype` and `LoseSubtype`.
+    /// Composition didn't work: `AmountAtLeast` compares, and a parity is
+    /// no threshold.
+    OddAdvancementTokens,
     /// The Runner's identity is on its flip side (`RunnerState::
     /// identity_flipped`) — the gate on a flip identity's back-side
     /// trigger (Dewi Subrotoputri). Its front-side twin is `Not(IdentityFlipped)`.

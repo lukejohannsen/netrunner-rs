@@ -1047,6 +1047,35 @@ impl CardFilter {
         }
     }
 
+    /// Whether this filter asks a piece of ice's type (`IceOfType`), at any
+    /// depth — the filters `with_ice_types` has anything to write over.
+    pub fn mentions_ice_type(&self) -> bool {
+        match self {
+            CardFilter::IceOfType(_) => true,
+            CardFilter::All(filters) | CardFilter::AnyOf(filters) => filters.iter().any(CardFilter::mentions_ice_type),
+            CardFilter::Not(filter) => filter.mentions_ice_type(),
+            _ => false,
+        }
+    }
+
+    /// `IceOfType` written over as what the table says of one installed
+    /// piece of ice (`has`, `continuous::ice_is`): `Any` where it is that
+    /// type now, and `Not(Any)` where it is not, through `All`, `AnyOf`
+    /// and `Not`. A filter over an install is asked this way, so a morph
+    /// ice that lost **barrier** is no barrier to a selection or a trigger
+    /// condition, and one that gained **sentry** is one — `IceOfType` itself
+    /// is the printed definition's word, which the table cannot reach.
+    pub fn with_ice_types(self, has: &dyn Fn(crate::dsl::IceType) -> bool) -> CardFilter {
+        match self {
+            CardFilter::IceOfType(ice_type) if has(ice_type) => CardFilter::CardType(CardType::Ice(ice_type)),
+            CardFilter::IceOfType(_) => CardFilter::Not(Box::new(CardFilter::Any)),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_ice_types(has)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_ice_types(has)).collect()),
+            CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_ice_types(has))),
+            other => other,
+        }
+    }
+
     /// `TrashedThisWay` written over as the cards a mill trashed, through
     /// `All`, `AnyOf` and `Not`.
     pub fn with_those_trashed(self, cards: &[crate::dsl::CardId]) -> CardFilter {

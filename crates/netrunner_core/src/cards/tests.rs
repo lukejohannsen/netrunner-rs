@@ -15500,7 +15500,7 @@ mod rebellion_without_rehearsal {
         )));
 
         let (state, events) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("the Runner bids 1");
-        assert!(events.iter().any(|e| matches!(e, GameEvent::PsiBidsRevealed { corp: 2, runner: 1 })), "both revealed");
+        assert!(events.iter().any(|e| matches!(e, GameEvent::PsiBidsRevealed { corp: 2, runner: 1, .. })), "both revealed");
         assert_eq!((state.corp.resources.credits, state.runner.resources.credits), (Credits(8), Credits(4)), "and spent");
         assert_eq!(state.runner.brain_damage, 1, "the bids differ: 1 core damage");
         assert!(state.pending_decision.is_none());
@@ -15524,7 +15524,7 @@ mod rebellion_without_rehearsal {
         let registry = registry();
         let (state, _) = see_how_they_run_scored(&registry, 0);
         let (state, events) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 0 }).expect("the Corp bids 0");
-        assert!(events.iter().any(|e| matches!(e, GameEvent::PsiBidsRevealed { corp: 0, runner: 0 })));
+        assert!(events.iter().any(|e| matches!(e, GameEvent::PsiBidsRevealed { corp: 0, runner: 0, .. })));
         assert!(state.pending_decision.is_none(), "the game is over at the Corp's bid");
         assert_eq!(state.runner.grip.len(), 2, "0 and 0 match");
     }
@@ -54525,5 +54525,289 @@ mod engine_words_stage_9 {
 
         let declined = act(&asked, &registry, PlayerAction::DeclinePendingPaidChoice);
         assert_eq!(phase(&declined), Some(RunPhase::Movement));
+    }
+}
+
+mod engine_words_stage_10 {
+    use super::*;
+    use crate::dsl::IceType;
+    use crate::rules::RunPhase;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state
+    }
+
+    fn ice(card: &str, server: ServerId, rezzed: bool, install: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn phase(state: &GameState) -> Option<RunPhase> {
+        state.active_run.as_ref().map(|run| run.phase)
+    }
+
+    fn pass_until(mut state: GameState, registry: &CardRegistry, done: impl Fn(&GameState) -> bool) -> GameState {
+        for _ in 0..64 {
+            if done(&state) {
+                return state;
+            }
+            let parked = state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.pending_payment.is_some();
+            assert!(!parked, "parked before it was done: {:?} {:?}", state.pending_decision, state.pending_paid_choice);
+            let action = match (&state.paid_ability_window, phase(&state)) {
+                (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+                (None, Some(RunPhase::Initiation | RunPhase::Movement | RunPhase::EncounterIce)) => PlayerAction::ContinueRun,
+                (None, Some(RunPhase::Success)) => PlayerAction::CompleteRun,
+                other => panic!("stuck at {other:?}"),
+            };
+            state = act(&state, registry, action);
+        }
+        panic!("never done");
+    }
+
+    fn runner_may_act_in_the_encounter(state: &GameState) -> bool {
+        phase(state) == Some(RunPhase::EncounterIce) && state.paid_ability_window.as_ref().is_some_and(|window| window.active_priority == Side::Runner)
+    }
+
+    fn types(state: &GameState, registry: &CardRegistry, install: u32) -> Vec<IceType> {
+        crate::rules::continuous::installed_ice_types(state, registry, InstallId(install))
+    }
+
+    fn corp_position(state: &GameState, install: u32) -> usize {
+        state.corp.installed.iter().position(|card| card.install_id == InstallId(install)).expect("installed")
+    }
+
+    /// "While Wendigo has an odd number of advancement tokens on it, it
+    /// gains barrier and loses code gate": read by a filter, by the view
+    /// and by a breaker's interface, and back again at an even number.
+    #[test]
+    fn a_morph_ice_is_the_other_type_while_its_advancement_tokens_are_odd() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice("wendigo", ServerId::Hq, true, 101)];
+        assert_eq!(types(&state, &registry, 101), vec![IceType::CodeGate]);
+        let state = act(&state, &registry, PlayerAction::AdvanceCard { target: InstallId(101) });
+        assert_eq!(state.corp.installed[0].advancement_tokens, 1, "Wendigo can be advanced");
+        assert_eq!(types(&state, &registry, 101), vec![IceType::Barrier], "gains barrier and loses code gate");
+        let barrier = crate::dsl::CardFilter::IceOfType(IceType::Barrier);
+        let code_gate = crate::dsl::CardFilter::IceOfType(IceType::CodeGate);
+        let eligible = |state: &GameState, filter: &crate::dsl::CardFilter| crate::rules::pending_choice::eligible_positions(state, &registry, Side::Runner, &crate::dsl::CardZoneRef::OpponentInstalled, filter, None, None);
+        assert_eq!((eligible(&state, &barrier), eligible(&state, &code_gate)), (vec![0], vec![]), "a filter reads the table's type");
+        let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+        let shown = view.corp.servers.iter().flat_map(|server| server.ice.iter()).find(|card| card.install_id == InstallId(101)).expect("in the view");
+        assert_eq!(shown.ice_types, vec![IceType::Barrier], "the view carries it");
+
+        // A fracter interfaces with it now; at two tokens it is a code gate again.
+        let mut run = state.clone();
+        run.phase = GamePhase::Action(Side::Runner);
+        run.runner.resources.clicks = Clicks(4);
+        run.runner.resources.credits = Credits(10);
+        run.runner.rig = vec![rig("corroder", 1)];
+        run.next_install_id = 102;
+        // Strength is what stops it, not the type: the interface is open.
+        let interfaces = |state: &GameState| {
+            let encountering = pass_until(act(state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }), &registry, runner_may_act_in_the_encounter);
+            apply_action(&encountering, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 1 }).err()
+        };
+        assert!(matches!(interfaces(&run), Some(RulesError::BreakerStrengthTooLow { .. })), "Corroder interfaces with a barrier");
+        let mut even = run.clone();
+        even.corp.installed[0].advancement_tokens = 2;
+        assert!(!matches!(interfaces(&even), Some(RulesError::BreakerStrengthTooLow { .. })), "and not with a code gate: {:?}", interfaces(&even));
+
+        let state = act(&state, &registry, PlayerAction::AdvanceCard { target: InstallId(101) });
+        assert_eq!(types(&state, &registry, 101), vec![IceType::CodeGate], "even: as printed");
+        assert_eq!(eligible(&state, &barrier), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn changeling_and_lycan_turn_into_the_type_their_text_names() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice("changeling", ServerId::Hq, true, 101), ice("lycan", ServerId::RnD, true, 102)];
+        state.corp.installed[0].advancement_tokens = 3;
+        state.corp.installed[1].advancement_tokens = 1;
+        assert_eq!(types(&state, &registry, 101), vec![IceType::Sentry]);
+        assert_eq!(types(&state, &registry, 102), vec![IceType::CodeGate]);
+    }
+
+    /// "Choose a program. The Runner cannot use the chosen program for the
+    /// remainder of this run": that program, and no other.
+    #[test]
+    fn wendigo_takes_the_chosen_program_out_of_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("wendigo", ServerId::Hq, true, 101), ice("ice_wall", ServerId::Hq, true, 100)];
+        state.runner.rig = vec![rig("corroder", 1), rig("gordian_blade", 2)];
+        state.next_install_id = 102;
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let asked = pass_until(started, &registry, |state| state.pending_decision.is_some());
+        let rig_position = |state: &GameState, install: u32| state.runner.rig.iter().position(|card| card.install_id == InstallId(install)).unwrap();
+        let state = act(&asked, &registry, PlayerAction::ToggleCardSelection { position: rig_position(&asked, 2) });
+        let state = act(&state, &registry, PlayerAction::ConfirmCardSelection);
+        let state = pass_until(state, &registry, |state| runner_may_act_in_the_encounter(state) && state.active_run.as_ref().is_some_and(|run| run.ice[run.position].install_id == InstallId(100)));
+        assert!(
+            matches!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2), ability_index: 0 }), Err(RulesError::AbilityProhibited { .. })),
+            "Gordian Blade cannot be used"
+        );
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 }).is_ok(), "Corroder can");
+    }
+
+    /// "When you rez Chimera, choose sentry, code gate, or barrier. Chimera
+    /// gains that subtype until derezzed. When a turn ends, derez Chimera."
+    #[test]
+    fn chimera_gains_the_chosen_type_until_the_turn_ends() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("chimera", ServerId::Hq, false, 101)];
+        assert!(types(&state, &registry, 101).is_empty(), "a mythic of no type");
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let approached = pass_until(started, &registry, |state| {
+            phase(state) == Some(RunPhase::ApproachIce) && state.paid_ability_window.as_ref().is_some_and(|window| window.active_priority == Side::Corp)
+        });
+        let state = act(&approached, &registry, PlayerAction::RezIce { ice: InstallId(101) });
+        let state = act(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 });
+        assert_eq!(types(&state, &registry, 101), vec![IceType::CodeGate]);
+        let mut state = state;
+        let effect = crate::dsl::Effect::DerezCard(crate::dsl::CardTarget::ThisCard);
+        let chimera = id("chimera");
+        let mut ctx = crate::rules::ResolutionContext::for_install(InstallId(101), &chimera);
+        crate::rules::evaluate_effect(&mut state, &effect, &mut ctx, &registry).expect("derez");
+        assert!(types(&state, &registry, 101).is_empty(), "until derezzed");
+    }
+
+    /// "Mother Goddess gains the subtypes of all other rezzed ice" — the
+    /// types the table gives them, not only those they print.
+    #[test]
+    fn mother_goddess_has_every_type_the_other_rezzed_ice_has() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice("mother_goddess", ServerId::Hq, true, 101), ice("ice_wall", ServerId::RnD, true, 102), ice("enigma", ServerId::RnD, false, 103), ice("wendigo", ServerId::Archives, true, 104)];
+        state.corp.installed[3].advancement_tokens = 1;
+        assert_eq!(types(&state, &registry, 101), vec![IceType::Barrier], "unrezzed Enigma lends nothing; Wendigo is a barrier now");
+        state.corp.installed[2].rezzed = true;
+        assert_eq!(types(&state, &registry, 101), vec![IceType::Barrier, IceType::CodeGate]);
+        state.corp.installed[1].rezzed = false;
+        state.corp.installed[3].rezzed = false;
+        assert_eq!(types(&state, &registry, 101), vec![IceType::CodeGate]);
+    }
+
+    /// "The Corp guesses if you spent an even or odd amount … If the Corp
+    /// guessed incorrectly, gain credits equal to twice the amount spent."
+    /// The Corp's guess is free and asked first; the Runner's credits are
+    /// spent whatever the guess.
+    #[test]
+    fn push_your_luck_pays_double_when_the_corp_guesses_wrong() {
+        use crate::rules::{PendingDecision, PsiBid};
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("push_your_luck")];
+        let played = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("push_your_luck") });
+        assert_eq!(played.runner.resources.credits, Credits(8));
+        let guesses: Vec<PlayerAction> = (0..=1).map(|amount| PlayerAction::ChooseNumber { amount }).collect();
+        assert_eq!(crate::rules::legal_actions_for(&played, &registry, Side::Corp), guesses, "even (0) or odd (1)");
+
+        let corp_credits = played.corp.resources.credits;
+        let guessed = act(&played, &registry, PlayerAction::ChooseNumber { amount: 1 });
+        let view = crate::view::build_client_view(&guessed, &registry, Side::Runner);
+        assert!(matches!(view.pending_decision, Some(PendingDecision::PsiGame { corp_bid: PsiBid::Concealed, .. })), "the guess is secret");
+        assert_eq!(crate::rules::legal_actions_for(&guessed, &registry, Side::Runner).len(), 9, "any number of credits: 0 to 8");
+        let (wrong, events) = apply_action(&guessed, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("spend 2");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::PsiBidsRevealed { corp: 1, runner: 2, guessed: true })));
+        assert_eq!(wrong.runner.resources.credits, Credits(10), "8 - 2 + 4");
+        assert_eq!(wrong.corp.resources.credits, corp_credits, "a guess costs nothing");
+
+        let guessed = act(&played, &registry, PlayerAction::ChooseNumber { amount: 0 });
+        let right = act(&guessed, &registry, PlayerAction::ChooseNumber { amount: 4 });
+        assert_eq!(right.runner.resources.credits, Credits(4), "guessed even: the 4 are gone");
+        assert!(right.pending_decision.is_none());
+    }
+
+    /// A run on HQ up to Bullfrog's or Mind Game's psi game, with Ice Wall
+    /// protecting R&D.
+    fn psi_ice(card: &str) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice(card, ServerId::Hq, true, 101), ice("ice_wall", ServerId::RnD, true, 102)];
+        state.runner.rig = vec![rig("corroder", 1), rig("gordian_blade", 2)];
+        state.next_install_id = 103;
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let state = pass_until(started, &registry, |state| state.pending_decision.is_some());
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::PsiGame { .. })));
+        (state, registry)
+    }
+
+    #[test]
+    fn bullfrog_takes_the_run_with_it_to_another_server_when_the_bids_differ() {
+        let (asked, registry) = psi_ice("bullfrog");
+        let matched = act(&act(&asked, &registry, PlayerAction::ChooseNumber { amount: 1 }), &registry, PlayerAction::ChooseNumber { amount: 1 });
+        assert_eq!(matched.corp.installed[corp_position(&matched, 101)].server, ServerId::Hq, "the bids match: nothing");
+
+        let state = act(&act(&asked, &registry, PlayerAction::ChooseNumber { amount: 0 }), &registry, PlayerAction::ChooseNumber { amount: 1 });
+        let state = act(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD });
+        let moved = &state.corp.installed[corp_position(&state, 101)];
+        assert_eq!(moved.server, ServerId::RnD);
+        let run = state.active_run.as_ref().expect("the run continues from this new position");
+        assert_eq!(run.server, ServerId::RnD);
+        assert_eq!(run.ice[0].install_id, InstallId(101), "Bullfrog is outermost protecting R&D");
+        assert_eq!((run.phase, run.ice[run.position].install_id), (RunPhase::Movement, InstallId(102)), "its encounter over, the run goes on from there");
+    }
+
+    /// "Choose another server. The Runner moves to the outermost position
+    /// of that server instead of passing this ice. For the remainder of
+    /// this run, the Runner must add 1 installed Runner card to the bottom
+    /// of their stack as an additional cost to jack out. The Runner may
+    /// jack out."
+    #[test]
+    fn mind_game_moves_the_run_and_prices_its_jack_out_at_an_installed_card() {
+        let (asked, registry) = psi_ice("mind_game");
+        let state = act(&act(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }), &registry, PlayerAction::ChooseNumber { amount: 0 });
+        assert!(apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).is_err(), "another server");
+        let state = act(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD });
+        let run = state.active_run.as_ref().expect("the run goes on");
+        assert_eq!((run.server, run.ice[run.position].install_id), (ServerId::RnD, InstallId(102)), "the outermost position of R&D");
+        assert!(state.pending_paid_choice.is_some(), "the Runner may jack out");
+
+        let stack = state.runner.stack.len();
+        let jacking = act(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None });
+        let jacking = if jacking.pending_payment.is_some() { act(&jacking, &registry, PlayerAction::ToggleCardSelection { position: 1 }) } else { jacking };
+        assert!(jacking.active_run.is_none(), "jacked out");
+        assert_eq!(jacking.runner.rig.len(), 1, "one installed card paid");
+        assert_eq!(jacking.runner.stack.len(), stack + 1);
+        assert_eq!(jacking.runner.stack[0], id("gordian_blade"), "at the bottom of the stack");
+    }
+
+    /// "When the Runner accesses this agenda while it is not installed,
+    /// play a Psi Game. If the bids differ, the Runner cannot steal this
+    /// agenda during this access."
+    #[test]
+    fn the_future_perfect_cannot_be_stolen_out_of_hq_when_the_bids_differ() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.hq = vec![id("the_future_perfect")];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let asked = pass_until(started, &registry, |state| state.pending_decision.is_some());
+        assert!(matches!(asked.pending_decision, Some(crate::rules::PendingDecision::PsiGame { .. })));
+        let steal = PlayerAction::StealAgenda { card_id: id("the_future_perfect") };
+
+        let differ = act(&act(&asked, &registry, PlayerAction::ChooseNumber { amount: 1 }), &registry, PlayerAction::ChooseNumber { amount: 0 });
+        assert!(apply_action(&differ, &registry, steal.clone()).is_err(), "cannot steal it");
+        let matched = act(&act(&asked, &registry, PlayerAction::ChooseNumber { amount: 1 }), &registry, PlayerAction::ChooseNumber { amount: 1 });
+        let stolen = act(&matched, &registry, steal);
+        assert_eq!(stolen.runner.scored_agendas.len(), 1);
     }
 }

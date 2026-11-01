@@ -1,0 +1,57 @@
+{
+  "id": "wendigo",
+  "title": "Wendigo",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 4,
+  "advancement_requirement": 0,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "GainSubtype": "Barrier"
+      },
+      "applies_to": "This",
+      "while": "OddAdvancementTokens",
+      "text": "While Wendigo has an odd number of advancement tokens on it, it gains barrier and loses code gate."
+    },
+    {
+      "kind": {
+        "LoseSubtype": "CodeGate"
+      },
+      "applies_to": "This",
+      "while": "OddAdvancementTokens",
+      "text": "While Wendigo has an odd number of advancement tokens on it, it gains barrier and loses code gate."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Choose a program. The Runner cannot use the chosen program for the remainder of this run.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "CardType": "Program"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "Prohibit": {
+              "what": "UsePrograms",
+              "until": "Run",
+              "this_install": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 6047,
+  "is_playable": true
+}

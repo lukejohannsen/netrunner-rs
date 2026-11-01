@@ -1,0 +1,78 @@
+{
+  "id": "chimera",
+  "title": "Chimera",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 2,
+  "strength": 0,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GainIceSubtype": {
+                  "subtype": "Sentry"
+                }
+              },
+              {
+                "GainIceSubtype": {
+                  "subtype": "CodeGate"
+                }
+              },
+              {
+                "GainIceSubtype": {
+                  "subtype": "Barrier"
+                }
+              }
+            ],
+            "texts": [
+              "sentry",
+              "code gate",
+              "barrier"
+            ]
+          }
+        }
+      ],
+      "text": "When you rez Chimera, choose sentry, code gate, or barrier. Chimera gains that subtype until derezzed."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "when": {
+        "Whose": "Corp"
+      },
+      "effects": [
+        {
+          "DerezCard": "ThisCard"
+        }
+      ],
+      "text": "When a turn ends, derez Chimera."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "when": {
+        "Whose": "Runner"
+      },
+      "effects": [
+        {
+          "DerezCard": "ThisCard"
+        }
+      ],
+      "text": "When a turn ends, derez Chimera."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 2060,
+  "is_playable": true
+}

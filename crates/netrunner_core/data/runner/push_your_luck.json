@@ -1,0 +1,39 @@
+{
+  "id": "push_your_luck",
+  "title": "Push Your Luck",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PsiGame": {
+            "guess": "Parity",
+            "on_match": {
+              "Sequence": []
+            },
+            "on_differ": {
+              "GainCreditsAmount": [
+                "Runner",
+                {
+                  "Times": [
+                    {
+                      "RevealedBid": "Runner"
+                    },
+                    2
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Secretly spend any number of credits. The Corp guesses if you spent an even or odd amount. Reveal spent credits. If the Corp guessed incorrectly, gain credits equal to twice the amount spent."
+    }
+  ],
+  "built_from": 5047,
+  "is_playable": true
+}

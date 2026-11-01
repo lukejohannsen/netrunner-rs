@@ -1,0 +1,38 @@
+{
+  "id": "changeling",
+  "title": "Changeling",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 5,
+  "strength": 4,
+  "advancement_requirement": 0,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "GainSubtype": "Sentry"
+      },
+      "applies_to": "This",
+      "while": "OddAdvancementTokens",
+      "text": "While Changeling has an odd number of advancement tokens on it, it gains sentry and loses barrier."
+    },
+    {
+      "kind": {
+        "LoseSubtype": "Barrier"
+      },
+      "applies_to": "This",
+      "while": "OddAdvancementTokens",
+      "text": "While Changeling has an odd number of advancement tokens on it, it gains sentry and loses barrier."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 6069,
+  "is_playable": true
+}

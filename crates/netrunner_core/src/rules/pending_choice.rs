@@ -294,12 +294,30 @@ pub fn eligible_positions(
 ) -> Vec<usize> {
     let resolving = source_card.and_then(|card| resolving_operation_in(state, registry, chooser, zone, card));
     let running = run_event_in(state, registry, chooser, zone);
+    // A piece of ice on the table is the type the table says
+    // (`continuous::ice_is`): each install asks its own filter. The
+    // asking card's own install is read as printed, because its types may
+    // be the question being asked: Mother Goddess's "gains the subtypes of
+    // all other rezzed ice" is a standing effect whose condition is this
+    // filter, and asking her own table types from inside it would recurse.
+    // A card that filters for itself by a type it only gains is not in
+    // the pool.
+    let typed = filter.mentions_ice_type() && matches!(zone, CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled) && owning_side(chooser, zone) == Side::Corp;
     zone_card_ids(state, chooser, zone, source)
         .into_iter()
         .enumerate()
         .filter(|(position, _)| Some(*position) != resolving && Some(*position) != running)
-        .filter(|(_, id)| registry.get(id).is_some_and(|card| card_matches_filter(card, filter)))
-        .filter(|(position, _)| instance_matches_filter(state, registry, chooser, zone, *position, filter, source))
+        .filter(|(position, id)| {
+            let typed_filter;
+            let filter = match state.corp.installed.get(*position).filter(|installed| typed && Some(installed.install_id) != source) {
+                Some(installed) => {
+                    typed_filter = filter.clone().with_ice_types(&|ice_type| crate::rules::continuous::installed_ice_types(state, registry, installed.install_id).contains(&ice_type));
+                    &typed_filter
+                }
+                None => filter,
+            };
+            registry.get(id).is_some_and(|card| card_matches_filter(card, filter)) && instance_matches_filter(state, registry, chooser, zone, *position, filter, source)
+        })
         .map(|(position, _)| position)
         .collect()
 }
@@ -1426,24 +1444,35 @@ pub(crate) fn finish_psi_game(
     runner_bid: u32,
     mut events: Vec<GameEvent>,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let Some(PendingDecision::PsiGame { corp_bid: PsiBid::Bid(corp_bid), on_match, on_differ, source_card, prompting_card, source_install, resume, .. }) =
+    let Some(PendingDecision::PsiGame { corp_bid: PsiBid::Bid(corp_bid), on_match, on_differ, guess, source_card, prompting_card, source_install, resume, .. }) =
         state.pending_decision.take()
     else {
         return Err(RulesError::NoPendingDecision);
     };
-    events.push(GameEvent::PsiBidsRevealed { corp: corp_bid, runner: runner_bid });
+    let revealed = GameEvent::PsiBidsRevealed { corp: corp_bid, runner: runner_bid, guessed: guess.is_some() };
+    events.push(revealed.clone());
     let active = crate::rules::listeners::active_side(state);
     let mut cost_events = Vec::new();
     for side in [active, active.other()] {
         let bid = if side == Side::Corp { corp_bid } else { runner_bid };
-        if bid > 0 {
+        // A guess is not spent (CR 10.14.1: only the Runner bid).
+        if bid > 0 && !(side == Side::Corp && guess.is_some()) {
             cost_events.extend(ability::pay_cost(state, registry, side, &Cost::Credits(bid), Purpose::Other, source_card.as_ref())?);
         }
     }
     events.extend(cost_events.clone());
-    let outcome = if corp_bid == runner_bid { on_match } else { on_differ };
+    let matched = match guess {
+        Some(crate::dsl::PsiGuess::Parity) => corp_bid == runner_bid % 2,
+        _ => corp_bid == runner_bid,
+    };
+    let outcome = if matched { on_match } else { on_differ };
     let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
     ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
+    // A guess's outcome reads the spend (Push Your Luck's "twice the
+    // amount spent", `Amount::RevealedBid`), as a heard reveal does.
+    if guess.is_some() {
+        ctx.triggering_event = Some(&revealed);
+    }
     events.extend(ability::evaluate_effect(state, &outcome, &mut ctx, registry)?);
     // The bids' events after the outcome, as every payer dispatches its
     // cost's (`ability::dispatch_cost_events`): a bid paid off a card's
@@ -1454,7 +1483,7 @@ pub(crate) fn finish_psi_game(
     // "Revealing secretly spent credits" is met at the next checkpoint
     // after the bids are revealed and paid for (CR 10.14.5): Fumiko
     // Yamamori and Hyoubu Research Facility hear it after the outcome.
-    events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &GameEvent::PsiBidsRevealed { corp: corp_bid, runner: runner_bid })?);
+    events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &revealed)?);
     if resume == PendingChoiceResume::ResumeSubroutines {
         mark_parked_resume_subroutines(state);
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
@@ -2061,6 +2090,8 @@ fn substitute_chosen_server(effect: Effect, server: crate::rules::run::ServerId)
         Effect::MoveThisCardToRoot(_) => Effect::MoveThisCardToRoot(server),
         // AgInfusion moves the run to the server it chose.
         Effect::MoveRunToOutermostAndEncounter(_) => Effect::MoveRunToOutermostAndEncounter(Some(server)),
+        // Mind Game moves the run to the other server it chose.
+        Effect::MoveRunToOutermost(_) => Effect::MoveRunToOutermost(Some(server)),
         // "Run any server. If successful, instead of breaching the attacked
         // server, …" (Pinhole Threading): the breach replaced is the chosen
         // server's.

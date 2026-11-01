@@ -701,11 +701,12 @@ pub(super) fn strength_shortfall(state: &GameState, run: &RunState, registry: &C
 }
 
 /// Whether `ice` is a `subtype` right now: the one it prints, or one the
-/// table gives it (a hosted GAMEDRAGON™ Pro's "host ice gains barrier") —
-/// `BreakSubroutines`' own test, so a break the engine would accept is one
-/// this prices.
+/// table gives it (a hosted GAMEDRAGON™ Pro's "host ice gains barrier"),
+/// and not one it lost (Changeling's) — `BreakSubroutines`' own test
+/// (`continuous::ice_is`), so a break the engine would accept is one this
+/// prices.
 pub(super) fn ice_is(state: &GameState, ice: &RunIce, subtype: IceType, registry: &CardRegistry) -> bool {
-    ice.ice_type == subtype || continuous::ice_gains_subtype(state, registry, ice.install_id, subtype)
+    continuous::ice_is(state, registry, ice.install_id, ice.ice_type, subtype)
 }
 
 /// Whether `card`'s abilities include a `BreakSubroutines` that applies to
