@@ -1,0 +1,32 @@
+{
+  "id": "panic_button",
+  "title": "Panic Button",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "trash_cost": 2,
+  "install_only_in": [
+    "Hq"
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "requirement": {
+        "DuringRunOn": "Hq"
+      },
+      "effect": {
+        "DrawCards": [
+          "Corp",
+          1
+        ]
+      },
+      "text": "1[credit]: Draw 1 card. Use this ability only during a run on HQ."
+    }
+  ],
+  "triggers": [],
+  "built_from": 4072,
+  "is_playable": true
+}

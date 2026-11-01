@@ -335,7 +335,6 @@ pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("the_news_now_hour", "The News Now Hour"),
     ("wendigo", "Wendigo"),
     ("chronos_project", "Chronos Project"),
-    ("shattered_remains", "Shattered Remains"),
     ("lancelot", "Lancelot"),
     ("blackat", "BlacKat"),
     ("the_supplier", "The Supplier"),
@@ -347,10 +346,8 @@ pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const UAO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("architect", "Architect"),
     ("labyrinthine_servers", "Labyrinthine Servers"),
-    ("mamba", "Mamba"),
     ("blue_sun_powering_the_future", "Blue Sun: Powering the Future"),
     ("changeling", "Changeling"),
-    ("docklands_crackdown", "Docklands Crackdown"),
     ("inject", "Inject"),
     ("autoscripter", "Autoscripter"),
     ("trade_in", "Trade-In"),
@@ -363,10 +360,8 @@ pub(crate) const ATR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sagittarius", "Sagittarius"),
     ("gemini", "Gemini"),
     ("lycan", "Lycan"),
-    ("snatch_and_grab", "Snatch and Grab"),
     ("merlin", "Merlin"),
     ("shell_corporation", "Shell Corporation"),
-    ("ekomind", "Ekomind"),
     ("utopia_shard", "Utopia Shard"),
 ];
 
@@ -376,7 +371,6 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("it_department", "IT Department"),
     ("industrial_genomics_growing_solutions", "Industrial Genomics: Growing Solutions"),
     ("virgo", "Virgo"),
-    ("utopia_fragment", "Utopia Fragment"),
     ("self_destruct", "Self-destruct"),
     ("incubator", "Incubator"),
     ("ixodidae", "Ixodidae"),
@@ -389,7 +383,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("harmony_medtech_biomedical_pioneer", "Harmony Medtech: Biomedical Pioneer"),
     ("medical_breakthrough", "Medical Breakthrough"),
     ("the_future_perfect", "The Future Perfect"),
-    ("psychic_field", "Psychic Field"),
     ("shi_kyu", "Shi.Kyū"),
     ("mushin_no_shin", "Mushin No Shin"),
     ("inazuma", "Inazuma"),
@@ -406,7 +399,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("bug", "Bug"),
     ("grappling_hook", "Grappling Hook"),
     ("push_your_luck", "Push Your Luck"),
-    ("overmind", "Overmind"),
     ("oracle_may", "Oracle May"),
 ];
 
@@ -448,7 +440,6 @@ pub(crate) const ST_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("recon", "Recon"),
     ("copycat", "Copycat"),
     ("eureka", "Eureka!"),
-    ("record_reconstructor", "Record Reconstructor"),
     ("off_the_grid", "Off the Grid"),
 ];
 
@@ -470,7 +461,6 @@ pub(crate) const TC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("leverage", "Leverage"),
     ("capstone", "Capstone"),
     ("starlight_crusade_funding", "Starlight Crusade Funding"),
-    ("panic_button", "Panic Button"),
     ("curtain_wall", "Curtain Wall"),
 ];
 
@@ -486,11 +476,9 @@ pub(crate) const FAL_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const DT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
     ("paintbrush", "Paintbrush"),
-    ("reclamation_order", "Reclamation Order"),
     ("broadcast_square", "Broadcast Square"),
     ("corporate_shuffle", "Corporate Shuffle"),
     ("marker", "Marker"),
-    ("napd_contract", "NAPD Contract"),
 ];
 
 /// *What Lies Ahead* (`what_lies_ahead`): tranche F11 of the FFG plan.
@@ -501,7 +489,6 @@ pub(crate) const WLA_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Trace Amount* (`trace_amount`): tranche F11 of the FFG plan.
 pub(crate) const TA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("encryption_protocol", "Encryption Protocol"),
-    ("fetal_ai", "Fetal AI"),
     ("sensei", "Sensei"),
     ("amazon_industrial_zone", "Amazon Industrial Zone"),
     ("executive_retreat", "Executive Retreat"),
@@ -518,8 +505,6 @@ pub(crate) const CE_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *A Study in Static* (`a_study_in_static`): tranche F11 of the FFG plan.
 pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("disrupter", "Disrupter"),
-    ("crescentus", "Crescentus"),
     ("dedicated_server", "Dedicated Server"),
     ("bullfrog", "Bullfrog"),
     ("net_police", "Net Police"),
@@ -562,7 +547,6 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("john_masanori", "John Masanori"),
     ("kati_jones", "Kati Jones"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
-    ("fetal_ai", "Fetal AI"),
     ("sundew", "Sundew"),
     ("spark_agency_worldswide_reach", "Spark Agency: Worldswide Reach"),
     ("blue_sun_powering_the_future", "Blue Sun: Powering the Future"),

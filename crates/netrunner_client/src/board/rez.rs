@@ -32,8 +32,9 @@ use netrunner_core::view::ClientView;
 /// Whether rezzing `card` gives it nothing to do: a non-ice card with no
 /// ability, subroutine, recurring or hosted credits, no standing effect but
 /// its reveal while accessed (Esca's, Snare!'s and Byte!'s, which is about
-/// the access), and no trigger but its own access — which, with an access
-/// interaction, works face down.
+/// the access), and no trigger but its own access or its own expose —
+/// which, with an access interaction, works face down, and an expose is
+/// only ever of a card face down (Psychic Field's psi game).
 pub fn gains_nothing(card: &CardDefinition) -> bool {
     !matches!(card.card_type, CardType::Ice(_))
         && card.abilities.is_empty()
@@ -41,7 +42,7 @@ pub fn gains_nothing(card: &CardDefinition) -> bool {
         && card.subroutines.is_empty()
         && card.recurring_credits.is_none()
         && card.pays_for.is_empty()
-        && card.triggers.iter().all(|t| t.trigger == Trigger::OnAccessed && t.subject == Some(Subject::This))
+        && card.triggers.iter().all(|t| matches!(t.trigger, Trigger::OnAccessed | Trigger::OnCardExposed) && t.subject == Some(Subject::This))
 }
 
 /// Whether `action` rezzes a card that [`gains_nothing`] by it, as the
@@ -66,7 +67,7 @@ mod tests {
         let registry = crate::decks::sample_deck_registry();
         let mut idle: Vec<&str> = registry.iter().filter(|card| card.side == Side::Corp && card.card_type != CardType::Agenda && card.card_type != CardType::Identity && gains_nothing(card)).map(|card| card.id.0.as_str()).collect();
         idle.sort_unstable();
-        assert_eq!(idle, ["aggressive_secretary", "behold", "breached_dome", "byte", "cerebral_overwriter", "chekist_scion", "disposable_hq", "edge_of_world", "esca", "forced_connection", "ganked", "ghost_branch", "honeyfarm", "increased_drop_rates", "intake", "mr_hendrik", "neurostasis", "news_team", "nightmare_archive", "prisec", "product_placement", "project_junebug", "shock", "snare", "space_camp", "tempus", "urtica_cipher"]);
+        assert_eq!(idle, ["aggressive_secretary", "behold", "breached_dome", "byte", "cerebral_overwriter", "chekist_scion", "disposable_hq", "edge_of_world", "esca", "forced_connection", "ganked", "ghost_branch", "honeyfarm", "increased_drop_rates", "intake", "mr_hendrik", "neurostasis", "news_team", "nightmare_archive", "prisec", "product_placement", "project_junebug", "psychic_field", "shattered_remains", "shock", "snare", "space_camp", "tempus", "urtica_cipher"]);
     }
 
     /// The Corp's view of an unrezzed Urtica Cipher (install 1) and an

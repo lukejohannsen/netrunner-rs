@@ -1,0 +1,27 @@
+{
+  "id": "crescentus",
+  "title": "Crescentus",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          "FullyBrokeTheEncounteredIce"
+        ]
+      },
+      "effect": {
+        "DerezCard": "EncounteredIce"
+      },
+      "text": "[trash]: Derez 1 piece of ice you fully broke during this encounter."
+    }
+  ],
+  "built_from": 2065,
+  "is_playable": true
+}

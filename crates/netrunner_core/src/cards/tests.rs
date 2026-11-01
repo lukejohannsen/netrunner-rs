@@ -52782,3 +52782,116 @@ mod composable_leftovers_stage_4 {
         assert_eq!(start(1), Credits(12));
     }
 }
+
+mod composable_leftovers_stage_5 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn corp(card: &str, server: ServerId, slot: InstallSlot) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot, rezzed: true, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    #[test]
+    fn napd_contract_needs_one_more_advancement_per_bad_publicity() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..corp("napd_contract", ServerId::Remote(0), InstallSlot::Root) }];
+        let requirement = |state: &GameState| crate::rules::continuous::advancement_requirement(state, &registry, fixture_install_id("napd_contract"));
+        assert_eq!(requirement(&state), Some(4));
+        state.corp.bad_publicity = 2;
+        assert_eq!(requirement(&state), Some(6));
+    }
+
+    #[test]
+    fn docklands_crackdown_taxes_only_the_runners_first_install_of_the_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![crate::rules::InstalledCard { counters: 2, ..corp("docklands_crackdown", ServerId::Remote(0), InstallSlot::Root) }];
+        state.runner.grip = vec![id("corroder"), id("gordian_blade")];
+        let price = |state: &GameState, card: &str| crate::rules::continuous::install_cost_of(state, &registry, registry.get(&id(card)).expect("card"));
+        assert_eq!(price(&state, "corroder"), 2 + 2, "two power counters on the first install");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false, host: None }).expect("install Corroder");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.resources.credits, Credits(6));
+        assert_eq!(price(&state, "gordian_blade"), 4, "the second install is untaxed");
+    }
+
+    #[test]
+    fn record_reconstructor_puts_a_faceup_archives_card_on_top_of_rnd_instead_of_breaching() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("record_reconstructor"), install_id: fixture_install_id("record_reconstructor"), ..Default::default() }];
+        state.corp.archives = vec![ArchivedCard::faceup(id("hedge_fund"))];
+        state.corp.r_and_d = vec![id("ice_wall"), id("enigma")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives }).expect("run Archives");
+        let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("no ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("success");
+        let (state, _) = pass_until_settled(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("instead of breaching");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Hedge Fund");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert_eq!(state.corp.r_and_d.last(), Some(&id("hedge_fund")), "on top of R&D");
+        assert!(state.corp.archives.is_empty());
+    }
+
+    #[test]
+    fn overmind_takes_a_power_counter_for_each_mu_left_after_its_own() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.memory_units = MemoryUnits(4);
+        state.runner.grip = vec![id("overmind")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("overmind"), trash_first: false, host: None }).expect("install Overmind");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.rig.iter().find(|card| card.card == id("overmind")).map(|card| card.counters), Some(3));
+    }
+
+    #[test]
+    fn ekomind_makes_the_memory_limit_the_size_of_the_grip() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.memory_units = MemoryUnits(4);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("ekomind"), install_id: fixture_install_id("ekomind"), ..Default::default() }];
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble")];
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), 2);
+        state.runner.grip = vec![id("sure_gamble"); 6];
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), 6);
+    }
+
+    #[test]
+    fn reclamation_order_returns_the_named_cards_copies_from_archives() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("reclamation_order")];
+        state.corp.archives = vec![ArchivedCard::faceup(id("hedge_fund")), ArchivedCard::faceup(id("pad_campaign")), ArchivedCard::faceup(id("hedge_fund"))];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("reclamation_order") }).expect("play");
+        assert_eq!(state.corp.resources.clicks, Clicks(1), "a click to play, a click more");
+        let (state, _) = pass_until_settled(apply_action(&state, &registry, PlayerAction::ChooseCardName { card: id("hedge_fund") }).expect("name it").0, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("first copy");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 2 }).expect("second copy");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert_eq!(state.corp.hq.iter().filter(|card| **card == id("hedge_fund")).count(), 2);
+        assert!(!state.corp.hq.contains(&id("pad_campaign")));
+    }
+
+    #[test]
+    fn fetal_ai_does_two_net_damage_when_accessed_from_hq() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.hq = vec![id("fetal_ai")];
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("no ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("success");
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.runner.grip.len(), 1, "two net damage");
+    }
+}

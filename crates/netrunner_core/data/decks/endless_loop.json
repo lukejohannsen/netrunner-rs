@@ -3,7 +3,7 @@
   "name": "Endless Loop",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: MirrorMorph: Endless Iteration's deck, built in Downfall Stage 8 so the sweeps reach a Corp whose first three actions are told apart (the turn log's kinds of action) and an action taken on condition it is a different one. On Retirement Package's frame, Haas-Bioroid's own cards, whose clicks to gain, install, advance, draw and play are each a different action; Retirement Package keeps every card. Eternal-legal: the frame's Core Set cards keep it out of Standard. Tranche 8 Stage 5a: two NEXT Bronze for its two Drafter, a code gate one stronger for each rezzed piece of NEXT ice; Retirement Package keeps Drafter. Tranche 8 Stage 6b: two Project Vitruvius for its two Midnight-3 Arcology, point for point, an agenda whose counters past three bring a card back from Archives, and two Biotic Labor for its two Corporate Hospitality, two clicks for four credits; Retirement Package keeps both. Tranche 8 Stage 9d: two NEXT Silver for its two Hákarl 1.0, barrier for barrier, beside the NEXT Bronze it counts; Hákarl 1.0 is still in other decks. Black Level Clearance came in for Tranquility Home Grid (Flashpoint Stage 14). Brain-Taping Warehouse and NEXT Gold in for NAPD Cordon (SanSan Stage 8). Turing in for Ansel 1.0 (SanSan Stage 9).",
+  "description": "Not a published list: MirrorMorph: Endless Iteration's deck, built in Downfall Stage 8 so the sweeps reach a Corp whose first three actions are told apart (the turn log's kinds of action) and an action taken on condition it is a different one. On Retirement Package's frame, Haas-Bioroid's own cards, whose clicks to gain, install, advance, draw and play are each a different action; Retirement Package keeps every card. Eternal-legal: the frame's Core Set cards keep it out of Standard. Tranche 8 Stage 5a: two NEXT Bronze for its two Drafter, a code gate one stronger for each rezzed piece of NEXT ice; Retirement Package keeps Drafter. Tranche 8 Stage 6b: two Project Vitruvius for its two Midnight-3 Arcology, point for point, an agenda whose counters past three bring a card back from Archives, and two Biotic Labor for its two Corporate Hospitality, two clicks for four credits; Retirement Package keeps both. Tranche 8 Stage 9d: two NEXT Silver for its two Hákarl 1.0, barrier for barrier, beside the NEXT Bronze it counts; Hákarl 1.0 is still in other decks. Black Level Clearance came in for Tranquility Home Grid (Flashpoint Stage 14). Brain-Taping Warehouse and NEXT Gold in for NAPD Cordon (SanSan Stage 8). Turing in for Ansel 1.0 (SanSan Stage 9). Two Panic Button take Bass CH1R180G4's place. Two Reclamation Order take Biotic Labor's place.",
   "style": [
     "glacier"
   ],
@@ -15,10 +15,6 @@
     },
     {
       "card": "caveat_emptor",
-      "count": 2
-    },
-    {
-      "card": "biotic_labor",
       "count": 2
     },
     {
@@ -66,10 +62,6 @@
       "count": 2
     },
     {
-      "card": "bass_ch1r180g4",
-      "count": 2
-    },
-    {
       "card": "cerebral_overwriter",
       "count": 2
     },
@@ -108,6 +100,14 @@
     {
       "card": "turing",
       "count": 1
+    },
+    {
+      "card": "panic_button",
+      "count": 2
+    },
+    {
+      "card": "reclamation_order",
+      "count": 2
     }
   ]
 }

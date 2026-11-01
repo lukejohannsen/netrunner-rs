@@ -1,0 +1,34 @@
+{
+  "id": "ekomind",
+  "title": "Ekomind",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": -4
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your memory limit is equal to the number of cards in your grip."
+    },
+    {
+      "kind": {
+        "Memory": {
+          "per": 1,
+          "of": {
+            "CardsInHand": "Runner"
+          }
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your memory limit is equal to the number of cards in your grip."
+    }
+  ],
+  "triggers": [],
+  "built_from": 6093,
+  "is_playable": true
+}

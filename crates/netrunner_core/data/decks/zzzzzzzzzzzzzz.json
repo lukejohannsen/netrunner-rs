@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Nisei Division: The Next Generation, Honor and Profit's Jinteki identity, a credit for every psi game. Zyzzyva's list, its identity swapped, with Port Anson Grid. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 2. Interns is in for Genotyping and Museum of History.",
+  "description": "Not a published list: built so the sweeps reach Nisei Division: The Next Generation, Honor and Profit's Jinteki identity, a credit for every psi game. Zyzzyva's list, its identity swapped, with Port Anson Grid. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 2. Interns is in for Genotyping and Museum of History. Two Fetal AI take Viral Weaponization's place, two points for two. Two Mamba take Mlinzi's place. Two Psychic Field take Bio-Ethics Association's place.",
   "style": [
     "traps"
   ],
@@ -34,20 +34,12 @@
       "count": 2
     },
     {
-      "card": "mlinzi",
-      "count": 2
-    },
-    {
       "card": "sadaka",
       "count": 1
     },
     {
       "card": "aimor",
       "count": 1
-    },
-    {
-      "card": "viral_weaponization",
-      "count": 2
     },
     {
       "card": "mandatory_seed_replacement",
@@ -79,10 +71,6 @@
     },
     {
       "card": "nihongai_grid",
-      "count": 2
-    },
-    {
-      "card": "bio_ethics_association",
       "count": 2
     },
     {
@@ -147,6 +135,18 @@
     },
     {
       "card": "interns",
+      "count": 2
+    },
+    {
+      "card": "fetal_ai",
+      "count": 2
+    },
+    {
+      "card": "mamba",
+      "count": 2
+    },
+    {
+      "card": "psychic_field",
       "count": 2
     }
   ]

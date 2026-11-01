@@ -1,0 +1,56 @@
+{
+  "id": "overmind",
+  "title": "Overmind",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 0,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": "UnusedMemory"
+        }
+      ],
+      "text": "When you install this program, place 1 power counter on it for each unused MU."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → Hosted power counter: Break 1 subroutine.",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": null
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 5053,
+  "counter_kind": "Power",
+  "is_playable": true
+}

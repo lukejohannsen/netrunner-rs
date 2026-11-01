@@ -1,0 +1,54 @@
+{
+  "id": "mamba",
+  "title": "Mamba",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 6,
+  "strength": 4,
+  "counter_kind": "Power",
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "requirement": "DuringRun",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      },
+      "text": "Hosted power counter: Do 1 net damage. Use this ability only during a run."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    },
+    {
+      "text": "You and the Runner secretly spend 0[credit], 1[credit], or 2[credit]. Reveal spent credits. If you and the Runner spent a different number of credits, place 1 power counter on Mamba.",
+      "effect": {
+        "PsiGame": {
+          "on_match": {
+            "Sequence": []
+          },
+          "on_differ": {
+            "AddCounters": 1
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 6065,
+  "is_playable": true
+}

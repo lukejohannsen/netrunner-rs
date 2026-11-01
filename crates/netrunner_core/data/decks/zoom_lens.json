@@ -3,7 +3,7 @@
   "name": "Zoom Lens",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Ele \"Smoke\" Scovak: Cynosure of the Net, the Intervention Shaper identity whose one recurring credit pays only for using icebreakers. Head Start's forty cards whole, Dinosaurus and three Shaper breakers to spend the credit on, under the identity that pays for them in place of Chaos Theory's extra [mu]. Eternal-legal only: Intervention is in neither pool. FFG F5 Stage 15. Flashpoint Stage 16 put two Data Breach in for its two Jailbreak. Flashpoint Stage 26 swapped a Diesel for Net Mercur, whose credits a stealth spend refills. FFG F5 Stage 39: two Cold Read for its two Infiltration, which Head Start keeps.  FFG F6 Stage 2: two Net Shield and a Diesel (each kept by other decks) for two NetChip and Chatterjee University.",
+  "description": "Not a published list: built so the sweeps reach Ele \"Smoke\" Scovak: Cynosure of the Net, the Intervention Shaper identity whose one recurring credit pays only for using icebreakers. Head Start's forty cards whole, Dinosaurus and three Shaper breakers to spend the credit on, under the identity that pays for them in place of Chaos Theory's extra [mu]. Eternal-legal only: Intervention is in neither pool. FFG F5 Stage 15. Flashpoint Stage 16 put two Data Breach in for its two Jailbreak. Flashpoint Stage 26 swapped a Diesel for Net Mercur, whose credits a stealth spend refills. FFG F5 Stage 39: two Cold Read for its two Infiltration, which Head Start keeps.  FFG F6 Stage 2: two Net Shield and a Diesel (each kept by other decks) for two NetChip and Chatterjee University. Two Record Reconstructor take Sure Gamble's place.",
   "style": [
     "rig"
   ],
@@ -27,10 +27,6 @@
     },
     {
       "card": "pipeline",
-      "count": 2
-    },
-    {
-      "card": "sure_gamble",
       "count": 2
     },
     {
@@ -96,6 +92,10 @@
     {
       "card": "chatterjee_university",
       "count": 1
+    },
+    {
+      "card": "record_reconstructor",
+      "count": 2
     }
   ]
 }
