@@ -1,0 +1,43 @@
+{
+  "id": "omni_drive",
+  "title": "Omni-drive",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "recurring_credits": 1,
+  "counter_kind": "Credit",
+  "pays_for": [
+    "UsingHosted"
+  ],
+  "continuous": [
+    {
+      "kind": "MayHost",
+      "applies_to": {
+        "InstallingOntoThis": {
+          "CardType": "Program"
+        }
+      },
+      "while": {
+        "Not": {
+          "AmountAtLeast": [
+            "HostedCards",
+            1
+          ]
+        }
+      },
+      "text": "Omni-drive can host a single program of 1[mu] or less."
+    },
+    {
+      "kind": {
+        "HostsMemory": {
+          "per": 1
+        }
+      },
+      "applies_to": "This",
+      "text": "The memory cost of the hosted program does not count against your memory limit."
+    }
+  ],
+  "triggers": [],
+  "built_from": 3039,
+  "is_playable": true
+}

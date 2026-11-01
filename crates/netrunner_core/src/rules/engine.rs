@@ -488,6 +488,9 @@ fn apply_action_once(
     // (`turn::finish_turn_beginning`, a no-op unless that is where the
     // game stands).
     events.extend(crate::rules::turn::finish_turn_beginning(&mut next, registry)?);
+    // What a host's cost set aside and the effect left is trashed (CR
+    // 9.5.5, at the next checkpoint), once nothing it waits on is parked.
+    ability::trash_set_aside_by_host(&mut next, &mut events);
     // The standing checks once more, for whatever changed them without an
     // event a card can hear — agenda points moved by a card's text, a
     // unique card turned faceup by one. After the drain: a deferred trigger
@@ -2308,9 +2311,7 @@ impl RunnerCardSource {
             RunnerCardSource::Heap => Some(&state.runner.heap),
             RunnerCardSource::SetAside => Some(&state.runner.set_aside),
             RunnerCardSource::Stack => Some(&state.runner.stack),
-            RunnerCardSource::Hosted(host) => {
-                state.runner.rig.iter().find(|c| c.install_id == host).map(|c| &c.hosted_cards)
-            }
+            RunnerCardSource::Hosted(host) => crate::rules::pending_choice::hosted_cards_of(state, Some(host)),
         }
     }
 
@@ -2320,9 +2321,7 @@ impl RunnerCardSource {
             RunnerCardSource::Heap => Some(&mut state.runner.heap),
             RunnerCardSource::SetAside => Some(&mut state.runner.set_aside),
             RunnerCardSource::Stack => Some(&mut state.runner.stack),
-            RunnerCardSource::Hosted(host) => {
-                state.runner.rig.iter_mut().find(|c| c.install_id == host).map(|c| &mut c.hosted_cards)
-            }
+            RunnerCardSource::Hosted(host) => crate::rules::pending_choice::hosted_cards_of_mut(state, Some(host)),
         }
     }
 }
@@ -2477,7 +2476,7 @@ pub(crate) enum ProgramHost {
 /// able to fit once programs are trashed to make room (CR 3.9.3b), and
 /// affordable. The gate `Effect::InstallProgramOnHost` asks before it
 /// installs, as `can_install_runner_card_from_zone` is for the rig.
-pub(crate) fn can_install_program_onto(state: &GameState, registry: &CardRegistry, card_id: &CardId, source: RunnerCardSource, onto_ice: bool) -> bool {
+pub(crate) fn can_install_program_onto(state: &GameState, registry: &CardRegistry, card_id: &CardId, source: RunnerCardSource, onto_ice: bool, ignoring_install_cost: bool) -> bool {
     if !source.zone(state).is_some_and(|zone| zone.contains(card_id)) || !install_requirement_met(state, registry, card_id) {
         return false;
     }
@@ -2485,9 +2484,10 @@ pub(crate) fn can_install_program_onto(state: &GameState, registry: &CardRegistr
     card_def.card_type == CardType::Program
         && card_def.installs_on_ice == onto_ice
         && crate::rules::install_trash::program_could_fit(state, registry, card_def)
-        && payment::available(state, registry, Side::Runner, Purpose::Install(card_def))
+        && (ignoring_install_cost
+            || payment::available(state, registry, Side::Runner, Purpose::Install(card_def))
             + payment::interrupt_could_lower(state, registry, Side::Runner, card_def, (source == RunnerCardSource::Grip).then_some(card_id))
-            >= preview_runner_install_cost(state, registry, card_def)
+            >= preview_runner_install_cost(state, registry, card_def))
 }
 
 /// Installs the program `card_id` out of `source` onto `host`, paying its
@@ -2503,6 +2503,7 @@ pub(crate) fn install_program_onto(
     card_id: CardId,
     source: RunnerCardSource,
     host: ProgramHost,
+    ignoring_install_cost: bool,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Runner;
     let card_def = registry.get(&card_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?.clone();
@@ -2514,7 +2515,7 @@ pub(crate) fn install_program_onto(
     zone.remove(position);
     let memory_cost = card_def.memory_cost.unwrap_or(0);
     let mut events = crate::rules::install_trash::before_program_install(next, registry, &card_id, memory_cost, false)?;
-    let cost = continuous::install_cost_of(next, registry, &card_def);
+    let cost = if ignoring_install_cost { 0 } else { continuous::install_cost_of(next, registry, &card_def) };
     let paid = ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?;
     events.extend(paid.iter().cloned());
     let on_ice = match host {
@@ -3107,10 +3108,17 @@ fn activate_ability(
     // Set aside, not trashed, when the cost uninstalls the card and the
     // effect acts on what it hosts (CR 9.5.5): Read-Write Share's hosted
     // cards go into the stack, and a "whenever you trash" hears nothing.
-    let set_aside = match (&ability.cost, next.runner.rig.iter_mut().find(|c| c.install_id == target)) {
-        (Some(cost), Some(host)) if cost.uninstalls_its_source() && ability.effect.acts_on_hosted_cards() => std::mem::take(&mut host.hosted_cards),
-        _ => Vec::new(),
-    };
+    // Into a zone of the state's, not the resolution's, because the effect
+    // may park (Street Peddler's choice); what it leaves is trashed as the
+    // action ends (`ability::trash_set_aside_by_host`).
+    if let (Some(cost), Some(host)) = (&ability.cost, next.runner.rig.iter_mut().find(|c| c.install_id == target))
+        && cost.uninstalls_its_source()
+        && ability.effect.acts_on_hosted_cards()
+    {
+        let cards = std::mem::take(&mut host.hosted_cards);
+        host.turned_facedown = 0;
+        next.runner.set_aside_by_host = Some(crate::rules::state::SetAsideByHost { host: target, cards, facedown: card_def.hosts_facedown });
+    }
     let mut cost_events = Vec::new();
     let mut chosen_x = None;
     if let Some(cost) = &ability.cost {
@@ -3177,7 +3185,7 @@ fn activate_ability(
         .filter(|card| **card != card_id)
         .cloned()
         .collect();
-    let mut effect_ctx = ability::ResolutionContext { last_known, set_aside, paid_with, ..ability_ctx(is_identity, target, &card_id) };
+    let mut effect_ctx = ability::ResolutionContext { last_known, paid_with, ..ability_ctx(is_identity, target, &card_id) };
     let resolved = ability::evaluate_effect(&mut next, &effect, &mut effect_ctx, registry)?;
     // A break paid for by losing [click] (Eli 1.0's, Zed 2.0's own), which
     // Zed 2.0's last subroutine asks of the run.
@@ -3188,12 +3196,6 @@ fn activate_ability(
         run.click_lost_to_break = true;
     }
     events.extend(resolved);
-    // What the effect left set aside is trashed (CR 9.5.5, at the next
-    // checkpoint): only a rig card hosts cards, and only its owner's.
-    for card in std::mem::take(&mut effect_ctx.set_aside) {
-        next.runner.heap.push(card.clone());
-        events.push(GameEvent::CardTrashed { side: Side::Runner, card, from: crate::dsl::TrashedFrom::Elsewhere, by: None, install: None, damage: None });
-    }
     events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
     // `check_requirement` above only reads — without this, a `Paid`
     // ability's `EffectRequirement::OncePerTurn` (e.g. Telework Contract's

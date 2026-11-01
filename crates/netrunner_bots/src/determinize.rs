@@ -338,6 +338,9 @@ pub(crate) fn visible_cards(view: &ClientView) -> Vec<CardId> {
     if let Some(cards) = &view.runner.set_aside_facedown_cards {
         ids.extend(cards.iter().cloned());
     }
+    if let Some(cards) = &view.runner.host_set_aside_cards {
+        ids.extend(cards.iter().cloned());
+    }
     if let Some(cards) = &view.runner.installed_facedown_cards {
         ids.extend(cards.iter().cloned());
     }
@@ -410,6 +413,7 @@ fn cards_in_game(view: &ClientView, side: Side, registry: &CardRegistry) -> usiz
                 + view.runner.removed_from_game.iter().filter(|card| registry.get(card).is_none_or(|definition| definition.card_type != CardType::Identity)).count()
                 + view.runner.set_aside.len()
                 + view.runner.set_aside_facedown_count
+                + view.runner.host_set_aside_count
                 + view.runner.installed_facedown_count
                 + view.runner.play_area.len()
                 + view.runner.rig.iter().map(|card| 1 + card.hosted_cards.len() + card.hosted_unseen).sum::<usize>()
@@ -1109,6 +1113,14 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         // Reboot's facedown installs: hidden from the Corp the same way,
         // drawn after them for the same reason.
         installed_facedown: determinize_zone(&view.runner.installed_facedown_cards, view.runner.installed_facedown_count, &mut pools, Slot::RunnerAny),
+        // What a host's cost set aside while the effect that reads it waits
+        // (Street Peddler's choice), drawn after the rest for the same
+        // reason; facedown where the viewer is not shown them.
+        set_aside_by_host: view.runner.host_set_aside_from.map(|host| netrunner_core::rules::SetAsideByHost {
+            host,
+            cards: determinize_zone(&view.runner.host_set_aside_cards, view.runner.host_set_aside_count, &mut pools, Slot::RunnerAny),
+            facedown: view.runner.host_set_aside_cards.is_none(),
+        }),
         // The pile of other identities and the one DJ Fenris hosts: faceup,
         // and no card of the deck, so copied whole and never drawn.
         other_identities: view.runner.other_identities.clone(),
@@ -1418,6 +1430,11 @@ pub fn resample_hidden(state: &mut GameState, view: &ClientView, registry: &Card
     if view.runner.installed_facedown_cards.is_none() && !state.runner.installed_facedown.is_empty() {
         state.runner.installed_facedown = pools.draw_n(Slot::RunnerAny, state.runner.installed_facedown.len());
     }
+    if view.runner.host_set_aside_cards.is_none()
+        && let Some(aside) = state.runner.set_aside_by_host.as_mut()
+    {
+        aside.cards = pools.draw_n(Slot::RunnerAny, aside.cards.len());
+    }
     seat_revealed(state);
     // A breach already under way reaches cards of the zones just re-drawn.
     if let Some(run) = state.active_run.as_mut() {
@@ -1527,6 +1544,7 @@ mod tests {
                 removed_from_game: Vec::new(),
                 set_aside: Vec::new(),
                 set_aside_facedown: Vec::new(),
+                set_aside_by_host: None,
                 installed_facedown: Vec::new(),
                 other_identities: Vec::new(),
                 hosted_identities: Vec::new(),
@@ -2244,7 +2262,7 @@ mod tests {
             reveal: false,
             shuffle_after: true,
             destination: None,
-            then: Some(Box::new(Effect::InstallProgramOnHost { card: None, from: CardZoneRef::OwnStack })),
+            then: Some(Box::new(Effect::InstallProgramOnHost { card: None, from: CardZoneRef::OwnStack, ignoring_install_cost: false })),
             selected: vec![3],
             source_card: None,
             prompting_card: None,

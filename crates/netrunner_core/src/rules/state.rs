@@ -574,6 +574,19 @@ impl CorpState {
     }
 }
 
+/// What a host's cost set aside (`RunnerState::set_aside_by_host`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetAsideByHost {
+    /// The host whose cards these were — the handle the waiting effect
+    /// still names (`ResolutionContext::acting_install`, a parked
+    /// decision's `source_install`).
+    pub host: InstallId,
+    pub cards: Vec<CardId>,
+    /// Hosted facedown (`CardDefinition::hosts_facedown`): the Corp sees
+    /// how many, as it did on the host.
+    pub facedown: bool,
+}
+
 /// A Runner card installed in the Rig (Hardware or Program), with the
 /// per-instance runtime state needed for icebreaker strength: Corp's
 /// `InstalledCard` already carries per-instance state (`advancement_tokens`)
@@ -798,6 +811,20 @@ pub struct RunnerState {
     /// whole and every reader of it would have had to learn to mask.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub set_aside_facedown: Vec<CardId>,
+    /// The cards a host's own cost set aside (CR 9.5.5: "if a card is
+    /// uninstalled as a cost, the cards hosted on it are set aside, and
+    /// trashed at the next checkpoint unless the ability puts them
+    /// elsewhere") — Read-Write Share's, Bookmark's and Street Peddler's
+    /// "[trash]:" acting on what the card hosted. A zone of its own because
+    /// the effect may park (Street Peddler's choice of the card to install)
+    /// and the cards must outlive it: they were on the resolution's context
+    /// until then, which a park drops. Read wherever the host's cards are
+    /// (`CardZoneRef::HostedOnSource`, `RunnerCardSource::Hosted`) once the
+    /// host has left the rig, and trashed when the action that set them
+    /// aside ends with nothing parked (`ability::trash_set_aside_by_host`).
+    /// Masked as the host's cards were (`facedown`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set_aside_by_host: Option<SetAsideByHost>,
     /// Runner cards installed facedown (CR 8.1.4) — Reboot's "install up
     /// to 5 cards from your heap facedown". Blank and inactive (8.1.4a),
     /// with no install cost (8.5.11a), so a list beside the rig keeps every

@@ -1,0 +1,73 @@
+{
+  "id": "the_supplier",
+  "title": "The Supplier",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedCards",
+          1
+        ]
+      },
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "HostedOnSource",
+            "filter": {
+              "InstallableRunnerCardWithDiscount": {
+                "Credits": 2
+              }
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "InstallRunnerCardFromZone": {
+                "from": "HostedOnSource",
+                "discount": {
+                  "Credits": 2
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, you may install a hosted card, lowering the install cost by 2."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnGrip",
+          "filter": {
+            "CardTypeOneOf": [
+              "Resource",
+              "Hardware"
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "HostedOnSource"
+        }
+      },
+      "text": "[click]: Host a resource or piece of hardware from your grip on The Supplier."
+    }
+  ],
+  "built_from": 6056,
+  "is_playable": true
+}

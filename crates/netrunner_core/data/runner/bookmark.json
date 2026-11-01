@@ -1,0 +1,76 @@
+{
+  "id": "bookmark",
+  "title": "Bookmark",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 0,
+  "hosts_facedown": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnGrip",
+          "filter": "Any",
+          "min": 1,
+          "max": 3,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "HostedOnSource"
+        }
+      },
+      "text": "[click]: Host up to 3 cards from your grip facedown on this hardware"
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedCards",
+          1
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "HostedOnSource",
+          "filter": "Any",
+          "min": 0,
+          "max": 0,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnGrip",
+          "count": "HostedCards"
+        }
+      },
+      "text": "[click]: Add all hosted cards to your grip."
+    },
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "HostedOnSource",
+          "filter": "Any",
+          "min": 0,
+          "max": 0,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnGrip",
+          "count": "HostedCards"
+        }
+      },
+      "text": "[trash]: Add all hosted cards to your grip."
+    }
+  ],
+  "built_from": 8106,
+  "is_playable": true
+}

@@ -698,7 +698,7 @@ impl Occurrences {
             // A Corp install of ice is counted as ice (`as_seen`), so
             // every install it counts unseen went into a root.
             Some(EventFilter::InRoot) => Some(bit(Class::Card { kind: Kind::Unseen, installed: false }) | bit(Class::Card { kind: Kind::Unseen, installed: true })),
-            Some(EventFilter::Host) => {
+            Some(EventFilter::Host | EventFilter::OntoThis) => {
                 return Err(format!("the turn counts a {trigger:?} without which card hosted what, so \"the first\" cannot be narrowed to this card's host"));
             }
             Some(EventFilter::InRootOfThisServer | EventFilter::InOrProtectingThisServer | EventFilter::ProtectingThisServer) => {

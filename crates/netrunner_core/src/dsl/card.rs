@@ -1560,6 +1560,9 @@ impl CardDefinition {
             // installs on ice, or a condition, which is hosted as it
             // becomes a counter (CR 1.13.6d).
             EventFilter::Host => about == TriggerAbout::Card && (self.installs_on_ice || self.becomes_a_condition()),
+            // Only an install lands on a card, and only on one that may
+            // host it.
+            EventFilter::OntoThis => triggered.trigger == Trigger::OnInstall && self.continuous.iter().any(|effect| effect.kind == ContinuousKind::MayHost),
             // Only a Corp install's moment says where the card came
             // from (`listeners::Moment::from_hq`).
             EventFilter::InstalledFromHq(_) | EventFilter::InstalledIn(_) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,

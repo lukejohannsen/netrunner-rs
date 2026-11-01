@@ -110,6 +110,9 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         set_aside: _,           // drawn: hud::in_effect ("set aside: …"), both clients; the chooser's pop-up draws the ones it offers
         set_aside_facedown_count: _, // drawn: hud::in_effect ("set aside facedown: N cards"), both clients, for the Corp
         set_aside_facedown_cards: _, // drawn: hud::in_effect, named to the Runner (Ayla's six); the chooser's pop-up draws the ones it offers
+        host_set_aside_from: _,  // engine's: which host's cards they were, the handle the waiting choice names; a person reads the cards, not the handle
+        host_set_aside_count: _, // drawn: hud::in_effect ("set aside from a host: N cards"), both clients, for the Corp
+        host_set_aside_cards: _, // drawn: hud::in_effect, named where the viewer saw them on the host; the chooser's pop-up draws the ones it offers
         installed_facedown_count: _, // drawn: hud::in_effect ("installed facedown: N cards"), both clients: Reboot's blank, inactive installs (CR 8.1.4a)
         installed_facedown_cards: _, // drawn: hud::in_effect, named to the Runner (CR 1.21.2a)
         other_identities: _, // drawn: the selection pop-up draws the ones DJ Fenris offers; engine's otherwise, the pile is every identity but the Runner's own (CR 1.5.4a)

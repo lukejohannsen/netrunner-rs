@@ -139,6 +139,18 @@ pub struct RunnerClientView {
     /// `grip_cards` is: "You may look at those cards at any time."
     #[serde(default)]
     pub set_aside_facedown_cards: Option<Vec<CardId>>,
+    /// The host whose own cost set its cards aside, while they wait
+    /// (`RunnerState::set_aside_by_host`, CR 9.5.5) — Street Peddler's,
+    /// during the choice of the card to install. Public, as the host was.
+    #[serde(default)]
+    pub host_set_aside_from: Option<crate::rules::InstallId>,
+    /// How many cards it set aside — public, as the host's count was.
+    #[serde(default)]
+    pub host_set_aside_count: usize,
+    /// Those cards, `Some` when the viewer could see them on the host: the
+    /// Runner always, the Corp when they were hosted faceup.
+    #[serde(default)]
+    pub host_set_aside_cards: Option<Vec<CardId>>,
     /// How many cards the Runner has installed facedown
     /// (`RunnerState::installed_facedown`, Reboot's) — public, as the grip's
     /// count is.
@@ -480,6 +492,9 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         set_aside: public.runner.set_aside,
         set_aside_facedown_count: zone_count(&public.runner.set_aside_facedown),
         set_aside_facedown_cards: zone_cards(&public.runner.set_aside_facedown),
+        host_set_aside_from: public.runner.set_aside_by_host.as_ref().map(|(host, _)| *host),
+        host_set_aside_count: public.runner.set_aside_by_host.as_ref().map_or(0, |(_, zone)| zone_count(zone)),
+        host_set_aside_cards: public.runner.set_aside_by_host.as_ref().and_then(|(_, zone)| zone_cards(zone)),
         installed_facedown_count: zone_count(&public.runner.installed_facedown),
         installed_facedown_cards: zone_cards(&public.runner.installed_facedown),
         other_identities: public.runner.other_identities,

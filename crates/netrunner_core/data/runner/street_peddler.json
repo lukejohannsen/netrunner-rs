@@ -1,0 +1,64 @@
+{
+  "id": "street_peddler",
+  "title": "Street Peddler",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "hosts_facedown": true,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "HostCardOnThisCard": "TopOfStack"
+        },
+        {
+          "HostCardOnThisCard": "TopOfStack"
+        },
+        {
+          "HostCardOnThisCard": "TopOfStack"
+        }
+      ],
+      "text": "When you install Street Peddler, host the top 3 cards of your stack facedown on Street Peddler"
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedCards",
+          1
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "HostedOnSource",
+          "filter": {
+            "InstallableRunnerCardWithDiscount": {
+              "Credits": 1
+            }
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "InstallRunnerCardFromZone": {
+              "from": "HostedOnSource",
+              "discount": {
+                "Credits": 1
+              }
+            }
+          }
+        }
+      },
+      "text": "[trash]: Install 1 card hosted on Street Peddler, lowering its install cost by 1."
+    }
+  ],
+  "built_from": 8062,
+  "is_playable": true
+}

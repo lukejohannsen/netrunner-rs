@@ -817,6 +817,12 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
                 || state.corp.conditions.iter().any(|condition| condition.handle == install && condition.host == about)
         });
     }
+    // "Whenever you install a program **on Scheherazade**": the card the
+    // moment is about sits on the listening install.
+    if let EventFilter::OntoThis = filter {
+        let About::Card { install: Some(about), .. } = moment.about else { return false };
+        return install.is_some() && state.find_rig_install(about).is_some_and(|card| card.hosted_on_rig_card == install);
+    }
     // "The Corp installs a card in the root of a server": every Corp
     // install but a piece of ice (CR 3.4.2).
     if let EventFilter::InRoot = filter {
