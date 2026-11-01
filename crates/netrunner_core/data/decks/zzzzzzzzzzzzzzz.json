@@ -1,0 +1,161 @@
+{
+  "id": "zzzzzzzzzzzzzzz",
+  "name": "Zzzzzzzzzzzzzzz",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Jinteki: Replicating Perfection, Trace Amount's Jinteki identity, whose Runner must run a central before a remote each turn. Zzzzzzzzzz's list, its identity swapped, with Rainbow. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 2.",
+  "style": [
+    "traps"
+  ],
+  "identity": "jinteki_replicating_perfection",
+  "cards": [
+    {
+      "card": "flower_sermon",
+      "count": 2
+    },
+    {
+      "card": "mlinzi",
+      "count": 1
+    },
+    {
+      "card": "viral_weaponization",
+      "count": 2
+    },
+    {
+      "card": "genotyping",
+      "count": 1
+    },
+    {
+      "card": "mandatory_seed_replacement",
+      "count": 2
+    },
+    {
+      "card": "aiki",
+      "count": 1
+    },
+    {
+      "card": "dna_tracker",
+      "count": 1
+    },
+    {
+      "card": "chiyashi",
+      "count": 1
+    },
+    {
+      "card": "fumiko_yamamori",
+      "count": 1
+    },
+    {
+      "card": "hyoubu_research_facility",
+      "count": 1
+    },
+    {
+      "card": "project_kusanagi",
+      "count": 1
+    },
+    {
+      "card": "nihongai_grid",
+      "count": 2
+    },
+    {
+      "card": "bio_ethics_association",
+      "count": 2
+    },
+    {
+      "card": "palana_agroplex",
+      "count": 2
+    },
+    {
+      "card": "heritage_committee",
+      "count": 2
+    },
+    {
+      "card": "museum_of_history",
+      "count": 1
+    },
+    {
+      "card": "mumba_temple",
+      "count": 1
+    },
+    {
+      "card": "harvester",
+      "count": 2
+    },
+    {
+      "card": "political_dealings",
+      "count": 1
+    },
+    {
+      "card": "ancestral_imager",
+      "count": 1
+    },
+    {
+      "card": "genetic_resequencing",
+      "count": 1
+    },
+    {
+      "card": "lockdown",
+      "count": 1
+    },
+    {
+      "card": "valley_grid",
+      "count": 1
+    },
+    {
+      "card": "marcus_batty",
+      "count": 1
+    },
+    {
+      "card": "cerebral_cast",
+      "count": 1
+    },
+    {
+      "card": "mental_health_clinic",
+      "count": 1
+    },
+    {
+      "card": "chairman_hiro",
+      "count": 1
+    },
+    {
+      "card": "tenma_line",
+      "count": 1
+    },
+    {
+      "card": "medical_research_fundraiser",
+      "count": 1
+    },
+    {
+      "card": "fast_track",
+      "count": 1
+    },
+    {
+      "card": "encrypted_portals",
+      "count": 1
+    },
+    {
+      "card": "philotic_entanglement",
+      "count": 1
+    },
+    {
+      "card": "hades_fragment",
+      "count": 1
+    },
+    {
+      "card": "tsurugi",
+      "count": 1
+    },
+    {
+      "card": "shinobi",
+      "count": 1
+    },
+    {
+      "card": "shock",
+      "count": 1
+    },
+    {
+      "card": "rainbow",
+      "count": 1
+    }
+  ]
+}

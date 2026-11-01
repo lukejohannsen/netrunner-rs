@@ -496,6 +496,9 @@ mod catalog_join_tests {
         // "choose a card type" — the four types are the choice and the
         // card never prints their names.
         ("touch_ups", "the options are card-type names the card does not print"),
+        // Rainbow's three subtypes are its type line, which the catalog
+        // keeps out of the text; the clause quotes that line.
+        ("rainbow", "the clause is the printed type line, not the text box"),
     ];
 
     /// Every linked clause is a quote of the card. The point of linking a

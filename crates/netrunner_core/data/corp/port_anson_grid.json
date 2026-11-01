@@ -1,0 +1,37 @@
+{
+  "id": "port_anson_grid",
+  "title": "Port Anson Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 5,
+  "triggers": [
+    {
+      "trigger": "OnRunStart",
+      "subject": "Any",
+      "requirement": "RunAgainstThisServer",
+      "effects": [
+        {
+          "ImposeAdditionalCost": {
+            "on": [
+              "JackOut"
+            ],
+            "cost": {
+              "Trash": {
+                "from": "OwnInstalled",
+                "filter": {
+                  "CardType": "Program"
+                },
+                "count": 1
+              }
+            },
+            "until": "Run"
+          }
+        }
+      ],
+      "text": "As an additional cost to jack out during a run on this server, the Runner must trash 1 installed program."
+    }
+  ],
+  "built_from": 6044,
+  "is_playable": true
+}

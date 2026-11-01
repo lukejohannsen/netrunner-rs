@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "aumakua", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "god_of_war", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "virus_breeding_ground", "yusuf"],
+            vec!["audrey_v2", "aumakua", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "god_of_war", "gorman_drip_v1", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "virus_breeding_ground", "yusuf"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 

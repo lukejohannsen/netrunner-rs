@@ -1,0 +1,185 @@
+{
+  "id": "zzzzzzzzzzzzz",
+  "name": "Zzzzzzzzzzzzz",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach NBN: The World is Yours*, Future Proof's NBN identity, one more card in hand. Zythum's list, its identity swapped, with Midway Station Grid and Invasion of Privacy. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 2.",
+  "style": [
+    "fast-advance"
+  ],
+  "identity": "nbn_the_world_is_yours",
+  "cards": [
+    {
+      "card": "project_beale",
+      "count": 2
+    },
+    {
+      "card": "bellona",
+      "count": 1
+    },
+    {
+      "card": "astroscript_pilot_program",
+      "count": 2
+    },
+    {
+      "card": "matrix_analyzer",
+      "count": 1
+    },
+    {
+      "card": "paper_trail",
+      "count": 1
+    },
+    {
+      "card": "the_all_seeing_i",
+      "count": 1
+    },
+    {
+      "card": "keegan_lane",
+      "count": 1
+    },
+    {
+      "card": "salems_hospitality",
+      "count": 1
+    },
+    {
+      "card": "improved_tracers",
+      "count": 1
+    },
+    {
+      "card": "indian_union_stock_exchange",
+      "count": 1
+    },
+    {
+      "card": "mumbad_virtual_tour",
+      "count": 1
+    },
+    {
+      "card": "interrupt_0",
+      "count": 1
+    },
+    {
+      "card": "navi_mumbai_city_grid",
+      "count": 1
+    },
+    {
+      "card": "victoria_jenkins",
+      "count": 1
+    },
+    {
+      "card": "quantum_predictive_model",
+      "count": 1
+    },
+    {
+      "card": "mumbad_city_hall",
+      "count": 1
+    },
+    {
+      "card": "underway_grid",
+      "count": 1
+    },
+    {
+      "card": "troll",
+      "count": 1
+    },
+    {
+      "card": "universal_connectivity_fee",
+      "count": 1
+    },
+    {
+      "card": "errand_boy",
+      "count": 1
+    },
+    {
+      "card": "shoot_the_moon",
+      "count": 1
+    },
+    {
+      "card": "primary_transmission_dish",
+      "count": 1
+    },
+    {
+      "card": "muckraker",
+      "count": 1
+    },
+    {
+      "card": "quandary",
+      "count": 1
+    },
+    {
+      "card": "city_surveillance",
+      "count": 1
+    },
+    {
+      "card": "jackson_howard",
+      "count": 1
+    },
+    {
+      "card": "shipment_from_sansan",
+      "count": 1
+    },
+    {
+      "card": "restructure",
+      "count": 1
+    },
+    {
+      "card": "character_assassination",
+      "count": 1
+    },
+    {
+      "card": "profiteering",
+      "count": 1
+    },
+    {
+      "card": "cyberdex_trial",
+      "count": 1
+    },
+    {
+      "card": "uroboros",
+      "count": 1
+    },
+    {
+      "card": "big_brother",
+      "count": 1
+    },
+    {
+      "card": "freelancer",
+      "count": 1
+    },
+    {
+      "card": "foxfire",
+      "count": 1
+    },
+    {
+      "card": "marked_accounts",
+      "count": 1
+    },
+    {
+      "card": "restructured_datapool",
+      "count": 1
+    },
+    {
+      "card": "chilo_city_grid",
+      "count": 1
+    },
+    {
+      "card": "midseason_replacements",
+      "count": 1
+    },
+    {
+      "card": "tmi",
+      "count": 1
+    },
+    {
+      "card": "manhunt",
+      "count": 1
+    },
+    {
+      "card": "invasion_of_privacy",
+      "count": 1
+    },
+    {
+      "card": "midway_station_grid",
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "id": "gorman_drip_v1",
+  "title": "Gorman Drip v1",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnBasicDrawAction",
+      "when": {
+        "Whose": "Corp"
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever the Corp spends a [click] to draw 1 card or gain 1[credit] (not through a card ability), place 1 virus counter on Gorman Drip v1."
+    },
+    {
+      "trigger": "OnBasicCreditAction",
+      "when": {
+        "Whose": "Corp"
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever the Corp spends a [click] to draw 1 card or gain 1[credit] (not through a card ability), place 1 virus counter on Gorman Drip v1."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "GainCreditsPerCounter": {
+          "side": "Runner",
+          "credits_per_counter": 1
+        }
+      },
+      "text": "[click], [trash]: Gain 1[credit] for each virus counter on Gorman Drip v1."
+    }
+  ],
+  "built_from": 4005,
+  "is_playable": true
+}

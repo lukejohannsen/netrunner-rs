@@ -1,0 +1,35 @@
+{
+  "id": "rainbow",
+  "title": "Rainbow",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 3,
+  "strength": 4,
+  "continuous": [
+    {
+      "kind": {
+        "GainSubtype": "CodeGate"
+      },
+      "applies_to": "This",
+      "text": "Sentry - Code Gate - Barrier"
+    },
+    {
+      "kind": {
+        "GainSubtype": "Barrier"
+      },
+      "applies_to": "This",
+      "text": "Sentry - Code Gate - Barrier"
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 5025,
+  "is_playable": true
+}
