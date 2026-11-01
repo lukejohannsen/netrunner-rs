@@ -1,0 +1,26 @@
+{
+  "id": "scrubbed",
+  "title": "Scrubbed",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "ModifyStrength": {
+            "delta": -2,
+            "ice": "Encountered",
+            "duration": "Run"
+          }
+        }
+      ],
+      "text": "The first piece of ice encountered each turn has -2 strength for the remainder of the run."
+    }
+  ],
+  "built_from": 6034,
+  "is_playable": true
+}

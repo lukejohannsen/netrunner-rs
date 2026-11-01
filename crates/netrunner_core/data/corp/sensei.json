@@ -1,0 +1,39 @@
+{
+  "id": "sensei",
+  "title": "Sensei",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 5,
+  "subroutines": [
+    {
+      "text": "For the remainder of this run, while the Runner is encountering another piece of ice, it gains \"[subroutine] End the run.\" after its other subroutines.",
+      "effect": {
+        "LaterThisTurn": {
+          "when": "OnEncounter",
+          "filter": {
+            "Card": "NotSourceCard"
+          },
+          "every_time": true,
+          "this_run": true,
+          "effect": {
+            "GainSubroutine": {
+              "subroutine": {
+                "text": "End the run.",
+                "effect": "EndTheRun"
+              },
+              "after": true,
+              "duration": "Encounter",
+              "encountered": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 2034,
+  "is_playable": true
+}

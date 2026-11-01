@@ -1,0 +1,23 @@
+{
+  "id": "corporate_scandal",
+  "title": "Corporate Scandal",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "BadPublicity": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "Player": "Corp"
+      },
+      "text": "The Corp is considered to have 1 additional bad publicity"
+    }
+  ],
+  "triggers": [],
+  "built_from": 10025,
+  "is_playable": true
+}

@@ -164,6 +164,16 @@ pub enum ContinuousKind {
     /// as 1 considered tag: being tagged with no tags is the same question
     /// everywhere the pool asks it, and a card counting tags counts one.
     Tags(Number),
+    /// Bad publicity the Corp is considered to have beside its own —
+    /// Corporate Scandal's "The Corp is considered to have 1 additional bad
+    /// publicity (even if they had no bad publicity)", said of the Corp
+    /// (`Scope::Player`). Read as `Tags` is (`continuous::bad_publicity`),
+    /// where a count of it is asked: the credits a run starts with and a
+    /// card's `Amount::BadPublicity`. Never taken or removed, so
+    /// `CorpState::bad_publicity` stays what the Corp has. Composition
+    /// didn't work: a counter given for the current's stay would be one a
+    /// card could remove.
+    BadPublicity(Number),
     /// Credits to install a card; negative is a discount.
     InstallCost(Number),
     /// Credits to rez a card.

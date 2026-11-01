@@ -3,7 +3,7 @@
   "name": "Zzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: SanSan Stage 14's deck for New Angeles Sol: Your News, on Zythum's list, so the sweeps meet a Corp that may play a current from HQ or Archives whenever an agenda is scored or stolen. Eternal-legal only. It trades two Salem's Hospitality, two The All-Seeing I and Interrupt 0, which Zythum keeps, for two Rolling Brownout, two Service Outage and an Enforced Curfew. SanSan Stage 15 Two RSVP take Rolling Brownout's place. Two Information Overload take an IP Block's and a Thoth's place.",
+  "description": "Not a published list: SanSan Stage 14's deck for New Angeles Sol: Your News, on Zythum's list, so the sweeps meet a Corp that may play a current from HQ or Archives whenever an agenda is scored or stolen. Eternal-legal only. It trades two Salem's Hospitality, two The All-Seeing I and Interrupt 0, which Zythum keeps, for two Rolling Brownout, two Service Outage and an Enforced Curfew. SanSan Stage 15 Two RSVP take Rolling Brownout's place. Two Information Overload take an IP Block's and a Thoth's place. Engine words Stage 6 takes the Mumbad City Hall for The News Now Hour, which bars the Runner's currents.",
   "style": [
     "fast-advance"
   ],
@@ -130,10 +130,6 @@
       "count": 1
     },
     {
-      "card": "mumbad_city_hall",
-      "count": 1
-    },
-    {
       "card": "explode_a_palooza",
       "count": 1
     },
@@ -160,6 +156,10 @@
     {
       "card": "information_overload",
       "count": 2
+    },
+    {
+      "card": "the_news_now_hour",
+      "count": 1
     }
   ]
 }

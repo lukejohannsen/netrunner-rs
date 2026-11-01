@@ -940,6 +940,11 @@ pub(crate) fn place_corp_card(
     // and without this an agenda in an ICE slot became a 0-strength barrier
     // the run encountered. Agendas and assets are remote-only; upgrades may
     // root on a central.
+    // Unscheduled Maintenance's "The Corp cannot install more than 1 piece
+    // of ice each turn": refused here, whoever offered the install.
+    if matches!(card_def.card_type, CardType::Ice(_)) && continuous::cannot(next, registry, Prohibition::InstallIce) {
+        return Err(RulesError::IceInstallProhibited);
+    }
     match (slot, &card_def.card_type) {
         (InstallSlot::Ice, CardType::Ice(_)) | (InstallSlot::Root, CardType::Upgrade) => {}
         (InstallSlot::Ice, _) => return Err(RulesError::CardTypeMismatch { card: card_id, expected: "ice" }),
@@ -1061,6 +1066,10 @@ pub(crate) fn creates_server(state: &GameState, zone: TargetZone) -> bool {
 pub(crate) fn corp_install_destinations(state: &GameState, registry: &CardRegistry, card_def: &crate::dsl::CardDefinition, ignore_costs: bool, discount: u32) -> Vec<ServerId> {
     // Signal Jamming's "cards cannot be installed": nowhere to offer.
     if continuous::cannot(state, registry, Prohibition::CorpInstall) {
+        return Vec::new();
+    }
+    // Unscheduled Maintenance: no more ice this turn, so nowhere for it.
+    if matches!(card_def.card_type, CardType::Ice(_)) && continuous::cannot(state, registry, Prohibition::InstallIce) {
         return Vec::new();
     }
     let existing = super::legal_actions::existing_remote_ids(state);
@@ -1820,6 +1829,7 @@ pub(crate) fn can_play_event_from(state: &GameState, registry: &CardRegistry, ca
     let Some(card_def) = registry.get(card_id) else { return false };
     from.zone(state).contains(card_id)
         && card_def.card_type == CardType::Event
+        && !(crate::rules::current::is_current(card_def) && continuous::cannot(state, registry, Prohibition::PlayCurrents))
         && (waived.price() || payment::available(state, registry, Side::Runner, Purpose::Play(card_def)) >= continuous::play_cost_of(state, registry, card_def))
         && (waived.additional() || continuous::additional_play_cost_of(state, registry, card_def).as_ref().is_none_or(|cost| {
             ability::cost_is_affordable(state, registry, Side::Runner, cost, Purpose::Other, &ability::ResolutionContext::for_card(Some(card_id)))
@@ -1859,6 +1869,10 @@ pub(crate) fn play_event_card(
     // any grip card could be "played" as an event and sent to the heap.
     if card_def.card_type != CardType::Event {
         return Err(RulesError::CardTypeMismatch { card: card_id, expected: "an event" });
+    }
+    // The News Now Hour's "The Runner cannot play current events".
+    if crate::rules::current::is_current(card_def) && continuous::cannot(next, registry, Prohibition::PlayCurrents) {
+        return Err(RulesError::PlayProhibited { card: card_id });
     }
     // Hard play-legality gate (e.g. Scorched Earth's "the Runner must be
     // tagged") — checked before its credit cost is paid, mirroring
