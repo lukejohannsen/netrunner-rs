@@ -1,0 +1,37 @@
+{
+  "id": "kati_jones",
+  "title": "Kati Jones",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "counter_kind": "Credit",
+  "one_use_each_turn": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "AddCounters": 3
+      },
+      "text": "[click]: Place 3[credit] on this resource."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "TakeAllCountersAsCredits": "Runner"
+      },
+      "text": "[click]: Take all credits from this resource."
+    }
+  ],
+  "built_from": 2091,
+  "is_playable": true
+}

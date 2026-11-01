@@ -11,7 +11,9 @@
   "counter_kind": "Credit",
   "recurring_credits": 2,
   "pays_for": [
-    "Rezzing"
+    {
+      "Rezzing": "Any"
+    }
   ],
   "triggers": [],
   "built_from": 10018,

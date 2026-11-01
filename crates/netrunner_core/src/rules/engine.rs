@@ -3217,7 +3217,7 @@ fn advance_card(
     spend_click(&mut next, side)?;
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(1), Purpose::Other, Some(&card_id))?);
+    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(1), Purpose::Advance(target), Some(&card_id))?);
     events.extend(advance(&mut next, registry, target)?);
     Ok((next, events))
 }

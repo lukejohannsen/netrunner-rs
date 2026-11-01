@@ -1,0 +1,50 @@
+{
+  "id": "executive_retreat",
+  "title": "Executive Retreat",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 1
+        },
+        {
+          "ShuffleIntoDeck": [
+            "OwnHq"
+          ]
+        }
+      ],
+      "text": "When you score Executive Retreat, place 1 agenda counter on it and shuffle HQ into R&D."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 1
+          }
+        ]
+      },
+      "effect": {
+        "DrawCards": [
+          "Corp",
+          5
+        ]
+      },
+      "text": "[click], hosted agenda counter: Draw 5 cards."
+    }
+  ],
+  "built_from": 2039,
+  "is_playable": true
+}

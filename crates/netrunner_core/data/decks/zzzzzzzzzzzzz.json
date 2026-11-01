@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach NBN: The World is Yours*, Future Proof's NBN identity, one more card in hand. Zythum's list, its identity swapped, with Midway Station Grid and Invasion of Privacy. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 2.",
+  "description": "Not a published list: built so the sweeps reach NBN: The World is Yours*, Future Proof's NBN identity, one more card in hand. Zythum's list, its identity swapped, with Midway Station Grid and Invasion of Privacy. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 2. One Keegan Lane became a Shell Corporation, whose two abilities share one use each turn (Engine words, Stage 2).",
   "style": [
     "fast-advance"
   ],
@@ -31,10 +31,6 @@
     },
     {
       "card": "the_all_seeing_i",
-      "count": 1
-    },
-    {
-      "card": "keegan_lane",
       "count": 1
     },
     {
@@ -179,6 +175,10 @@
     },
     {
       "card": "midway_station_grid",
+      "count": 1
+    },
+    {
+      "card": "shell_corporation",
       "count": 1
     }
   ]

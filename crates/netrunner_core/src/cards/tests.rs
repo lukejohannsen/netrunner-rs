@@ -53041,3 +53041,197 @@ mod engine_words_stage_1 {
         assert!(!crate::rules::continuous::cannot(&after, &registry, crate::dsl::Prohibition::RezIce), "for that run only");
     }
 }
+
+mod engine_words_stage_2 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn corp_card(card: &str, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    /// Passes and continues the run until the Corp holds priority while
+    /// the Runner approaches a piece of ice, where an ice rez is the
+    /// Corp's to try.
+    fn to_the_corps_window_at_the_ice(state: &GameState, registry: &CardRegistry) -> GameState {
+        let mut window = state.clone();
+        for _ in 0..12 {
+            match &window.paid_ability_window {
+                Some(open) if open.active_priority == Side::Corp && window.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::ApproachIce) => break,
+                Some(open) => window = apply_action(&window, registry, PlayerAction::PassPriority { side: open.active_priority }).expect("pass").0,
+                None => window = apply_action(&window, registry, PlayerAction::ContinueRun).expect("onward").0,
+            }
+        }
+        window
+    }
+
+    #[test]
+    fn executive_retreat_shuffles_hq_into_r_and_d_and_draws_five_for_its_counter() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("ice_wall"), id("enigma"), id("pad_campaign")];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund")];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 5, ..corp_card("executive_retreat", ServerId::Remote(0), InstallSlot::Root, false) }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: fixture_install_id("executive_retreat") }).expect("score");
+        let state = pass_until_settled(state, &registry).0;
+        assert!(state.corp.hq.is_empty(), "HQ went into R&D");
+        assert_eq!(state.corp.r_and_d.len(), 5);
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 1);
+        let use_it = PlayerAction::ActivateAbility { target: state.corp.scored_agendas[0].install_id, ability_index: 0 };
+        let (state, _) = apply_action(&state, &registry, use_it.clone()).expect("draw 5");
+        assert_eq!((state.corp.hq.len(), state.corp.r_and_d.len(), state.corp.scored_agendas[0].agenda_counters), (5, 0, 0));
+        assert!(apply_action(&state, &registry, use_it).is_err(), "no counter left to pay with");
+    }
+
+    #[test]
+    fn corporate_shuffle_costs_a_second_click_and_draws_five_from_the_shuffled_deck() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("corporate_shuffle"), id("ice_wall"), id("enigma")];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund"), id("hedge_fund"), id("hedge_fund")];
+        let play = PlayerAction::PlayOperation { card_id: id("corporate_shuffle") };
+        state.corp.resources.clicks = Clicks(1);
+        assert!(apply_action(&state, &registry, play.clone()).is_err(), "a double needs two clicks");
+        state.corp.resources.clicks = Clicks(2);
+        let (state, _) = apply_action(&state, &registry, play).expect("play");
+        let state = pass_until_settled(state, &registry).0;
+        assert_eq!((state.corp.hq.len(), state.corp.r_and_d.len(), state.corp.resources.clicks), (5, 1, Clicks(0)));
+    }
+
+    /// "You cannot use this resource more than once per turn": either
+    /// ability spends the one use, and the other is then refused too.
+    #[test]
+    fn kati_jones_is_used_once_a_turn_across_both_abilities() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("kati_jones"), install_id: InstallId(2001), counters: 3, ..Default::default() }];
+        let place = PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 0 };
+        let take = PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 1 };
+        let (used, _) = apply_action(&state, &registry, place.clone()).expect("place");
+        assert_eq!(used.runner.rig[0].counters, 6);
+        let offered = crate::rules::legal_actions_for(&used, &registry, Side::Runner);
+        assert!(!offered.contains(&take) && !offered.contains(&place), "one use between them");
+        assert!(apply_action(&used, &registry, take.clone()).is_err());
+        let (took, _) = apply_action(&state, &registry, take).expect("take");
+        assert_eq!((took.runner.rig[0].counters, took.runner.resources.credits), (0, Credits(13)));
+        assert!(apply_action(&took, &registry, place).is_err(), "taking spent the use too");
+    }
+
+    #[test]
+    fn shell_corporation_is_used_once_a_turn_across_both_abilities() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![corp_card("shell_corporation", ServerId::Remote(0), InstallSlot::Root, true)];
+        let target = fixture_install_id("shell_corporation");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target, ability_index: 0 }).expect("place");
+        assert_eq!(state.corp.installed[0].counters, 3);
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target, ability_index: 1 }).is_err(), "used this turn");
+    }
+
+    #[test]
+    fn a_shared_use_must_be_spent_by_every_ability() {
+        let mut card = registry().get(&id("kati_jones")).expect("Kati Jones").clone();
+        card.abilities[1].requirement = None;
+        assert!(matches!(card.validate(), Err(crate::dsl::CardValidationError::OncePerTurnDoesNotFit(..))));
+    }
+
+    /// "Use these credits to rez ice": an ice rez is paid from them, and
+    /// an asset's rez is not.
+    #[test]
+    fn dedicated_server_pays_for_rezzing_ice_and_nothing_else() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.resources.credits = Credits(0);
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { counters: 2, ..corp_card("dedicated_server", ServerId::Remote(0), InstallSlot::Root, true) },
+            corp_card("pad_campaign", ServerId::Remote(1), InstallSlot::Root, false),
+            corp_card("ice_wall", ServerId::Hq, InstallSlot::Ice, false),
+        ];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let window = to_the_corps_window_at_the_ice(&running, &registry);
+        assert!(apply_action(&window, &registry, PlayerAction::RezIce { ice: fixture_install_id("pad_campaign") }).is_err(), "an asset is not ice");
+        let (rezzed, _) = apply_action(&window, &registry, PlayerAction::RezIce { ice: fixture_install_id("ice_wall") }).expect("rez from the server's credits");
+        let ice_wall = rezzed.corp.installed.iter().find(|card| card.card == id("ice_wall")).expect("Ice Wall");
+        assert!(ice_wall.rezzed);
+        assert_eq!(rezzed.corp.installed[0].counters, 1);
+    }
+
+    #[test]
+    fn because_we_built_it_pays_for_advancing_ice_and_not_an_agenda() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("weyland_consortium_because_we_built_it"));
+        state.corp.identity_counters = 1;
+        state.corp.resources.credits = Credits(0);
+        state.corp.installed = vec![corp_card("ice_wall", ServerId::Hq, InstallSlot::Ice, true), corp_card("hostile_takeover", ServerId::Remote(0), InstallSlot::Root, false)];
+        let agenda = PlayerAction::AdvanceCard { target: fixture_install_id("hostile_takeover") };
+        let ice = PlayerAction::AdvanceCard { target: fixture_install_id("ice_wall") };
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        assert!(offered.contains(&ice) && !offered.contains(&agenda));
+        let (state, _) = apply_action(&state, &registry, ice.clone()).expect("advance the ice");
+        assert_eq!((state.corp.installed[0].advancement_tokens, state.corp.identity_counters), (1, 0));
+        assert!(apply_action(&state, &registry, ice).is_err(), "one credit a turn");
+    }
+
+    #[test]
+    fn the_root_pays_for_advancing_installing_and_rezzing() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(0);
+        state.corp.hq = vec![id("enigma")];
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { counters: 3, ..corp_card("the_root", ServerId::Remote(0), InstallSlot::Root, true) },
+            corp_card("hostile_takeover", ServerId::Remote(1), InstallSlot::Root, false),
+            corp_card("pad_campaign", ServerId::Remote(2), InstallSlot::Root, false),
+            corp_card("ice_wall", ServerId::Hq, InstallSlot::Ice, true),
+        ];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: fixture_install_id("hostile_takeover") }).expect("advance");
+        let ice_on_hq = PlayerAction::InstallCard { card_id: id("enigma"), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false };
+        let (mut state, _) = apply_action(&state, &registry, ice_on_hq).expect("the second ice on HQ costs 1, paid from The Root");
+        assert_eq!(state.corp.installed[0].counters, 1);
+        state.corp.resources.credits = Credits(1);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: fixture_install_id("pad_campaign") }).expect("rez for The Root's last credit and 1 from the pool");
+        assert_eq!((state.corp.installed[0].counters, state.corp.resources.credits), (0, Credits(0)));
+    }
+
+    #[test]
+    fn off_the_grid_forbids_runs_on_its_server_until_an_hq_run_trashes_it() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![corp_card("off_the_grid", ServerId::Remote(0), InstallSlot::Root, true), corp_card("pad_campaign", ServerId::Remote(0), InstallSlot::Root, false)];
+        let remote = PlayerAction::InitiateRun { server: ServerId::Remote(0) };
+        assert!(matches!(apply_action(&state, &registry, remote.clone()), Err(RulesError::RunProhibited { .. })));
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&remote));
+        // A card's offer of servers leaves it out, as the run would refuse it.
+        state.runner.grip = vec![id("dirty_laundry")];
+        let (offering, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("dirty_laundry") }).expect("play");
+        let choices = crate::rules::legal_actions_for(&offering, &registry, Side::Runner);
+        assert!(choices.contains(&PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }));
+        assert!(!choices.contains(&PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }));
+        state.runner.grip.clear();
+        let (after, _) = run_to_completion(state, &registry, ServerId::Hq);
+        assert!(!after.corp.installed.iter().any(|card| card.card == id("off_the_grid")), "trashed by the HQ run");
+        assert!(!crate::rules::continuous::run_prohibited_on(&after, &registry, ServerId::Remote(0)));
+        let after = pass_until_settled(after, &registry).0;
+        assert!(apply_action(&after, &registry, remote).is_ok(), "the server may be run again");
+    }
+
+    #[test]
+    fn a_run_prohibition_on_a_server_is_an_upgrade_or_asset_about_its_own() {
+        let mut card = registry().get(&id("off_the_grid")).expect("Off the Grid").clone();
+        card.continuous[0].applies_to = crate::dsl::Scope::Player(Side::Runner);
+        assert_eq!(card.validate(), Ok(()), "a player-wide prohibition is still a card's to say");
+        let mut card = registry().get(&id("off_the_grid")).expect("Off the Grid").clone();
+        card.card_type = crate::dsl::CardType::Operation;
+        assert!(card.validate().is_err());
+    }
+}

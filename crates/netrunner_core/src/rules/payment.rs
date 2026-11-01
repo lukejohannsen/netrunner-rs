@@ -75,8 +75,8 @@ use crate::rules::state::{Credits, GameState, InstallId, InstallSlot, Side};
 /// else is `Other`, which no restricted pool covers.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Purpose<'a> {
-    /// A cost no card's credits are reserved for: an additional cost, an
-    /// advance, a steal cost, the basic actions.
+    /// A cost no card's credits are reserved for: an additional cost, a
+    /// steal cost, the basic actions but advancing and removing a tag.
     Other,
     /// Playing this event or operation: its price, never an additional
     /// cost. Stated where the play is paid (`engine::play_event`,
@@ -92,6 +92,9 @@ pub(crate) enum Purpose<'a> {
     InstallIce(&'a CardDefinition, crate::rules::ServerId),
     /// Rezzing this install.
     Rez(InstallId),
+    /// Advancing this install: the basic action's credit (CR 5.2.6f),
+    /// stated by `engine::advance_card`.
+    Advance(InstallId),
     /// The trash cost of this card, which the Runner is accessing.
     TrashCost(&'a CardDefinition),
     /// A trace attempt: either player's bid.
@@ -331,7 +334,9 @@ fn word_within(word: &PaysFor, other: &PaysFor) -> bool {
         | (PaysFor::Installing(mine), PaysFor::Installing(theirs))
         | (PaysFor::TrashCosts(mine), PaysFor::TrashCosts(theirs))
         | (PaysFor::Playing(mine), PaysFor::Playing(theirs)) => filter_implies(mine, theirs),
-        (PaysFor::RezzingInThisServer | PaysFor::RezzingIceProtectingThisServer, PaysFor::Rezzing) => true,
+        (PaysFor::Rezzing(mine), PaysFor::Rezzing(theirs)) | (PaysFor::Advancing(mine), PaysFor::Advancing(theirs)) => filter_implies(mine, theirs),
+        (PaysFor::RezzingInThisServer, PaysFor::Rezzing(theirs)) => matches!(theirs, crate::dsl::CardFilter::Any),
+        (PaysFor::RezzingIceProtectingThisServer, PaysFor::Rezzing(theirs)) => filter_implies(&crate::dsl::CardFilter::Ice, theirs),
         _ => word == other,
     }
 }
@@ -492,7 +497,10 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
         (PaysFor::InstallingIceProtectingThisServer, Purpose::InstallIce(_, server)) => {
             host.and_then(|host| state.corp.installed.iter().find(|c| c.install_id == host)).is_some_and(|host| host.slot == InstallSlot::Root && host.server == server)
         }
-        (PaysFor::Rezzing, Purpose::Rez(_)) => true,
+        (PaysFor::Rezzing(filter), Purpose::Rez(rezzing)) | (PaysFor::Advancing(filter), Purpose::Advance(rezzing)) => {
+            let card = state.corp.installed.iter().find(|c| c.install_id == rezzing).and_then(|c| registry.get(&c.card));
+            card.is_some_and(|card| card_matches_filter(card, filter))
+        }
         (PaysFor::RezzingInThisServer, Purpose::Rez(rezzing)) => {
             let installed = |id: InstallId| state.corp.installed.iter().find(|c| c.install_id == id);
             let (Some(host), Some(rezzing)) = (host.and_then(installed), installed(rezzing)) else { return false };
@@ -513,7 +521,8 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
             | PaysFor::RezzingInThisServer
             | PaysFor::RezzingIceProtectingThisServer
             | PaysFor::InstallingIceProtectingThisServer
-            | PaysFor::Rezzing
+            | PaysFor::Rezzing(_)
+            | PaysFor::Advancing(_)
             | PaysFor::TraceAttempts
             | PaysFor::Using(_)
             | PaysFor::UsingDuringRuns(_)

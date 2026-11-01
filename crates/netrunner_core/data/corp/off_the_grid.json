@@ -1,0 +1,39 @@
+{
+  "id": "off_the_grid",
+  "title": "Off the Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 6,
+  "trash_cost": 0,
+  "install_only_in": [
+    "Remote"
+  ],
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "Run"
+      },
+      "applies_to": "RunsOnThisServer",
+      "text": "The Runner cannot initiate a run on this server."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "Whenever the Runner makes a successful run on HQ, trash Off the Grid."
+    }
+  ],
+  "built_from": 4038,
+  "is_playable": true
+}

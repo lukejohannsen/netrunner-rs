@@ -1,0 +1,18 @@
+{
+  "id": "weyland_consortium_because_we_built_it",
+  "title": "Weyland Consortium: Because We Built It",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "recurring_credits": 1,
+  "counter_kind": "Credit",
+  "pays_for": [
+    {
+      "Advancing": "Ice"
+    }
+  ],
+  "triggers": [],
+  "built_from": 2076,
+  "is_playable": true
+}

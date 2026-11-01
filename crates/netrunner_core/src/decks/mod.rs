@@ -667,6 +667,9 @@ mod tests {
             ("zzzzzzzzzzzzzzzz", &neither),
             ("zzzzzzzzzzzzzzzzz", &neither),
             ("zzzzzzzzzzzzzzzzzz", &neither),
+            // Engine words, Stage 2: Because We Built It, on Yield Curve's
+            // list, whose Hortum and Tyrant are ice its credit advances.
+            ("zzzzzzzzzzzzzzzzzzz", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.
