@@ -1,0 +1,58 @@
+{
+  "id": "the_source",
+  "title": "The Source",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "AdvancementRequirement": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "CorpInstalled": {
+          "CardType": "Agenda"
+        }
+      },
+      "text": "The advancement requirement of all agendas is increased by 1."
+    },
+    {
+      "kind": {
+        "StealCost": {
+          "Credits": 3
+        }
+      },
+      "applies_to": {
+        "Stealing": "Any"
+      },
+      "text": "As an additional cost to steal an agenda, you must pay 3[credit]."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "Trash The Source when an agenda is scored or stolen."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "Trash The Source when an agenda is scored or stolen."
+    }
+  ],
+  "built_from": 3055,
+  "is_playable": true
+}

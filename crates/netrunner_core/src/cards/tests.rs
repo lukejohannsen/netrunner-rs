@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "aumakua", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "god_of_war", "gorman_drip_v1", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "nerve_agent", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "virus_breeding_ground", "yusuf"],
+            vec!["audrey_v2", "aumakua", "botulus", "cache", "chakana", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "deep_thought", "fermenter", "friday_chip", "god_of_war", "gorman_drip_v1", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "nerve_agent", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "virus_breeding_ground", "yusuf"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -52667,5 +52667,118 @@ mod composable_leftovers_stage_3 {
         let (later, _) = apply_action(&later, &registry, PlayerAction::GainCreditClick { side: Side::Runner }).expect("a click on something else");
         let (later, _) = close_all_windows(later, &registry);
         assert!(apply_action(&later, &registry, play).is_err(), "not the first click");
+    }
+}
+
+/// Composable leftovers, Stage 4: more cards the existing words already say.
+mod composable_leftovers_stage_4 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    #[test]
+    fn komainu_gains_a_net_damage_subroutine_for_each_card_in_the_grip() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("komainu"), card: id("komainu"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble"), id("corroder")];
+        let (mut run, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        for _ in 0..12 {
+            if run.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) {
+                break;
+            }
+            let action = match &run.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            run = apply_action(&run, &registry, action).expect("onward").0;
+        }
+        let encounter = run.active_run.as_ref().expect("encountering");
+        assert_eq!(encounter.ice[encounter.position].subroutines.len(), 3, "three cards in the grip");
+    }
+
+    #[test]
+    fn vamp_spends_x_for_the_corps_x_and_a_tag() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("vamp")];
+        state.corp.hq = vec![id("hedge_fund")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("vamp") }).expect("play Vamp");
+        let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("no ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("the breach");
+        let (state, _) = pass_until_settled(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("instead of breaching");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 3 }).expect("X = 3");
+        assert_eq!(state.runner.resources.credits, Credits(7));
+        assert_eq!(state.corp.resources.credits, Credits(7));
+        assert_eq!(state.runner.tags, 1);
+        assert_eq!(state.corp.hq.len(), 1, "nothing accessed");
+    }
+
+    #[test]
+    fn market_research_is_worth_three_when_scored_against_a_tagged_runner() {
+        let registry = registry();
+        let score = |tags: u32| {
+            let mut state = base_state();
+            state.runner.tags = tags;
+            state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("market_research"), card: id("market_research"), server: ServerId::Remote(0), slot: InstallSlot::Root, advancement_tokens: 4, ..Default::default() }];
+            let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: fixture_install_id("market_research") }).expect("score");
+            close_all_windows(state, &registry).0.corp.resources.agenda_points
+        };
+        assert_eq!(score(0), AgendaPoints(2));
+        assert_eq!(score(1), AgendaPoints(3));
+    }
+
+    #[test]
+    fn theophilius_bagbiter_empties_the_pool_and_makes_it_the_hand_size() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("theophilius_bagbiter")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("theophilius_bagbiter"), host: None }).expect("install");
+        let (mut state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.resources.credits, Credits(0), "10 - 3, then the rest");
+        state.runner.resources.credits = Credits(3);
+        assert_eq!(5 + crate::rules::continuous::hand_size(&state, &registry, Side::Runner), 3);
+    }
+
+    #[test]
+    fn quest_completed_needs_all_three_centrals_and_accesses_an_installed_card() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("quest_completed")];
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("pad_campaign"), card: id("pad_campaign"), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() }];
+        let play = PlayerAction::PlayEvent { card_id: id("quest_completed") };
+        assert!(apply_action(&state, &registry, play.clone()).is_err(), "no runs yet");
+        for server in [ServerId::Hq, ServerId::RnD, ServerId::Archives] {
+            crate::rules::turn_log::record(&mut state, &CardRegistry::default(), &crate::rules::GameEvent::RunSucceeded { server });
+        }
+        let (played, events) = apply_action(&state, &registry, play).expect("all three");
+        let (_, more) = pass_until_settled(played, &registry);
+        assert!(events.iter().chain(more.iter()).any(|e| matches!(e, crate::rules::GameEvent::CardAccessed { .. })), "Pad Campaign is accessed");
+    }
+
+    #[test]
+    fn iain_stirling_gains_two_only_while_trailing() {
+        let registry = registry();
+        let start = |corp: i32| {
+            let mut state = base_state();
+            state.runner.identity = Some(id("iain_stirling_retired_spook"));
+            state.corp.resources.agenda_points = AgendaPoints(corp);
+            if corp > 0 {
+                state.corp.scored_agendas = vec![crate::rules::ScoredAgenda { card: id("hostile_takeover"), install_id: InstallId(95), agenda_counters: 0, scored_on_turn: 0, installed_on_scoring_turn: false, advanced_on_scoring_turn: false, as_agenda: None }];
+            }
+            crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+            close_all_windows(state, &registry).0.runner.resources.credits
+        };
+        assert_eq!(start(0), Credits(10));
+        assert_eq!(start(1), Credits(12));
     }
 }

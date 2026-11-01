@@ -1,0 +1,49 @@
+{
+  "id": "exploratory_romp",
+  "title": "Exploratory Romp",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_success": {
+              "SetAccessReplacement": {
+                "effect": {
+                  "PromptChooseCards": {
+                    "side": "Runner",
+                    "source": "OpponentInstalled",
+                    "filter": {
+                      "All": [
+                        "InAttackedServer",
+                        "Advanced"
+                      ]
+                    },
+                    "min": 0,
+                    "max": 1,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "then": {
+                      "RemoveAdvancementCounters": {
+                        "Fixed": 3
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 3032,
+  "is_playable": true
+}

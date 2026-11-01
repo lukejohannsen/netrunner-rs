@@ -1,0 +1,79 @@
+{
+  "id": "quest_completed",
+  "title": "Quest Completed",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "play_requirement": {
+    "And": [
+      {
+        "And": [
+          {
+            "AmountAtLeast": [
+              {
+                "TimesThisTurnWhen": {
+                  "trigger": "OnSuccessfulRun",
+                  "when": {
+                    "Server": [
+                      "RnD"
+                    ]
+                  }
+                }
+              },
+              1
+            ]
+          },
+          {
+            "AmountAtLeast": [
+              {
+                "TimesThisTurnWhen": {
+                  "trigger": "OnSuccessfulRun",
+                  "when": {
+                    "Server": [
+                      "Hq"
+                    ]
+                  }
+                }
+              },
+              1
+            ]
+          }
+        ]
+      },
+      {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnWhen": {
+              "trigger": "OnSuccessfulRun",
+              "when": {
+                "Server": [
+                  "Archives"
+                ]
+              }
+            }
+          },
+          1
+        ]
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Access": {
+            "from": "OpponentInstalled",
+            "filter": {
+              "Not": "Ice"
+            },
+            "count": 1
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 4081,
+  "is_playable": true
+}

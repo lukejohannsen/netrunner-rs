@@ -1,0 +1,45 @@
+{
+  "id": "three_steps_ahead",
+  "title": "Three Steps Ahead",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "play_requirement": {
+    "Not": {
+      "AmountAtLeast": [
+        {
+          "TimesThisTurn": "OnActionFinished"
+        },
+        1
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "LaterThisTurn": {
+            "when": "OnDiscardPhaseEnd",
+            "effect": {
+              "Repeat": {
+                "times": {
+                  "TimesThisTurn": "OnSuccessfulRun"
+                },
+                "effect": {
+                  "GainCredits": [
+                    "Runner",
+                    2
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 6035,
+  "is_playable": true
+}

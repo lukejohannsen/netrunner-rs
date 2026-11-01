@@ -1,0 +1,57 @@
+{
+  "id": "vamp",
+  "title": "Vamp",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Hq"
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "Hq",
+            "optional": true,
+            "effect": {
+              "ChooseNumber": {
+                "chooser": "Runner",
+                "min": 1,
+                "max": {
+                  "Credits": "Runner"
+                },
+                "then": {
+                  "Sequence": [
+                    {
+                      "LoseCreditsAmount": [
+                        "Runner",
+                        "ChosenNumber"
+                      ]
+                    },
+                    {
+                      "LoseCreditsAmount": [
+                        "Corp",
+                        "ChosenNumber"
+                      ]
+                    },
+                    {
+                      "GiveTags": {
+                        "Fixed": 1
+                      }
+                    }
+                  ]
+                },
+                "text": "you may spend X[credit]"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 2021,
+  "is_playable": true
+}

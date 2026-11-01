@@ -1,0 +1,26 @@
+{
+  "id": "grndl_power_unleashed",
+  "title": "GRNDL: Power Unleashed",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "before_starting_hand": {
+    "Sequence": [
+      {
+        "GainCredits": [
+          "Corp",
+          5
+        ]
+      },
+      {
+        "GiveBadPublicity": {
+          "Fixed": 1
+        }
+      }
+    ]
+  },
+  "triggers": [],
+  "built_from": 4097,
+  "is_playable": true
+}

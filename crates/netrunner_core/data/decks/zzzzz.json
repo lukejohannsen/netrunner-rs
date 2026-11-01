@@ -3,7 +3,7 @@
   "name": "Zzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: SanSan Stage 14's deck for New Angeles Sol: Your News, on Zythum's list, so the sweeps meet a Corp that may play a current from HQ or Archives whenever an agenda is scored or stolen. Eternal-legal only. It trades two Salem's Hospitality, two The All-Seeing I and Interrupt 0, which Zythum keeps, for two Rolling Brownout, two Service Outage and an Enforced Curfew. SanSan Stage 15",
+  "description": "Not a published list: SanSan Stage 14's deck for New Angeles Sol: Your News, on Zythum's list, so the sweeps meet a Corp that may play a current from HQ or Archives whenever an agenda is scored or stolen. Eternal-legal only. It trades two Salem's Hospitality, two The All-Seeing I and Interrupt 0, which Zythum keeps, for two Rolling Brownout, two Service Outage and an Enforced Curfew. SanSan Stage 15 Two RSVP take Rolling Brownout's place. Two Information Overload take an IP Block's and a Thoth's place.",
   "style": [
     "fast-advance"
   ],
@@ -27,14 +27,6 @@
     },
     {
       "card": "observe_and_destroy",
-      "count": 1
-    },
-    {
-      "card": "ip_block",
-      "count": 1
-    },
-    {
-      "card": "thoth",
       "count": 1
     },
     {
@@ -150,10 +142,6 @@
       "count": 1
     },
     {
-      "card": "rolling_brownout",
-      "count": 2
-    },
-    {
       "card": "service_outage",
       "count": 2
     },
@@ -164,6 +152,14 @@
     {
       "card": "shannon_claire",
       "count": 1
+    },
+    {
+      "card": "rsvp",
+      "count": 2
+    },
+    {
+      "card": "information_overload",
+      "count": 2
     }
   ]
 }

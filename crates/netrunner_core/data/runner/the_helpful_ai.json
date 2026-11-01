@@ -1,0 +1,48 @@
+{
+  "id": "the_helpful_ai",
+  "title": "The Helpful AI",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Link": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[link]"
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnInstalled",
+          "filter": "Icebreaker",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "BoostStrengthAmount": {
+              "amount": {
+                "Fixed": 2
+              },
+              "duration": "Turn"
+            }
+          }
+        }
+      },
+      "text": "[trash]: Choose an icebreaker. That icebreaker has +2 strength until the end of the turn."
+    }
+  ],
+  "built_from": 2008,
+  "triggers": [],
+  "is_playable": true
+}

@@ -1,0 +1,61 @@
+{
+  "id": "information_overload",
+  "title": "Information Overload",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 6,
+  "strength": 4,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 1,
+            "on_success": {
+              "GiveTags": {
+                "Fixed": 1
+              }
+            }
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, Trace[1]. If successful, give them 1 tag."
+    }
+  ],
+  "subroutines": [],
+  "continuous": [
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "The Runner trashes 1 of their installed cards.",
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnInstalled",
+                "filter": "Any",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OwnHeap"
+              }
+            }
+          },
+          "count": {
+            "per": 1,
+            "of": "RunnerTags"
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "This ice gains \"[subroutine] The Runner trashes 1 of their installed cards.\" for each tag the Runner has."
+    }
+  ],
+  "built_from": 6027,
+  "is_playable": true
+}
