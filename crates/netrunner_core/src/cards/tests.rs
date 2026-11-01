@@ -52421,3 +52421,101 @@ mod ffg_leftovers_stage_1 {
         }
     }
 }
+
+/// Cards that install or play out of a zone a card's text names, which the
+/// existing vocabulary turned out to say (1 November 2026).
+mod odd_zones_stage_1 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn remote_root(card: &str, remote: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard {
+            install_id: fixture_install_id(card),
+            card: id(card),
+            server: ServerId::Remote(remote),
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, side)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, side: Side) -> GameState {
+        let offered = toggles(state, registry, side);
+        assert_eq!(offered.len(), 1, "one card to choose");
+        let (state, _) = apply_action(state, registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("select");
+        let (state, _) = apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        state
+    }
+
+    #[test]
+    fn isabel_mcguire_adds_an_installed_card_to_hq() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![remote_root("isabel_mcguire", 0)];
+        state.corp.hq.clear();
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("isabel_mcguire"), ability_index: 0 }).expect("[click]");
+        let done = pick(&asked, &registry, Side::Corp);
+        assert!(done.corp.installed.is_empty());
+        assert_eq!(done.corp.hq, vec![id("isabel_mcguire")]);
+    }
+
+    #[test]
+    fn restoring_face_trashes_an_executive_and_removes_two_bad_publicity() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![remote_root("isabel_mcguire", 0)];
+        state.corp.hq = vec![id("restoring_face")];
+        state.corp.bad_publicity = 3;
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("restoring_face") }).expect("play it");
+        let (done, _) = close_all_windows(pick(&asked, &registry, Side::Corp), &registry);
+        assert!(done.corp.installed.is_empty());
+        assert!(done.corp.archives.iter().any(|card| card.card == id("isabel_mcguire")));
+        assert_eq!(done.corp.bad_publicity, 1);
+    }
+
+    #[test]
+    fn same_old_thing_plays_an_event_from_the_heap_paying_its_cost() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("same_old_thing"), card: id("same_old_thing"), ..Default::default() }];
+        state.runner.heap = vec![id("sure_gamble")];
+        state.runner.resources.credits = Credits(5);
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("same_old_thing"), ability_index: 0 }).expect("[click], [click], [trash]");
+        assert!(asked.runner.rig.is_empty(), "trashed to pay");
+        let (played, _) = close_all_windows(pick(&asked, &registry, Side::Runner), &registry);
+        assert_eq!(played.runner.resources.credits, Credits(9), "Sure Gamble's 5 paid");
+    }
+
+    #[test]
+    fn savoir_faire_installs_a_program_once_a_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("savoir_faire"), card: id("savoir_faire"), ..Default::default() }];
+        state.runner.grip = vec![id("corroder"), id("gordian_blade")];
+        state.runner.resources.credits = Credits(10);
+        let use_it = |state: &GameState| apply_action(state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("savoir_faire"), ability_index: 0 });
+        let (asked, _) = use_it(&state).expect("2[credit]");
+        let offered = toggles(&asked, &registry, Side::Runner);
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("select");
+        let (done, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("install");
+        let (done, _) = close_all_windows(done, &registry);
+        assert_eq!(done.runner.rig.len(), 2);
+        assert_eq!(done.runner.grip.len(), 1);
+        assert!(use_it(&done).is_err(), "once each turn");
+    }
+}

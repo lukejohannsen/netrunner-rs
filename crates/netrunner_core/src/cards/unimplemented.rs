@@ -418,7 +418,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("passport", "Passport"),
     ("push_your_luck", "Push Your Luck"),
     ("theophilius_bagbiter", "Theophilius Bagbiter"),
-    ("mass_install", "Mass Install"),
     ("overmind", "Overmind"),
     ("oracle_may", "Oracle May"),
 ];
@@ -446,7 +445,6 @@ pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("omni_drive", "Omni-drive"),
     ("chakana", "Chakana"),
     ("cyber_cypher", "Cyber-Cypher"),
-    ("same_old_thing", "Same Old Thing"),
     ("the_source", "The Source"),
 ];
 
@@ -455,7 +453,6 @@ pub(crate) const OM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("frame_job", "Frame Job"),
     ("pawn", "Pawn"),
     ("rook", "Rook"),
-    ("hostage", "Hostage"),
     ("false_echo", "False Echo"),
     ("motivation", "Motivation"),
     ("john_masanori", "John Masanori"),
@@ -482,14 +479,12 @@ pub(crate) const MT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("expert_schedule_analyzer", "Expert Schedule Analyzer"),
     ("woman_in_the_red_dress", "Woman in the Red Dress"),
     ("raymond_flint", "Raymond Flint"),
-    ("isabel_mcguire", "Isabel McGuire"),
     ("accelerated_diagnostics", "Accelerated Diagnostics"),
     ("unorthodox_predictions", "Unorthodox Predictions"),
     ("sundew", "Sundew"),
     ("snoop", "Snoop"),
     ("ireress", "Ireress"),
     ("power_shutdown", "Power Shutdown"),
-    ("interns", "Interns"),
 ];
 
 /// *True Colors* (`true_colors`): tranche F10 of the FFG plan.
@@ -514,7 +509,6 @@ pub(crate) const FAL_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("blackguard", "Blackguard"),
     ("blackmail", "Blackmail"),
     ("toshiyuki_sakai", "Toshiyuki Sakai"),
-    ("restoring_face", "Restoring Face"),
     ("market_research", "Market Research"),
     ("grndl_power_unleashed", "GRNDL: Power Unleashed"),
 ];
@@ -522,7 +516,6 @@ pub(crate) const FAL_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Double Time* (`double_time`): tranche F10 of the FFG plan.
 pub(crate) const DT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
-    ("savoir_faire", "Savoir-faire"),
     ("paintbrush", "Paintbrush"),
     ("reclamation_order", "Reclamation Order"),
     ("broadcast_square", "Broadcast Square"),
@@ -608,7 +601,6 @@ pub(crate) const MO_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
     ("quest_completed", "Quest Completed"),
-    ("hostage", "Hostage"),
     ("deus_x", "Deus X"),
     ("john_masanori", "John Masanori"),
     ("kati_jones", "Kati Jones"),

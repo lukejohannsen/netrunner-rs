@@ -1,0 +1,51 @@
+{
+  "id": "same_old_thing",
+  "title": "Same Old Thing",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 2
+          },
+          "TrashSelf"
+        ]
+      },
+      "requirement": {
+        "ZoneHasAtLeast": {
+          "zone": "OwnHeap",
+          "count": 1,
+          "filter": {
+            "CardType": "Event"
+          }
+        }
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnHeap",
+          "filter": {
+            "CardType": "Event"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "PlayOperation": {
+              "from": "OwnHeap"
+            }
+          }
+        }
+      },
+      "text": "[click], [click], [trash]: Play an event from your heap (paying its play cost)."
+    }
+  ],
+  "built_from": 3054,
+  "is_playable": true
+}

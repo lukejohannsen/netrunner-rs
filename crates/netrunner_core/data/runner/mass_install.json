@@ -1,0 +1,131 @@
+{
+  "id": "mass_install",
+  "title": "Mass Install",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnGrip",
+                  "filter": {
+                    "All": [
+                      {
+                        "CardType": "Program"
+                      },
+                      "InstallableRunnerCard"
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "Sequence": [
+                      "InstallRunnerCardFromGrip",
+                      {
+                        "PresentChoice": {
+                          "chooser": "Runner",
+                          "options": [
+                            {
+                              "PromptChooseCards": {
+                                "side": "Runner",
+                                "source": "OwnGrip",
+                                "filter": {
+                                  "All": [
+                                    {
+                                      "CardType": "Program"
+                                    },
+                                    "InstallableRunnerCard"
+                                  ]
+                                },
+                                "min": 1,
+                                "max": 1,
+                                "reveal": false,
+                                "shuffle_after": false,
+                                "then": {
+                                  "Sequence": [
+                                    "InstallRunnerCardFromGrip",
+                                    {
+                                      "PresentChoice": {
+                                        "chooser": "Runner",
+                                        "options": [
+                                          {
+                                            "PromptChooseCards": {
+                                              "side": "Runner",
+                                              "source": "OwnGrip",
+                                              "filter": {
+                                                "All": [
+                                                  {
+                                                    "CardType": "Program"
+                                                  },
+                                                  "InstallableRunnerCard"
+                                                ]
+                                              },
+                                              "min": 1,
+                                              "max": 1,
+                                              "reveal": false,
+                                              "shuffle_after": false,
+                                              "then": {
+                                                "Sequence": [
+                                                  "InstallRunnerCardFromGrip",
+                                                  {
+                                                    "Sequence": []
+                                                  }
+                                                ]
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "Sequence": []
+                                          }
+                                        ],
+                                        "texts": [
+                                          "Install up to 3 programs from your grip (paying the install costs)",
+                                          ""
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "Sequence": []
+                            }
+                          ],
+                          "texts": [
+                            "Install up to 3 programs from your grip (paying the install costs)",
+                            ""
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "Install up to 3 programs from your grip (paying the install costs)",
+              ""
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 5051,
+  "is_playable": true
+}

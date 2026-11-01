@@ -1,0 +1,32 @@
+{
+  "id": "isabel_mcguire",
+  "title": "Isabel McGuire",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 3,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnHq"
+        }
+      },
+      "text": "[click]: Add 1 of your installed cards to HQ."
+    }
+  ],
+  "built_from": 4050,
+  "is_playable": true
+}

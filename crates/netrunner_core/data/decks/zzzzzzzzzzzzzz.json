@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Nisei Division: The Next Generation, Honor and Profit's Jinteki identity, a credit for every psi game. Zyzzyva's list, its identity swapped, with Port Anson Grid. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 2.",
+  "description": "Not a published list: built so the sweeps reach Nisei Division: The Next Generation, Honor and Profit's Jinteki identity, a credit for every psi game. Zyzzyva's list, its identity swapped, with Port Anson Grid. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 2. Interns is in for Genotyping and Museum of History.",
   "style": [
     "traps"
   ],
@@ -50,10 +50,6 @@
       "count": 2
     },
     {
-      "card": "genotyping",
-      "count": 1
-    },
-    {
       "card": "mandatory_seed_replacement",
       "count": 2
     },
@@ -96,10 +92,6 @@
     {
       "card": "heritage_committee",
       "count": 2
-    },
-    {
-      "card": "museum_of_history",
-      "count": 1
     },
     {
       "card": "mumba_temple",
@@ -152,6 +144,10 @@
     {
       "card": "port_anson_grid",
       "count": 1
+    },
+    {
+      "card": "interns",
+      "count": 2
     }
   ]
 }

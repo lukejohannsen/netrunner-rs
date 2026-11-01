@@ -3,7 +3,7 @@
   "name": "Zyrian",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Laramy Fisk: Savvy Investor, Order and Chaos's Criminal identity, who may make the Corp draw a card after the first successful run on a central server each turn. Zero-Day Heist's list, its identity swapped, with its MU Safecracker for a Forger, link and a tag avoided or removed, which Zero-Day Heist keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. FFG F7 Stage 14 swapped both Flashbangs for a Crowbar and a Spike. SanSan Stage 16 FFG F7 Stage 26: Dorm Computer for one Build Script Lunar Stage 1 (FFG F8): Cerberus Rex, Switchblade, Public Terminal, Tri-maf Contact, Zona Sul Shipping, Logos and Box-E for two Spot the Prey, two Mobius, two Calderas and a Maui, which Zymosis and Zero Day Heist keep. Lunar Stage 4 (FFG F8): Calling in Favors and Express Delivery for an Exploit and a Build Script, which Zymosis and Zero-Day Heist keep.",
+  "description": "Not a published list: built so the sweeps reach Laramy Fisk: Savvy Investor, Order and Chaos's Criminal identity, who may make the Corp draw a card after the first successful run on a central server each turn. Zero-Day Heist's list, its identity swapped, with its MU Safecracker for a Forger, link and a tag avoided or removed, which Zero-Day Heist keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. FFG F7 Stage 14 swapped both Flashbangs for a Crowbar and a Spike. SanSan Stage 16 FFG F7 Stage 26: Dorm Computer for one Build Script Lunar Stage 1 (FFG F8): Cerberus Rex, Switchblade, Public Terminal, Tri-maf Contact, Zona Sul Shipping, Logos and Box-E for two Spot the Prey, two Mobius, two Calderas and a Maui, which Zymosis and Zero Day Heist keep. Lunar Stage 4 (FFG F8): Calling in Favors and Express Delivery for an Exploit and a Build Script, which Zymosis and Zero-Day Heist keep. Savoir-faire, Hostage, Mass Install and Same Old Thing are in for Corporate Defector, Mad Dash, Leave No Trace and Charlatan, so the sweeps play them.",
   "style": [
     "pressure"
   ],
@@ -42,23 +42,11 @@
       "count": 2
     },
     {
-      "card": "mad_dash",
-      "count": 2
-    },
-    {
       "card": "hernando_cortez",
       "count": 1
     },
     {
-      "card": "leave_no_trace",
-      "count": 2
-    },
-    {
       "card": "rosetta_2_0",
-      "count": 2
-    },
-    {
-      "card": "corporate_defector",
       "count": 2
     },
     {
@@ -72,10 +60,6 @@
     {
       "card": "keros_mcintyre",
       "count": 2
-    },
-    {
-      "card": "charlatan",
-      "count": 1
     },
     {
       "card": "drive_by",
@@ -143,6 +127,22 @@
     },
     {
       "card": "express_delivery",
+      "count": 1
+    },
+    {
+      "card": "savoir_faire",
+      "count": 2
+    },
+    {
+      "card": "hostage",
+      "count": 2
+    },
+    {
+      "card": "mass_install",
+      "count": 2
+    },
+    {
+      "card": "same_old_thing",
       "count": 1
     }
   ]

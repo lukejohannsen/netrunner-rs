@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Jinteki: Replicating Perfection, Trace Amount's Jinteki identity, whose Runner must run a central before a remote each turn. Zzzzzzzzzz's list, its identity swapped, with Rainbow. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 2.",
+  "description": "Not a published list: built so the sweeps reach Jinteki: Replicating Perfection, Trace Amount's Jinteki identity, whose Runner must run a central before a remote each turn. Zzzzzzzzzz's list, its identity swapped, with Rainbow. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 2. Restoring Face is in for Heritage Committee.",
   "style": [
     "traps"
   ],
@@ -63,10 +63,6 @@
     },
     {
       "card": "palana_agroplex",
-      "count": 2
-    },
-    {
-      "card": "heritage_committee",
       "count": 2
     },
     {
@@ -156,6 +152,10 @@
     {
       "card": "rainbow",
       "count": 1
+    },
+    {
+      "card": "restoring_face",
+      "count": 2
     }
   ]
 }
