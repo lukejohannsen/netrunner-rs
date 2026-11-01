@@ -1,0 +1,258 @@
+{
+  "id": "oracle_may",
+  "title": "Oracle May",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Runner",
+          "options": [
+            {
+              "Sequence": [
+                {
+                  "Reveal": {
+                    "TopOfStack": {
+                      "side": "Runner",
+                      "zone": "Stack"
+                    }
+                  }
+                },
+                {
+                  "EffectIf": {
+                    "condition": {
+                      "ZoneHasAtLeast": {
+                        "zone": "OwnStack",
+                        "count": 1,
+                        "filter": {
+                          "All": [
+                            {
+                              "TopOfZone": 1
+                            },
+                            {
+                              "CardType": "Event"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "effect": {
+                      "Sequence": [
+                        {
+                          "DrawCards": [
+                            "Runner",
+                            1
+                          ]
+                        },
+                        {
+                          "GainCredits": [
+                            "Runner",
+                            2
+                          ]
+                        }
+                      ]
+                    },
+                    "otherwise": {
+                      "TrashCard": {
+                        "TopOfStack": {
+                          "side": "Runner",
+                          "zone": "Stack"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "Sequence": [
+                {
+                  "Reveal": {
+                    "TopOfStack": {
+                      "side": "Runner",
+                      "zone": "Stack"
+                    }
+                  }
+                },
+                {
+                  "EffectIf": {
+                    "condition": {
+                      "ZoneHasAtLeast": {
+                        "zone": "OwnStack",
+                        "count": 1,
+                        "filter": {
+                          "All": [
+                            {
+                              "TopOfZone": 1
+                            },
+                            {
+                              "CardType": "Hardware"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "effect": {
+                      "Sequence": [
+                        {
+                          "DrawCards": [
+                            "Runner",
+                            1
+                          ]
+                        },
+                        {
+                          "GainCredits": [
+                            "Runner",
+                            2
+                          ]
+                        }
+                      ]
+                    },
+                    "otherwise": {
+                      "TrashCard": {
+                        "TopOfStack": {
+                          "side": "Runner",
+                          "zone": "Stack"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "Sequence": [
+                {
+                  "Reveal": {
+                    "TopOfStack": {
+                      "side": "Runner",
+                      "zone": "Stack"
+                    }
+                  }
+                },
+                {
+                  "EffectIf": {
+                    "condition": {
+                      "ZoneHasAtLeast": {
+                        "zone": "OwnStack",
+                        "count": 1,
+                        "filter": {
+                          "All": [
+                            {
+                              "TopOfZone": 1
+                            },
+                            {
+                              "CardType": "Program"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "effect": {
+                      "Sequence": [
+                        {
+                          "DrawCards": [
+                            "Runner",
+                            1
+                          ]
+                        },
+                        {
+                          "GainCredits": [
+                            "Runner",
+                            2
+                          ]
+                        }
+                      ]
+                    },
+                    "otherwise": {
+                      "TrashCard": {
+                        "TopOfStack": {
+                          "side": "Runner",
+                          "zone": "Stack"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "Sequence": [
+                {
+                  "Reveal": {
+                    "TopOfStack": {
+                      "side": "Runner",
+                      "zone": "Stack"
+                    }
+                  }
+                },
+                {
+                  "EffectIf": {
+                    "condition": {
+                      "ZoneHasAtLeast": {
+                        "zone": "OwnStack",
+                        "count": 1,
+                        "filter": {
+                          "All": [
+                            {
+                              "TopOfZone": 1
+                            },
+                            {
+                              "CardType": "Resource"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "effect": {
+                      "Sequence": [
+                        {
+                          "DrawCards": [
+                            "Runner",
+                            1
+                          ]
+                        },
+                        {
+                          "GainCredits": [
+                            "Runner",
+                            2
+                          ]
+                        }
+                      ]
+                    },
+                    "otherwise": {
+                      "TrashCard": {
+                        "TopOfStack": {
+                          "side": "Runner",
+                          "zone": "Stack"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "texts": [
+            "Choose a card type — event",
+            "Choose a card type — hardware",
+            "Choose a card type — program",
+            "Choose a card type — resource"
+          ]
+        }
+      },
+      "text": "[click]: Choose a card type. Reveal the top card of your stack. If that card has the chosen type, draw it and gain 2[credit]. Otherwise, trash it."
+    }
+  ],
+  "built_from": 5054,
+  "is_playable": true
+}

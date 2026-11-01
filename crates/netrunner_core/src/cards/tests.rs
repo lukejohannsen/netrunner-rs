@@ -53387,3 +53387,117 @@ mod engine_words_stage_3 {
         assert!(installed.corp.installed.iter().any(|card| card.card == id("enigma") && card.server == ServerId::Hq), "for nothing, at 0[credit]");
     }
 }
+
+mod engine_words_stage_4 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn corp_card(card: &str, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn choose(state: &GameState, registry: &CardRegistry, position: usize) -> GameState {
+        let (chosen, _) = apply_action(state, registry, PlayerAction::ToggleCardSelection { position }).expect("choose");
+        apply_action(&chosen, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    #[test]
+    fn mushin_no_shin_installs_a_card_with_three_counters_that_cannot_be_scored_until_the_corp_turn_comes_round() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("mushin_no_shin"), id("hostile_takeover")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("mushin_no_shin") }).expect("play");
+        assert_eq!(asked.corp.resources.clicks, Clicks(1), "the action's click and the additional one");
+        let offered = choose(&asked, &registry, 0);
+        let servers: Vec<PlayerAction> = crate::rules::legal_actions_for(&offered, &registry, Side::Corp)
+            .into_iter()
+            .filter(|action| matches!(action, PlayerAction::ChooseServerForPendingDecision { .. }))
+            .collect();
+        assert_eq!(servers.len(), 1, "a new server only: {servers:?}");
+        let (installed, _) = apply_action(&offered, &registry, servers[0].clone()).expect("install");
+        let card = installed.corp.installed.iter().find(|card| card.card == id("hostile_takeover")).expect("installed");
+        assert_eq!(card.advancement_tokens, 3);
+        assert!(apply_action(&installed, &registry, PlayerAction::ScoreAgenda { target: card.install_id }).is_err(), "not this turn");
+    }
+
+    #[test]
+    fn oracle_may_draws_and_pays_for_a_named_type_and_trashes_any_other() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("oracle_may")];
+        state.runner.stack = vec![id("sure_gamble"), id("sure_gamble")];
+        let use_her = PlayerAction::ActivateAbility { target: fixture_install_id("oracle_may"), ability_index: 0 };
+        let (asked, _) = apply_action(&state, &registry, use_her.clone()).expect("use");
+        let (drawn, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("event");
+        assert_eq!((drawn.runner.grip.len(), drawn.runner.resources.credits), (1, Credits(12)), "an event: drawn, and 2[credit]");
+        assert!(apply_action(&drawn, &registry, use_her.clone()).is_err(), "once per turn");
+        let (asked, _) = apply_action(&state, &registry, use_her).expect("use");
+        let (missed, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("hardware");
+        assert_eq!((missed.runner.grip.len(), missed.runner.heap.len(), missed.runner.resources.credits), (0, 1, Credits(10)), "not hardware: trashed");
+    }
+
+    #[test]
+    fn planned_assault_plays_a_run_event_from_the_stack_without_its_additional_cost() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("planned_assault")];
+        state.runner.stack = vec![id("sure_gamble"), id("maintenance_access")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("planned_assault") }).expect("play");
+        let position = asked.runner.stack.iter().position(|card| card == &id("maintenance_access")).expect("in the stack");
+        let running = choose(&asked, &registry, position);
+        assert!(running.active_run.is_some(), "the run event was played");
+        assert_eq!(running.runner.resources.clicks, Clicks(2), "Planned Assault's two clicks, and not Maintenance Access's");
+        assert_eq!(running.runner.stack, vec![id("sure_gamble")]);
+    }
+
+    #[test]
+    fn accelerated_diagnostics_plays_the_operations_it_finds_and_trashes_the_rest() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(6);
+        state.corp.hq = vec![id("accelerated_diagnostics")];
+        // The top of R&D is the end of the list.
+        state.corp.r_and_d = vec![id("pad_campaign"), id("ice_wall"), id("hedge_fund"), id("enigma")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("accelerated_diagnostics") }).expect("play");
+        let (asked, _) = pass_until_settled(asked, &registry);
+        let done = choose(&asked, &registry, 2);
+        let done = pass_until_settled(done, &registry).0;
+        assert_eq!(done.corp.resources.credits, Credits(9), "1 for the diagnostics, 5 for Hedge Fund, 9 back");
+        assert_eq!(done.corp.r_and_d, vec![id("pad_campaign")], "the two it looked at and did not play are trashed");
+    }
+
+    #[test]
+    fn spark_agency_takes_a_credit_for_the_first_advertisement_rezzed_each_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("spark_agency_worldswide_reach"));
+        state.corp.installed = vec![
+            corp_card("melange_mining_corp", ServerId::Remote(2), InstallSlot::Root, false),
+            corp_card("pad_campaign", ServerId::Remote(0), InstallSlot::Root, false),
+            corp_card("eve_campaign", ServerId::Remote(1), InstallSlot::Root, false),
+        ];
+        let rez = |card: &str| PlayerAction::RezIce { ice: fixture_install_id(card) };
+        let (state, _) = apply_action(&state, &registry, rez("melange_mining_corp")).expect("an asset");
+        let state = pass_until_settled(state, &registry).0;
+        assert_eq!(state.runner.resources.credits, Credits(10), "not an advertisement");
+        let (state, _) = apply_action(&state, &registry, rez("pad_campaign")).expect("an advertisement");
+        let state = pass_until_settled(state, &registry).0;
+        assert_eq!(state.runner.resources.credits, Credits(9), "the first");
+        let (state, _) = apply_action(&state, &registry, rez("eve_campaign")).expect("another");
+        let state = pass_until_settled(state, &registry).0;
+        assert_eq!(state.runner.resources.credits, Credits(9), "once a turn");
+    }
+}

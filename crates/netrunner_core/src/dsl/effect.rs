@@ -2182,7 +2182,8 @@ pub enum Effect {
     /// holds (CR 1.16.6). A field and not an effect of its own, because
     /// the play is otherwise the same play.
     ///
-    /// `from: OwnHeap` is the Runner's play of an event out of the heap —
+    /// `from: OwnHeap` and `OwnStack` are the Runner's play of an event out
+    /// of the heap or the stack —
     /// The Shadow Net's "Play an event from your heap, ignoring all
     /// costs" (`engine::play_event_card`). The same variant and not a
     /// `PlayEvent` beside it: the zone already says which side's card is
@@ -2191,6 +2192,14 @@ pub enum Effect {
         from: CardZoneRef,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         ignoring_costs: bool,
+        /// "(paying its play cost), ignoring any additional costs" —
+        /// Planned Assault's run event out of the stack and Accelerated
+        /// Diagnostics' operations out of R&D: the price is paid and a
+        /// printed additional cost (a double's click) is not. A field
+        /// beside `ignoring_costs` for the reason that one is: the play
+        /// is otherwise the same play. Meaningless with it.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        ignoring_additional_costs: bool,
         /// "After it resolves, remove it from the game" (Plutus) and
         /// "Remove that transaction from the game instead of trashing it"
         /// (Bryan Stinson): the card's own words, never the zone's. New

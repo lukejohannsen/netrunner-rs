@@ -3,7 +3,7 @@
   "name": "Zyzzyva",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Flashpoint Stage 20's deck for Jinteki: Potential Unleashed, on A Thousand Cuts' list, so the sweeps meet a Corp that trashes the top card of the stack whenever the Runner takes net damage. Eternal-legal only. Flashpoint Stage 21: a Fumiko Yamamori and a Hyoubu Research Facility for its two Zaibatsu Loyalty, to hear the revealed bids of its Aiki; A Thousand Cuts keeps Zaibatsu Loyalty. Flashpoint Stage 26 swapped a Genotyping for Project Kusanagi. FFG F5 Stage 40: two Nihongai Grid for its two La Costa Grid, a region for a region, which Endless Exploration and A Thousand Cuts keep. Mumbad Stage 7 swapped two Hangeki and two Thimblerig for two Bio-Ethics Association and two Pālanā Agroplex. Mumbad Stage 10 swapped in Heritage Committee, Museum of History and Mumba Temple for Reverse Infection, Anansi and Rashida Jaheem, which other decks still carry. Mumbad Stage 11 swapped in Harvester and Political Dealings for Sand Storm and a Bamboo Dome, which other decks still carry. FFG F7 Stage 13 swapped Sting! for Ancestral Imager. SanSan Stage 15 SanSan Stage 16 SanSan Stage 29 swapped a Daruma, kept by three other decks, for a Marcus Batty. Lunar Stage 5 (FFG F8): Pup for one Otoroshi, which three other decks keep. Spin Stage 2 (FFG F10): Clone Retirement for Water Monopoly, a point for a point, which two other decks keep. Genesis (F11) swaps in Snowflake and Edge of World. Two Gemini take Harvester's place. One Fujii Asset Retrieval became an Executive Retreat, point for point, so the sweeps shuffle HQ into R&D (Engine words, Stage 2).",
+  "description": "Not a published list: Flashpoint Stage 20's deck for Jinteki: Potential Unleashed, on A Thousand Cuts' list, so the sweeps meet a Corp that trashes the top card of the stack whenever the Runner takes net damage. Eternal-legal only. Flashpoint Stage 21: a Fumiko Yamamori and a Hyoubu Research Facility for its two Zaibatsu Loyalty, to hear the revealed bids of its Aiki; A Thousand Cuts keeps Zaibatsu Loyalty. Flashpoint Stage 26 swapped a Genotyping for Project Kusanagi. FFG F5 Stage 40: two Nihongai Grid for its two La Costa Grid, a region for a region, which Endless Exploration and A Thousand Cuts keep. Mumbad Stage 7 swapped two Hangeki and two Thimblerig for two Bio-Ethics Association and two Pālanā Agroplex. Mumbad Stage 10 swapped in Heritage Committee, Museum of History and Mumba Temple for Reverse Infection, Anansi and Rashida Jaheem, which other decks still carry. Mumbad Stage 11 swapped in Harvester and Political Dealings for Sand Storm and a Bamboo Dome, which other decks still carry. FFG F7 Stage 13 swapped Sting! for Ancestral Imager. SanSan Stage 15 SanSan Stage 16 SanSan Stage 29 swapped a Daruma, kept by three other decks, for a Marcus Batty. Lunar Stage 5 (FFG F8): Pup for one Otoroshi, which three other decks keep. Spin Stage 2 (FFG F10): Clone Retirement for Water Monopoly, a point for a point, which two other decks keep. Genesis (F11) swaps in Snowflake and Edge of World. Two Gemini take Harvester's place. One Fujii Asset Retrieval became an Executive Retreat, point for point, so the sweeps shuffle HQ into R&D (Engine words, Stage 2). One Heritage Committee became a Mushin No Shin, an install with three counters that cannot be scored or rezzed until the Corp's next turn (Engine words, Stage 4).",
   "style": [
     "traps"
   ],
@@ -95,7 +95,7 @@
     },
     {
       "card": "heritage_committee",
-      "count": 2
+      "count": 1
     },
     {
       "card": "museum_of_history",
@@ -151,6 +151,10 @@
     },
     {
       "card": "executive_retreat",
+      "count": 1
+    },
+    {
+      "card": "mushin_no_shin",
       "count": 1
     }
   ]

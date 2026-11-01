@@ -220,7 +220,6 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.
 pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sync_everything_everywhere", "SYNC: Everything, Everywhere"),
-    ("spark_agency_worldswide_reach", "Spark Agency: Worldswide Reach"),
     ("rebranding_team", "Rebranding Team"),
     ("archangel", "Archangel"),
     ("tl_dr", "TL;DR"),
@@ -376,7 +375,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("medical_breakthrough", "Medical Breakthrough"),
     ("the_future_perfect", "The Future Perfect"),
     ("shi_kyu", "Shi.Kyū"),
-    ("mushin_no_shin", "Mushin No Shin"),
     ("inazuma", "Inazuma"),
     ("shiro", "Shiro"),
     ("susanoo_no_mikoto", "Susanoo-no-Mikoto"),
@@ -384,13 +382,11 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("plan_b", "Plan B"),
     ("diversified_portfolio", "Diversified Portfolio"),
     ("feint", "Feint"),
-    ("planned_assault", "Planned Assault"),
     ("unregistered_s_w_35", "Unregistered S&W '35"),
     ("window", "Window"),
     ("bug", "Bug"),
     ("grappling_hook", "Grappling Hook"),
     ("push_your_luck", "Push Your Luck"),
-    ("oracle_may", "Oracle May"),
 ];
 
 /// *Creation and Control* (`creation_and_control`): tranche F9 of the FFG plan.
@@ -436,7 +432,6 @@ pub(crate) const MT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("knight", "Knight"),
     ("running_interference", "Running Interference"),
     ("raymond_flint", "Raymond Flint"),
-    ("accelerated_diagnostics", "Accelerated Diagnostics"),
     ("unorthodox_predictions", "Unorthodox Predictions"),
     ("sundew", "Sundew"),
     ("snoop", "Snoop"),
@@ -523,7 +518,6 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
     ("sundew", "Sundew"),
-    ("spark_agency_worldswide_reach", "Spark Agency: Worldswide Reach"),
     ("blue_sun_powering_the_future", "Blue Sun: Powering the Future"),
     ("oversight_ai", "Oversight AI"),
 ];
