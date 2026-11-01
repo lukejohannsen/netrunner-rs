@@ -1,0 +1,23 @@
+{
+  "id": "power_tap",
+  "title": "Power Tap",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTraceInitiated",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Gain 1[credit] whenever a trace is initiated."
+    }
+  ],
+  "built_from": 6016,
+  "is_playable": true
+}

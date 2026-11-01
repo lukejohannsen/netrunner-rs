@@ -306,7 +306,6 @@ pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("galahad", "Galahad"),
     ("bad_times", "Bad Times"),
     ("cyber_threat", "Cyber Threat"),
-    ("power_tap", "Power Tap"),
     ("nasir_meidan_cyber_explorer", "Nasir Meidan: Cyber Explorer"),
     ("social_engineering", "Social Engineering"),
     ("eden_shard", "Eden Shard"),
@@ -367,7 +366,6 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("industrial_genomics_growing_solutions", "Industrial Genomics: Growing Solutions"),
     ("self_destruct", "Self-destruct"),
     ("incubator", "Incubator"),
-    ("ixodidae", "Ixodidae"),
     ("code_siphon", "Code Siphon"),
     ("bribery", "Bribery"),
 ];
@@ -382,7 +380,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("inazuma", "Inazuma"),
     ("shiro", "Shiro"),
     ("susanoo_no_mikoto", "Susanoo-no-Mikoto"),
-    ("neotokyo_grid", "NeoTokyo Grid"),
     ("tori_hanzo", "Tori Hanzō"),
     ("plan_b", "Plan B"),
     ("diversified_portfolio", "Diversified Portfolio"),
@@ -405,7 +402,6 @@ pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("haas_arcology_ai", "Haas Arcology AI"),
     ("bioroid_efficiency_research", "Bioroid Efficiency Research"),
     ("howler", "Howler"),
-    ("minelayer", "Minelayer"),
     ("awakening_center", "Awakening Center"),
     ("tyrs_hand", "Tyr's Hand"),
     ("the_professor_keeper_of_knowledge", "The Professor: Keeper of Knowledge"),
@@ -423,7 +419,6 @@ pub(crate) const OM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("pawn", "Pawn"),
     ("rook", "Rook"),
     ("false_echo", "False Echo"),
-    ("john_masanori", "John Masanori"),
 ];
 
 /// *Second Thoughts* (`second_thoughts`): tranche F10 of the FFG plan.
@@ -505,7 +500,6 @@ pub(crate) const HS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("replicator", "Replicator"),
     ("kraken", "Kraken"),
     ("data_hound", "Data Hound"),
-    ("simone_diego", "Simone Diego"),
 ];
 
 /// *Future Proof* (`future_proof`): tranche F11 of the FFG plan.
@@ -527,7 +521,6 @@ pub(crate) const MO_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *System Core 2019* (`system_core_2019`): tranche F12 of the FFG plan.
 pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
-    ("john_masanori", "John Masanori"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
     ("sundew", "Sundew"),
     ("spark_agency_worldswide_reach", "Spark Agency: Worldswide Reach"),

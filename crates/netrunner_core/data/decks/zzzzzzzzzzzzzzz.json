@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Jinteki: Replicating Perfection, Trace Amount's Jinteki identity, whose Runner must run a central before a remote each turn. Zzzzzzzzzz's list, its identity swapped, with Rainbow. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 2. Restoring Face is in for Heritage Committee. One Fumiko Yamamori and one Palana Agroplex became a Dedicated Server and The Root, whose credits pay only to rez ice, and to advance, install and rez (Engine words, Stage 2).",
+  "description": "Not a published list: built so the sweeps reach Jinteki: Replicating Perfection, Trace Amount's Jinteki identity, whose Runner must run a central before a remote each turn. Zzzzzzzzzz's list, its identity swapped, with Rainbow. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 2. Restoring Face is in for Heritage Committee. One Fumiko Yamamori and one Palana Agroplex became a Dedicated Server and The Root, whose credits pay only to rez ice, and to advance, install and rez (Engine words, Stage 2). One Valley Grid became a NeoTokyo Grid, so the sweeps hear advancement counters placed in a root (Engine words, Stage 3).",
   "style": [
     "traps"
   ],
@@ -90,10 +90,6 @@
       "count": 1
     },
     {
-      "card": "valley_grid",
-      "count": 1
-    },
-    {
       "card": "marcus_batty",
       "count": 1
     },
@@ -159,6 +155,10 @@
     },
     {
       "card": "the_root",
+      "count": 1
+    },
+    {
+      "card": "neotokyo_grid",
       "count": 1
     }
   ]

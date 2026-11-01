@@ -522,7 +522,7 @@ fn finish_within(
     if let (WouldHappen::Trace { base }, Some(due)) = (&pending.what, &pending.waiting) {
         if let Some(Effect::Trace { on_success, on_failure, .. }) = &due.continuation {
             let base = if prevented > 0 { 0 } else { *base };
-            events.extend(ability::start_trace(state, base, on_success, on_failure.as_deref(), Some(due.card.clone()), due.install));
+            events.extend(ability::start_trace(state, registry, base, on_success, on_failure.as_deref(), Some(due.card.clone()), due.install)?);
         }
     } else if let (WouldHappen::Draw { .. }, true) = (&pending.what, left > 0) {
         // The cards are drawn first, and then what was waiting on them

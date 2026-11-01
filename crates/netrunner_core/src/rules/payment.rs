@@ -337,6 +337,7 @@ fn word_within(word: &PaysFor, other: &PaysFor) -> bool {
         (PaysFor::Rezzing(mine), PaysFor::Rezzing(theirs)) | (PaysFor::Advancing(mine), PaysFor::Advancing(theirs)) => filter_implies(mine, theirs),
         (PaysFor::RezzingInThisServer, PaysFor::Rezzing(theirs)) => matches!(theirs, crate::dsl::CardFilter::Any),
         (PaysFor::RezzingIceProtectingThisServer, PaysFor::Rezzing(theirs)) => filter_implies(&crate::dsl::CardFilter::Ice, theirs),
+        (PaysFor::AdvancingInThisServer, PaysFor::Advancing(theirs)) => matches!(theirs, crate::dsl::CardFilter::Any),
         _ => word == other,
     }
 }
@@ -509,6 +510,11 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
             let named = registry.get(&rezzing.card).is_some_and(|def| matches!(def.card_type, CardType::Ice(_) | CardType::Asset));
             named && host.slot == InstallSlot::Root && host.server == rezzing.server
         }
+        (PaysFor::AdvancingInThisServer, Purpose::Advance(advancing)) => {
+            let installed = |id: InstallId| state.corp.installed.iter().find(|c| c.install_id == id);
+            let (Some(host), Some(advancing)) = (host.and_then(installed), installed(advancing)) else { return false };
+            host.slot == InstallSlot::Root && host.server == advancing.server
+        }
         (PaysFor::RezzingIceProtectingThisServer, Purpose::Rez(rezzing)) => {
             let installed = |id: InstallId| state.corp.installed.iter().find(|c| c.install_id == id);
             let (Some(host), Some(rezzing)) = (host.and_then(installed), installed(rezzing)) else { return false };
@@ -523,6 +529,7 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
             | PaysFor::InstallingIceProtectingThisServer
             | PaysFor::Rezzing(_)
             | PaysFor::Advancing(_)
+            | PaysFor::AdvancingInThisServer
             | PaysFor::TraceAttempts
             | PaysFor::Using(_)
             | PaysFor::UsingDuringRuns(_)

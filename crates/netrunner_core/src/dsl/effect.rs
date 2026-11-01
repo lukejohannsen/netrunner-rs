@@ -1039,6 +1039,13 @@ pub enum Effect {
         /// the install's.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         another_server: bool,
+        /// Offer only the server the acting install is in — Minelayer's
+        /// "install 1 piece of ice from HQ **protecting this server**", from
+        /// the ice being encountered. `another_server`'s other half, a field
+        /// for the same reason; `only_server` names a server the card file
+        /// cannot know.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        this_server: bool,
         /// Offer only a new remote server — Mitosis's "Install up to 2 cards
         /// from HQ, **creating a new remote server each time**": the one
         /// remote the Corp would create (`legal_actions::fresh_remote_id`),
@@ -4288,7 +4295,7 @@ impl Effect {
         let boxed = |effect: Box<Effect>| Box::new(effect.with_this_server(server));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_this_server(server)).collect();
         match self {
-            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, any_position, innermost, only_server } => {
+            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, this_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, any_position, innermost, only_server } => {
                 Effect::PromptInstallCorpCard {
                     not_in_root_of: Some(ThisServer::Server(server)),
                     origin_zone,
@@ -4298,6 +4305,7 @@ impl Effect {
                     remote_only,
                     central_only,
                     another_server,
+                    this_server,
                     new_remote,
                     rez,
                     if_rezzed,

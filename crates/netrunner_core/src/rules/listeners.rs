@@ -119,6 +119,12 @@ pub(crate) struct Moment {
     /// the server, and a run ended by a card's text may have been
     /// successful first (CR 6.8.4a).
     pub successful: Option<bool>,
+    /// Whether the run that ended was declared unsuccessful (CR 6.8.4) —
+    /// John Masanori's "the first time you make an **unsuccessful** run
+    /// each turn" (`EventFilter::Unsuccessful`). Not `!successful`: a run
+    /// that reached the Success Phase and was not declared successful is
+    /// neither (6.8.4a). Read off the ended run, as `successful` is.
+    pub unsuccessful: Option<bool>,
     /// Whether the run that ended was jacked out of, for a run's end
     /// (`Trigger::OnRunEnded`) — Reflection's "whenever you **jack out**"
     /// (`EventFilter::JackedOut`). Read off the event, which is its own
@@ -184,7 +190,7 @@ pub(crate) fn card_about(state: &GameState, event: &GameEvent, trigger: Trigger)
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, damage: None, by: None, was_active: false, trashed_install: None, successful: None, jacked_out: None, in_archives: None, guarded: None, ability: None };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, damage: None, by: None, was_active: false, trashed_install: None, successful: None, unsuccessful: None, jacked_out: None, in_archives: None, guarded: None, ability: None };
     // A moment about the ice at `position` in the run's ice. Where the run
     // or the ice has gone by the time the moment is asked again — a
     // trigger fired after the run ended — it is about nothing, and keeps
@@ -195,7 +201,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             .as_ref()
             .and_then(|run| run.ice.get(position as usize))
             .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
-        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, damage: None, was_active: false, by: None, trashed_install: None, successful: None, jacked_out: None, in_archives: None, guarded: None, ability: None }
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, damage: None, was_active: false, by: None, trashed_install: None, successful: None, unsuccessful: None, jacked_out: None, in_archives: None, guarded: None, ability: None }
     };
     match event {
         GameEvent::EventPlayed { side, card: played, .. } => {
@@ -272,8 +278,12 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::CardDerezzed { card: None, .. } => Vec::new(),
 
         GameEvent::IceRezzed { card: rezzed, install, .. } => vec![moment(Trigger::OnRez, &card(rezzed, Some(*install)), Some(Side::Corp))],
+        // Advancing places a counter (CR 1.18.1), so it is both moments.
         GameEvent::CardAdvanced { install, card: advanced, .. } => match advanced {
-            Some(advanced) => vec![moment(Trigger::OnAdvance, &card(advanced, Some(*install)), Some(Side::Corp))],
+            Some(advanced) => vec![
+                moment(Trigger::OnAdvance, &card(advanced, Some(*install)), Some(Side::Corp)),
+                moment(Trigger::OnAdvancementCounterPlaced, &card(advanced, Some(*install)), Some(Side::Corp)),
+            ],
             None => Vec::new(),
         },
         // **Deliberately an occurrence of nothing.** CR 1.18.2: placing an
@@ -282,8 +292,12 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // Key Performance Indicators or Syailendra places one. Kept apart
         // from the long list below so the next "on advance" card finds the
         // rule here instead of deriving it again. A card that triggers on a
-        // *placement* would need a `Trigger` of its own; none prints one.
-        GameEvent::AdvancementCountersPlaced { .. } => Vec::new(),
+        // *placement* has a `Trigger` of its own (NeoTokyo Grid's "an
+        // advancement counter is placed"), which an advance is too.
+        GameEvent::AdvancementCountersPlaced { install, card: Some(placed), .. } => {
+            vec![moment(Trigger::OnAdvancementCounterPlaced, &card(placed, Some(*install)), Some(Side::Corp))]
+        }
+        GameEvent::AdvancementCountersPlaced { card: None, .. } => Vec::new(),
         // A cost paid; nothing prints "when a counter is removed".
         GameEvent::AdvancementCountersRemoved { .. } => Vec::new(),
         // Every use is using the card (CR 9.1.6, The Back); only an action
@@ -422,6 +436,11 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::DrawFinished { side, .. } => vec![moment(Trigger::OnCardsDrawn, &About::Nothing, Some(*side))],
         // Lost to an effect; a click lost paying a cost is nothing's.
         GameEvent::ClicksLost { side, by_cost: false, .. } => vec![moment(Trigger::OnClicksLost, &About::Nothing, Some(*side))],
+        // "At least 1[credit]": a loss of nothing is no loss.
+        GameEvent::CreditsLost { side, amount } if *amount > 0 => vec![moment(Trigger::OnCreditsLost, &About::Nothing, Some(*side))],
+        GameEvent::CreditsLost { .. } => Vec::new(),
+        // CR 10.8.6a; the Corp initiates every trace in the pool.
+        GameEvent::TraceInitiated { .. } => vec![moment(Trigger::OnTraceInitiated, &About::Nothing, Some(Side::Corp))],
         // A selection that reveals what it chose (Hyoubu Institute's own
         // "reveal the top card of the stack") is its chooser revealing
         // each card.
@@ -444,8 +463,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // mid-access ends the game, and nothing resolves after that.
         GameEvent::RunCompleted { server } | GameEvent::RunJackedOut { server } | GameEvent::RunEndedByEffect { server } => {
             let successful = state.last_completed_run.as_ref().is_some_and(|ended| ended.successful);
+            let unsuccessful = state.last_completed_run.as_ref().is_some_and(|ended| ended.unsuccessful);
             let jacked_out = matches!(event, GameEvent::RunJackedOut { .. });
-            vec![Moment { successful: Some(successful), jacked_out: Some(jacked_out), ..moment(Trigger::OnRunEnded, &About::Server(*server), Some(Side::Runner)) }]
+            vec![Moment { successful: Some(successful), unsuccessful: Some(unsuccessful), jacked_out: Some(jacked_out), ..moment(Trigger::OnRunEnded, &About::Server(*server), Some(Side::Runner)) }]
         }
 
         // "Whenever you do damage" is the responsible player's (CR 10.4.1),
@@ -534,7 +554,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::PaidAbilityWindowOpened { .. }
         | GameEvent::PriorityPassed { .. }
         | GameEvent::PaidAbilityWindowClosed
-        | GameEvent::TraceInitiated { .. }
         | GameEvent::TraceCorpBidSubmitted { .. }
         | GameEvent::TraceRunnerBidSubmitted { .. }
         | GameEvent::TraceAvoided { .. }
@@ -554,7 +573,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::AdditionalAccessGranted { .. }
         | GameEvent::AccessReplacementSet { .. }
         | GameEvent::AccessReplaced { .. }
-        | GameEvent::CreditsLost { .. }
         | GameEvent::ClicksLost { by_cost: true, .. }
         | GameEvent::ClicksGained { .. }
         | GameEvent::Prevented { .. }
@@ -592,12 +610,15 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
             continue;
         }
         let Some(definition) = registry.get(&listener.card) else { continue };
-        // "The first time each turn": one verdict a card, because its
-        // first-time entries share a count, judged against the log as the
-        // event was recorded rather than as it stands now.
-        let later = (definition.triggers.iter().any(|triggered| triggered.first_each_turn) && !is_first(state, definition, &listener, as_of))
-            || (definition.triggers.iter().any(|triggered| triggered.first_each_encounter) && !is_first_this_encounter(state));
+        // "The first time each turn": one verdict a printed ability,
+        // because its first-time entries share a count, judged against the
+        // log as the event was recorded rather than as it stands now. A
+        // card that prints two (John Masanori's successful and unsuccessful
+        // runs) has a count for each, told apart by their text.
+        let later_this_encounter = definition.triggers.iter().any(|triggered| triggered.first_each_encounter) && !is_first_this_encounter(state);
         for moment in &moments {
+            let ability = definition.triggers.iter().find(|triggered| triggered.first_each_turn && triggered.trigger == moment.trigger).map(|triggered| &triggered.text);
+            let later = ability.is_some_and(|text| !is_first(state, definition, text, &listener, as_of)) || later_this_encounter;
             let mut hearing = definition.triggers.iter().filter(|triggered| hears(state, registry, triggered, &listener, moment, later)).peekable();
             if hearing.peek().is_none() {
                 continue;
@@ -708,13 +729,14 @@ pub(crate) fn delayed_spent_by(state: &GameState, registry: &CardRegistry, delay
 }
 
 /// Whether the occurrence `as_of` counted is the first this turn of what
-/// `definition`'s "first time each turn" entries listen for. A card whose
+/// `definition`'s "first time each turn" entries printing `text` — one
+/// printed ability — listen for. A card whose
 /// first time is about itself ("you advance **this agenda**") or done by
 /// itself ("**this program** fully breaks", `EventFilter::ByThis`) is judged
 /// on its copy, the rest on the turn; `validate` keeps a card to one or the
 /// other.
-fn is_first(state: &GameState, definition: &crate::dsl::CardDefinition, listener: &Listener, as_of: &AsOf) -> bool {
-    let first_time = definition.triggers.iter().filter(|triggered| triggered.first_each_turn);
+fn is_first(state: &GameState, definition: &crate::dsl::CardDefinition, text: &Option<String>, listener: &Listener, as_of: &AsOf) -> bool {
+    let first_time = definition.triggers.iter().filter(|triggered| triggered.first_each_turn && &triggered.text == text);
     // Installs into a root are counted on the copies in it, the listener
     // among them (`turn_log::record`), as of this install.
     // Advances in the server are counted on the root copies that listen
@@ -725,17 +747,19 @@ fn is_first(state: &GameState, definition: &crate::dsl::CardDefinition, listener
             .and_then(|install| state.find_corp_install(install))
             .is_some_and(|installed| installed.this_turn.count(state.turn, Trigger::OnAdvance) == 1);
     }
-    if first_time.clone().any(|triggered| triggered.when == Some(EventFilter::InRootOfThisServer)) {
+    // So are installs into the root, and the counters placed on a card in
+    // it (NeoTokyo Grid), each in its own trigger's row.
+    if let Some(trigger) = first_time.clone().find(|triggered| triggered.when == Some(EventFilter::InRootOfThisServer)).map(|triggered| triggered.trigger) {
         return listener
             .install
             .and_then(|install| state.find_corp_install(install))
-            .is_some_and(|installed| installed.this_turn.count(state.turn, Trigger::OnInstall) == 1);
+            .is_some_and(|installed| installed.this_turn.count(state.turn, trigger) == 1);
     }
     if first_time.clone().any(|triggered| triggered.subject == Some(Subject::This) || triggered.when == Some(EventFilter::ByThis)) {
         let triggers: Vec<Trigger> = first_time.map(|triggered| triggered.trigger).collect();
         as_of.is_first_on(listener.install, state.turn, &triggers)
     } else {
-        as_of.is_first(&turn_log::first_time_on(definition, state))
+        as_of.is_first(&turn_log::first_time_on(definition, text, state))
     }
 }
 
@@ -801,6 +825,13 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     }
     // "You install a card in the root of **this server**": the same, into
     // the listener's own server.
+    // "An advancement counter is placed on a card in the root of **this
+    // server**" (NeoTokyo Grid): the card it is about is there.
+    if let (EventFilter::InRootOfThisServer, Trigger::OnAdvancementCounterPlaced) = (filter, moment.trigger) {
+        let About::Card { install: Some(about), .. } = moment.about else { return false };
+        return here.is_some()
+            && state.find_corp_install(about).is_some_and(|installed| Some(installed.server) == here && installed.slot == crate::rules::state::InstallSlot::Root);
+    }
     if let EventFilter::InRootOfThisServer = filter {
         return moment.of == Some(Side::Corp)
             && here.is_some()
@@ -845,6 +876,9 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     }
     if let EventFilter::Successful = filter {
         return moment.successful == Some(true);
+    }
+    if let EventFilter::Unsuccessful = filter {
+        return moment.unsuccessful == Some(true);
     }
     if let EventFilter::JackedOut = filter {
         return moment.jacked_out == Some(true);
@@ -1449,9 +1483,11 @@ mod tests {
         );
     }
 
-    /// CR 1.18.2, kept where the next "on advance" card will look.
+    /// CR 1.18.2, kept where the next "on advance" card will look: a
+    /// placement is heard as one (`OnAdvancementCounterPlaced`), never as
+    /// an advance.
     #[test]
-    fn placing_an_advancement_counter_is_an_occurrence_of_nothing() {
+    fn placing_an_advancement_counter_is_not_advancing() {
         let registry = registry(vec![listens("built_to_last", Side::Corp, CardType::Identity, Trigger::OnAdvance, Some(Subject::Any))]);
         let mut state = GameState { phase: GamePhase::Action(Side::Corp), ..Default::default() };
         state.corp.identity = Some(CardId("built_to_last".to_string()));
@@ -1461,6 +1497,8 @@ mod tests {
         assert_eq!(who(&plan_for(&state, &registry, &advanced)), vec![("built_to_last", Heard::AsBystander)]);
         let placed = GameEvent::AdvancementCountersPlaced { install: InstallId(1), card, advancement_tokens: 1 };
         assert!(plan_for(&state, &registry, &placed).is_empty());
+        assert_eq!(moments(&state, &placed).iter().map(|moment| moment.trigger).collect::<Vec<_>>(), vec![Trigger::OnAdvancementCounterPlaced]);
+        assert_eq!(moments(&state, &advanced).iter().map(|moment| moment.trigger).collect::<Vec<_>>(), vec![Trigger::OnAdvance, Trigger::OnAdvancementCounterPlaced]);
     }
 
     /// "The first time each turn" is part of what a card listens for: the

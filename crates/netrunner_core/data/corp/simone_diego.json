@@ -1,0 +1,17 @@
+{
+  "id": "simone_diego",
+  "title": "Simone Diego",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 4,
+  "trash_cost": 3,
+  "unique": true,
+  "counter_kind": "Credit",
+  "recurring_credits": 2,
+  "pays_for": [
+    "AdvancingInThisServer"
+  ],
+  "triggers": [],
+  "built_from": 2099,
+  "is_playable": true
+}

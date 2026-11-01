@@ -1,0 +1,36 @@
+{
+  "id": "ixodidae",
+  "title": "Ixodidae",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnCreditsLost",
+      "when": {
+        "Whose": "Corp"
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever the Corp loses at least 1[credit], gain 1[credit]."
+    },
+    {
+      "trigger": "OnVirusCountersPurged",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "Trash Ixodidae if the Corp purges virus counters."
+    }
+  ],
+  "built_from": 6114,
+  "is_playable": true
+}
