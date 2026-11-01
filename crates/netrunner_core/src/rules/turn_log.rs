@@ -178,10 +178,20 @@ pub enum Kind {
     /// of "a virus program" and "an icebreaker" still reads it.
     Icebreaker,
     VirusIcebreaker,
+    /// An **advertisement**, the ninth subtype given a column, for Spark
+    /// Agency: Worldswide Reach's "the first time each turn you rez an
+    /// advertisement". The catalog prints it on assets, upgrades and ice,
+    /// so it is a column of each of the three, and a card has one column.
+    /// Seen only where its type is: a rez shows the card, and a facedown
+    /// piece of ice installed is counted as ice and nothing finer
+    /// (`as_seen`), so the column says nothing the Runner was not shown.
+    AdvertisementAsset,
+    AdvertisementUpgrade,
+    AdvertisementIce,
 }
 
 impl Kind {
-    const COUNT: usize = 22;
+    const COUNT: usize = 25;
     const ALL: [Kind; Kind::COUNT] = [
         Kind::Unseen,
         Kind::Agenda,
@@ -205,6 +215,9 @@ impl Kind {
         Kind::ConnectionResource,
         Kind::Icebreaker,
         Kind::VirusIcebreaker,
+        Kind::AdvertisementAsset,
+        Kind::AdvertisementUpgrade,
+        Kind::AdvertisementIce,
     ];
 
     /// The column a card is counted in: its type, or its type's double,
@@ -219,7 +232,11 @@ impl Kind {
         let job = definition.subtypes.contains(&CardSubtype::Job);
         let connection = definition.subtypes.contains(&CardSubtype::Connection);
         let icebreaker = definition.subtypes.contains(&CardSubtype::Icebreaker);
+        let advertisement = definition.subtypes.contains(&CardSubtype::Advertisement);
         match Kind::of(&definition.card_type) {
+            Kind::Asset if advertisement => Kind::AdvertisementAsset,
+            Kind::Upgrade if advertisement => Kind::AdvertisementUpgrade,
+            Kind::Ice if advertisement => Kind::AdvertisementIce,
             Kind::Operation if double => Kind::DoubleOperation,
             Kind::Operation if mandate => Kind::MandateOperation,
             Kind::Event if double && run => Kind::DoubleRunEvent,
@@ -242,6 +259,9 @@ impl Kind {
             Kind::Event => vec![Kind::Event, Kind::DoubleEvent, Kind::RunEvent, Kind::DoubleRunEvent],
             Kind::Program => vec![Kind::Program, Kind::VirusProgram, Kind::Icebreaker, Kind::VirusIcebreaker],
             Kind::Resource => vec![Kind::Resource, Kind::CompanionResource, Kind::JobResource, Kind::ConnectionResource],
+            Kind::Asset => vec![Kind::Asset, Kind::AdvertisementAsset],
+            Kind::Upgrade => vec![Kind::Upgrade, Kind::AdvertisementUpgrade],
+            Kind::Ice => vec![Kind::Ice, Kind::AdvertisementIce],
             kind => vec![kind],
         }
     }
@@ -422,7 +442,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // A Corp card trashed out of HQ or R&D goes facedown, unseen by
         // the Runner, so the log counts a Corp card's trash without its
         // type. A Runner card's is seen wherever it came from, and counted
-        // with it (`seen_anyway`).
+        // with it (`as_seen`).
         Trigger::OnCardTrashed => true,
         // Not about a card.
         Trigger::OnRunStart
@@ -469,18 +489,23 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
 /// type and place, and the Corp saw both. A piece of ice the Corp
 /// installs is seen to be ice, and a Runner card whose ability took
 /// credits was faceup.
-fn seen_anyway(trigger: Trigger, kind: Kind) -> bool {
+///
+/// What was seen is the kind as the moment showed it: a piece of ice
+/// installed facedown is ice, whatever its subtypes, so an advertisement
+/// among them is counted in `Kind::Ice` (and only its rez, which shows the
+/// card, in `Kind::AdvertisementIce`).
+fn as_seen(trigger: Trigger, kind: Kind) -> Option<Kind> {
     match trigger {
-        Trigger::OnCardTrashed => kind.is_runners(),
+        Trigger::OnCardTrashed => kind.is_runners().then_some(kind),
         // A facedown piece of ice is installed protecting a server, where
         // both players see it is ice (CR 3.4.2) — what it is stays hidden.
         // So the log can tell the Corp's root installs from its ice
         // (`EventFilter::InRoot`).
-        Trigger::OnInstall => kind == Kind::Ice,
+        Trigger::OnInstall => matches!(kind, Kind::Ice | Kind::AdvertisementIce).then_some(Kind::Ice),
         // Only a Corp card asks for credits face down; a Runner card that
         // did was on the table faceup.
-        Trigger::OnAbilityTookCredits => kind.is_runners(),
-        _ => false,
+        Trigger::OnAbilityTookCredits => kind.is_runners().then_some(kind),
+        _ => None,
     }
 }
 
@@ -509,7 +534,7 @@ fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
         }
         About::Card { card, installed, .. } => {
             let kind = registry.get(card).map_or(Kind::Unseen, Kind::of_card);
-            let kind = if concealed(moment.trigger, moment.of) && !seen_anyway(moment.trigger, kind) { Kind::Unseen } else { kind };
+            let kind = if concealed(moment.trigger, moment.of) { as_seen(moment.trigger, kind).unwrap_or(Kind::Unseen) } else { kind };
             Class::Card { kind, installed: *installed }
         }
     }
@@ -670,7 +695,7 @@ impl Occurrences {
                     .map(|kind| bit(Class::Card { kind: *kind, installed: false }) | bit(Class::Card { kind: *kind, installed: true }))
                     .fold(0, |mask, column| mask | column),
             ),
-            // A Corp install of ice is counted as ice (`seen_anyway`), so
+            // A Corp install of ice is counted as ice (`as_seen`), so
             // every install it counts unseen went into a root.
             Some(EventFilter::InRoot) => Some(bit(Class::Card { kind: Kind::Unseen, installed: false }) | bit(Class::Card { kind: Kind::Unseen, installed: true })),
             Some(EventFilter::Host) => {
@@ -729,7 +754,14 @@ impl Occurrences {
                 return Err(format!("the turn counts a {trigger:?} by what was true of the ice, not by the card, so \"the first\" is narrowed with `Ice`"));
             }
             Some(EventFilter::Card(filter) | EventFilter::InstalledCard(filter))
-                if concealed(trigger, of) && !kinds(filter)?.iter().all(|kind| seen_anyway(trigger, *kind)) =>
+                if concealed(trigger, of) && {
+                    // Every kind the filter admits must be seen as one it
+                    // admits: "a piece of ice" installed facedown is ice
+                    // whether or not it is an advertisement, but "an
+                    // advertisement" installed facedown is only ice.
+                    let admitted = kinds(filter)?;
+                    !admitted.iter().all(|kind| as_seen(trigger, *kind).is_some_and(|seen| admitted.contains(&seen)))
+                } =>
             {
                 return Err(format!("the card a {trigger:?} is about is hidden from a player, so the turn counts it without its type and \"the first\" cannot be narrowed by one"));
             }
@@ -786,6 +818,10 @@ fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
             _ => {}
         }
     }
+    // "An advertisement", of whatever type prints it.
+    if let CardFilter::HasSubtype(CardSubtype::Advertisement) = filter {
+        return Ok(vec![Kind::AdvertisementAsset, Kind::AdvertisementUpgrade, Kind::AdvertisementIce]);
+    }
     // "A, B or C": every column any of them is counted in.
     if let CardFilter::AnyOf(parts) = filter {
         let mut all = Vec::new();
@@ -804,7 +840,7 @@ fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
         // in before a count is read, so this is only what `validate`
         // checks. Before any is named nothing is heard to count.
         CardFilter::OfChosenCardType => return Ok(Kind::ALL.to_vec()),
-        CardFilter::Ice => return Ok(vec![Kind::Ice]),
+        CardFilter::Ice => return Ok(vec![Kind::Ice, Kind::AdvertisementIce]),
         CardFilter::CardType(card_type) => std::slice::from_ref(card_type),
         CardFilter::CardTypeOneOf(card_types) => card_types.as_slice(),
         _ => return Err(format!("the turn counts a card by its type and nothing finer, so \"the first\" cannot be narrowed by {filter:?}")),

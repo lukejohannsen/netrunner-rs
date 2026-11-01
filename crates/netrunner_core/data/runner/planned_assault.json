@@ -1,0 +1,45 @@
+{
+  "id": "planned_assault",
+  "title": "Planned Assault",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnStack",
+            "filter": {
+              "All": [
+                {
+                  "HasSubtype": "Run"
+                },
+                "PlayableIgnoringAdditionalCosts"
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": true,
+            "shuffle_after": true,
+            "then": {
+              "PlayOperation": {
+                "from": "OwnStack",
+                "ignoring_additional_costs": true
+              }
+            }
+          }
+        }
+      ],
+      "text": "Search your stack for a run event and play that run event (paying its play cost), ignoring any additional costs. Shuffle your stack."
+    }
+  ],
+  "built_from": 5036,
+  "is_playable": true
+}

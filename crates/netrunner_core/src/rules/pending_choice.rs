@@ -526,7 +526,19 @@ fn instance_matches_filter(
             };
             let from = crate::rules::engine::OperationOrigin::of(zone);
             chooser == Side::Corp
-                && card.zip(from).is_some_and(|(card, from)| crate::rules::engine::can_play_operation(state, registry, &card, from, false))
+                && card.zip(from).is_some_and(|(card, from)| crate::rules::engine::can_play_operation(state, registry, &card, from, crate::rules::engine::Waived::Nothing))
+        }
+        CardFilter::PlayableIgnoringAdditionalCosts => {
+            let waived = crate::rules::engine::Waived::AdditionalCosts;
+            let card = zone_card_ids(state, chooser, zone, source).get(position).cloned();
+            match chooser {
+                Side::Corp => card
+                    .zip(crate::rules::engine::OperationOrigin::of(zone))
+                    .is_some_and(|(card, from)| crate::rules::engine::can_play_operation(state, registry, &card, from, waived)),
+                Side::Runner => card
+                    .zip(crate::rules::engine::EventOrigin::of(zone))
+                    .is_some_and(|(card, from)| crate::rules::engine::can_play_event_from(state, registry, &card, from, waived)),
+            }
         }
         CardFilter::AccessedDuringLastRun => {
             let card = zone_card_ids(state, chooser, zone, source).get(position).cloned();

@@ -450,6 +450,16 @@ pub enum CardFilter {
     /// operation from HQ"). Instance-level: affordability is state. The
     /// effect re-checks, so the offer and the resolution cannot disagree.
     PlayableOperation,
+    /// An operation or event in the zone being selected from that its
+    /// owner could play right now paying its play cost and **ignoring any
+    /// additional costs** — the offer half of `Effect::PlayOperation`'s
+    /// `ignoring_additional_costs`: Accelerated Diagnostics' operations
+    /// among the top 3 of R&D and Planned Assault's run event in the
+    /// stack. Composition didn't work: `PlayableOperation` asks the
+    /// additional cost too, so a double the Corp has no click left for
+    /// would never be offered, and nothing asked it of an event.
+    /// Instance-level, as that one is.
+    PlayableIgnoringAdditionalCosts,
     /// One of the top `u32` cards of the zone being selected from —
     /// Poétrï Luxury Brands' "look at the top 3 cards of R&D". Instance-
     /// level, and a *filter* rather than a `CardZoneRef` of its own so it
@@ -1094,6 +1104,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // The definition-level half; affordability and the play
         // requirement are instance-level.
         CardFilter::PlayableOperation => card.card_type == CardType::Operation,
+        CardFilter::PlayableIgnoringAdditionalCosts => matches!(card.card_type, CardType::Operation | CardType::Event),
         // Purely instance-level: where the card sits in its zone.
         CardFilter::TopOfZone(_) | CardFilter::BottomOfZone(_) | CardFilter::CopyInHeap | CardFilter::TopOf(_) | CardFilter::NthFromTop(_) | CardFilter::Revealed => true,
         CardFilter::IceOfType(ice_type) => card.is_ice_of_type(*ice_type),

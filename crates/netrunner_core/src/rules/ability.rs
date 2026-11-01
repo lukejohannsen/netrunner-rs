@@ -3299,25 +3299,27 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
-        Effect::PlayOperation { from: from @ (crate::dsl::CardZoneRef::OwnHeap | crate::dsl::CardZoneRef::OwnGrip), ignoring_costs, .. } => {
+        Effect::PlayOperation { from: from @ (crate::dsl::CardZoneRef::OwnHeap | crate::dsl::CardZoneRef::OwnGrip | crate::dsl::CardZoneRef::OwnStack), ignoring_costs, ignoring_additional_costs, .. } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
-            let from_heap = *from == crate::dsl::CardZoneRef::OwnHeap;
-            if !crate::rules::engine::can_play_event_from(state, registry, &card_id, from_heap, *ignoring_costs) {
+            let from = crate::rules::engine::EventOrigin::of(from).ok_or(RulesError::UnresolvedCardTarget)?;
+            let waived = crate::rules::engine::Waived::of(*ignoring_costs, *ignoring_additional_costs);
+            if !crate::rules::engine::can_play_event_from(state, registry, &card_id, from, waived) {
                 return Ok(Vec::new());
             }
-            crate::rules::engine::play_event_card(state, registry, card_id, from_heap, *ignoring_costs)
+            crate::rules::engine::play_event_card(state, registry, card_id, from, waived)
         }
-        Effect::PlayOperation { from, ignoring_costs, remove_from_game } => {
+        Effect::PlayOperation { from, ignoring_costs, ignoring_additional_costs, remove_from_game } => {
+            let waived = crate::rules::engine::Waived::of(*ignoring_costs, *ignoring_additional_costs);
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             let from = crate::rules::engine::OperationOrigin::of(from).ok_or(RulesError::UnresolvedCardTarget)?;
             // Lenient, like every other "you may" here: an operation whose
             // cost or `play_requirement` has stopped holding since the
             // offer resolves to nothing rather than failing the action
             // that got here.
-            if !crate::rules::engine::can_play_operation(state, registry, &card_id, from, *ignoring_costs) {
+            if !crate::rules::engine::can_play_operation(state, registry, &card_id, from, waived) {
                 return Ok(Vec::new());
             }
-            crate::rules::engine::play_operation_card(state, registry, card_id, from, *ignoring_costs, *remove_from_game)
+            crate::rules::engine::play_operation_card(state, registry, card_id, from, waived, *remove_from_game)
         }
 
         Effect::RezInstalled { install, pay_cost, discount } => {

@@ -3,7 +3,7 @@
   "name": "Zzzzzzzz",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Leela Patel: Trained Pragmatist, Honor and Profit's Criminal identity, who adds an unrezzed card to HQ whenever an agenda is scored or stolen. Zero-Day Heist's list, its identity swapped. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Honor and Profit is in neither pool. FFG F8 (Lunar) Stage 3. Genesis (F11) swaps in Compromised Employee, Satellite Uplink and Muresh Bodysuit.",
+  "description": "Not a published list: built so the sweeps reach Leela Patel: Trained Pragmatist, Honor and Profit's Criminal identity, who adds an unrezzed card to HQ whenever an agenda is scored or stolen. Zero-Day Heist's list, its identity swapped. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Honor and Profit is in neither pool. FFG F8 (Lunar) Stage 3. Genesis (F11) swaps in Compromised Employee, Satellite Uplink and Muresh Bodysuit. One Drive By became a Planned Assault, which plays a run event out of the stack without its additional cost (Engine words, Stage 4).",
   "style": [
     "pressure"
   ],
@@ -111,7 +111,7 @@
     },
     {
       "card": "drive_by",
-      "count": 2
+      "count": 1
     },
     {
       "card": "fisk_investment_seminar",
@@ -131,6 +131,10 @@
     },
     {
       "card": "muresh_bodysuit",
+      "count": 1
+    },
+    {
+      "card": "planned_assault",
       "count": 1
     }
   ]

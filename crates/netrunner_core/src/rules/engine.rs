@@ -1679,6 +1679,70 @@ pub(crate) enum OperationOrigin {
     RAndD,
 }
 
+/// Which of a play's costs the card playing it waives (`Effect::
+/// PlayOperation`): none, the printed additional cost alone — Planned
+/// Assault's and Accelerated Diagnostics' "(paying its play cost),
+/// ignoring any additional costs" — or all of them, Bryan Stinson's and
+/// The Shadow Net's "ignoring all costs". One word for the three rather
+/// than two flags, because an "all costs" that kept an additional cost
+/// is no play the rules describe (CR 1.16.6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Waived {
+    Nothing,
+    AdditionalCosts,
+    AllCosts,
+}
+
+impl Waived {
+    pub(crate) fn of(ignoring_costs: bool, ignoring_additional_costs: bool) -> Waived {
+        if ignoring_costs {
+            Waived::AllCosts
+        } else if ignoring_additional_costs {
+            Waived::AdditionalCosts
+        } else {
+            Waived::Nothing
+        }
+    }
+
+    fn price(self) -> bool {
+        self == Waived::AllCosts
+    }
+
+    fn additional(self) -> bool {
+        self != Waived::Nothing
+    }
+}
+
+/// The Runner's zones an event is played out of: the grip (the click
+/// action, Comet), the heap (The Shadow Net) and the stack — Planned
+/// Assault's "search your stack for a run event and play that run event",
+/// the selection's `then`, so the card never passes through the grip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EventOrigin {
+    Grip,
+    Heap,
+    Stack,
+}
+
+impl EventOrigin {
+    pub(crate) fn of(zone: &crate::dsl::CardZoneRef) -> Option<EventOrigin> {
+        match zone {
+            crate::dsl::CardZoneRef::OwnGrip => Some(EventOrigin::Grip),
+            crate::dsl::CardZoneRef::OwnHeap => Some(EventOrigin::Heap),
+            crate::dsl::CardZoneRef::OwnStack => Some(EventOrigin::Stack),
+            _ => None,
+        }
+    }
+
+    fn zone(self, state: &GameState) -> &Vec<CardId> {
+        match self {
+            EventOrigin::Grip => &state.runner.grip,
+            EventOrigin::Heap => &state.runner.heap,
+            EventOrigin::Stack => &state.runner.stack,
+        }
+    }
+}
+
 impl OperationOrigin {
     /// The origin a selection's zone names, or `None` for a zone no
     /// operation is played out of.
@@ -1743,23 +1807,21 @@ fn play_event(
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(play_event_card(&mut next, registry, card_id, false, false)?);
+    events.extend(play_event_card(&mut next, registry, card_id, EventOrigin::Grip, Waived::Nothing)?);
     Ok((next, events))
 }
 
-/// Whether the Runner could play `card_id` out of the heap (`from_heap`)
-/// or the grip right now, click aside — the offer half of The Shadow
+/// Whether the Runner could play `card_id` out of `from` right now, click aside — the offer half of The Shadow
 /// Net's "Play an event from your heap, ignoring all costs" and Comet's
 /// "you may play another event (without spending a click)", as
 /// `can_play_operation` is Plutus's. The click action asks its own
 /// questions.
-pub(crate) fn can_play_event_from(state: &GameState, registry: &CardRegistry, card_id: &CardId, from_heap: bool, ignoring_costs: bool) -> bool {
+pub(crate) fn can_play_event_from(state: &GameState, registry: &CardRegistry, card_id: &CardId, from: EventOrigin, waived: Waived) -> bool {
     let Some(card_def) = registry.get(card_id) else { return false };
-    let zone = if from_heap { &state.runner.heap } else { &state.runner.grip };
-    zone.contains(card_id)
+    from.zone(state).contains(card_id)
         && card_def.card_type == CardType::Event
-        && (ignoring_costs || payment::available(state, registry, Side::Runner, Purpose::Play(card_def)) >= continuous::play_cost_of(state, registry, card_def))
-        && (ignoring_costs || continuous::additional_play_cost_of(state, registry, card_def).as_ref().is_none_or(|cost| {
+        && (waived.price() || payment::available(state, registry, Side::Runner, Purpose::Play(card_def)) >= continuous::play_cost_of(state, registry, card_def))
+        && (waived.additional() || continuous::additional_play_cost_of(state, registry, card_def).as_ref().is_none_or(|cost| {
             ability::cost_is_affordable(state, registry, Side::Runner, cost, Purpose::Other, &ability::ResolutionContext::for_card(Some(card_id)))
         }))
         && card_def.play_requirement.as_ref().is_none_or(|requirement| {
@@ -1776,16 +1838,18 @@ pub(crate) fn play_event_card(
     next: &mut GameState,
     registry: &CardRegistry,
     card_id: CardId,
-    from_heap: bool,
-    ignoring_costs: bool,
+    from: EventOrigin,
+    waived: Waived,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Runner;
     let scored_before = next.runner.scored_agendas.iter().filter(|scored| scored.card == card_id).count();
-    if from_heap {
-        let position = next.runner.heap.iter().position(|c| c == &card_id).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
-        next.runner.heap.remove(position);
-    } else {
-        take_from_grip(next, side, &card_id)?;
+    match from {
+        EventOrigin::Grip => take_from_grip(next, side, &card_id)?,
+        EventOrigin::Heap | EventOrigin::Stack => {
+            let zone = if from == EventOrigin::Heap { &mut next.runner.heap } else { &mut next.runner.stack };
+            let position = zone.iter().position(|c| c == &card_id).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
+            zone.remove(position);
+        }
     }
 
     let card_def = registry
@@ -1806,8 +1870,8 @@ pub(crate) fn play_event_card(
     let mut events = Vec::new();
     // Priced as the table stands (`continuous::play_cost_of`): Tailgate's
     // own discount is read here and by nothing else.
-    let price = if ignoring_costs { 0 } else { continuous::play_cost_of(next, registry, card_def) };
-    let additional = if ignoring_costs { None } else { continuous::additional_play_cost_of(next, registry, card_def) };
+    let price = if waived.price() { 0 } else { continuous::play_cost_of(next, registry, card_def) };
+    let additional = if waived.additional() { None } else { continuous::additional_play_cost_of(next, registry, card_def) };
     // The price's events too are dispatched after the effect, as every
     // payer's are: Mystic Maemi's credits spent on the play are credits
     // spent from an installed card (Keiko, The Twinning).
@@ -1899,7 +1963,7 @@ fn play_operation(
     let mut events = vec![GameEvent::ClickSpent { side }];
     // Petty Cash, the one card the click action plays out of Archives,
     // prints "After it resolves, remove it from the game".
-    events.extend(play_operation_card(&mut next, registry, card_id, from, false, from == OperationOrigin::Archives)?);
+    events.extend(play_operation_card(&mut next, registry, card_id, from, Waived::Nothing, from == OperationOrigin::Archives)?);
     Ok((next, events))
 }
 
@@ -1911,17 +1975,17 @@ fn play_operation(
 /// card carries Petty Cash's own permission to be played from Archives:
 /// that is the click action's rule, and Plutus grants the permission
 /// itself.
-pub(crate) fn can_play_operation(state: &GameState, registry: &CardRegistry, card_id: &CardId, from: OperationOrigin, ignoring_costs: bool) -> bool {
+pub(crate) fn can_play_operation(state: &GameState, registry: &CardRegistry, card_id: &CardId, from: OperationOrigin, waived: Waived) -> bool {
     let Some(card_def) = registry.get(card_id) else { return false };
     let present = from.holds(state, card_id);
     present
         && card_def.card_type == CardType::Operation
-        && (ignoring_costs || payment::available(state, registry, Side::Corp, Purpose::Play(card_def)) >= continuous::play_cost_of(state, registry, card_def))
+        && (waived.price() || payment::available(state, registry, Side::Corp, Purpose::Play(card_def)) >= continuous::play_cost_of(state, registry, card_def))
         // Touch-ups' additional click, which the Corp must still have
         // after the one this play costs — `Effect::PlayOperationFromHq`
         // spends no click, so what is checked is simply that the cost is
         // payable now.
-        && (ignoring_costs || continuous::additional_play_cost_of(state, registry, card_def).as_ref().is_none_or(|cost| {
+        && (waived.additional() || continuous::additional_play_cost_of(state, registry, card_def).as_ref().is_none_or(|cost| {
             ability::cost_is_affordable(state, registry, Side::Corp, cost, Purpose::Other, &ability::ResolutionContext::for_card(Some(card_id)))
         }))
         && card_def.play_requirement.as_ref().is_none_or(|requirement| {
@@ -1941,7 +2005,7 @@ pub(crate) fn play_operation_card(
     registry: &CardRegistry,
     card_id: CardId,
     from: OperationOrigin,
-    ignoring_costs: bool,
+    waived: Waived,
     remove_from_game: bool,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Corp;
@@ -1962,8 +2026,8 @@ pub(crate) fn play_operation_card(
     // double operation you play each turn" reads a turn with none yet.
     // "Ignoring all costs" (Bryan Stinson): no price and no printed
     // additional cost, the requirement above still asked.
-    let price = if ignoring_costs { 0 } else { continuous::play_cost_of(next, registry, card_def) };
-    let additional = if ignoring_costs { None } else { continuous::additional_play_cost_of(next, registry, card_def) };
+    let price = if waived.price() { 0 } else { continuous::play_cost_of(next, registry, card_def) };
+    let additional = if waived.additional() { None } else { continuous::additional_play_cost_of(next, registry, card_def) };
     let price_events = ability::pay_cost(next, registry, side, &Cost::Credits(price), Purpose::Play(card_def), Some(&card_id))?;
     let mut events = price_events.clone();
     // A Double's extra click (or any other printed additional cost) is
