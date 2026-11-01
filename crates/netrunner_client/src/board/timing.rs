@@ -367,7 +367,7 @@ mod tests {
             jack_out_permitted: true,
             declared_successful: false,
             breach_only: false,
-            forced_encounter: false, suspended: Vec::new(),
+            forced_encounter: false, suspended: Vec::new(), uninstalled_ice: None,
             event_counters: 0,
             ice_approached: 0,
             gained_for_the_run: Vec::new(),

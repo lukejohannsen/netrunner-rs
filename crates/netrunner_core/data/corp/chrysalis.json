@@ -1,0 +1,49 @@
+{
+  "id": "chrysalis",
+  "title": "Chrysalis",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 3,
+  "strength": 2,
+  "trash_cost": 1,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this ice in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": {
+        "Not": {
+          "AccessingIn": "Archives"
+        }
+      },
+      "effects": [
+        "ForceEncounter"
+      ],
+      "text": "When the Runner accesses this ice anywhere except in Archives, they encounter it."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 2 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          2
+        ]
+      }
+    }
+  ],
+  "built_from": 11013,
+  "is_playable": true
+}

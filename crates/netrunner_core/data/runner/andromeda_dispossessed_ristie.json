@@ -1,0 +1,13 @@
+{
+  "id": "andromeda_dispossessed_ristie",
+  "title": "Andromeda: Dispossessed Ristie",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 1,
+  "min_deck_size": 45,
+  "starting_hand_size": 9,
+  "triggers": [],
+  "built_from": 2083,
+  "is_playable": true
+}

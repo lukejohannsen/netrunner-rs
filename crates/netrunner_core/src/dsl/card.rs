@@ -986,6 +986,14 @@ pub struct CardDefinition {
     /// for a listener to hear, and the game has not begun (1.6.7).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub before_starting_hand: Option<Effect>,
+    /// How many cards an identity's player draws as a starting hand, where
+    /// it is not the rules' 5 (CR 1.6.6) — Andromeda: Dispossessed
+    /// Ristie's "You draw a starting hand of 9 cards". A mulligan draws a
+    /// new starting hand (1.6.6a), so it is this many too. A number and
+    /// not a `before_starting_hand` effect: that runs ahead of the draw,
+    /// and the draw is what changes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub starting_hand_size: Option<u32>,
 }
 
 /// One way of paying to rez a card — see
@@ -1446,6 +1454,7 @@ impl Default for CardDefinition {
             persistent_after_trash: false,
             continuous: Vec::new(),
             before_starting_hand: None,
+            starting_hand_size: None,
         }
     }
 }

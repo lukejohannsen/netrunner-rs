@@ -11,7 +11,7 @@ pub(crate) use access::steal_accessed_ignoring_costs;
 pub(crate) use access::{access_cards, accessing_during_an_encounter, accessing_outside_the_runners_turn, at_mid_access_window, move_on_if_left, breach, breaching, host_currently_accessed_card, is_being_accessed, move_currently_accessed_card, AccessedTo};
 pub use action::RunAction;
 pub use engine::{advance_run, start_run, start_run_ignoring_costs};
-pub(crate) use engine::{force_encounter, move_innermost_and_encounter, may_pay_run_cost, redirect_to, resolving_subroutines_of, start_breach};
+pub(crate) use engine::{encounter_accessed_ice, force_encounter, move_innermost_and_encounter, may_pay_run_cost, redirect_to, resolving_subroutines_of, start_breach};
 pub(crate) use engine::{
     break_subroutine, bypass_encountered_ice, check_run_may_begin, encounter_ends, end_run, move_run_to_outermost, move_run_to_outermost_then, move_run_in_front_of, move_run_in_front_of_install, move_run_back_to_ice, move_run_with_ice, ice_from_innermost, reconcile_ice, renumber_subroutines,
     swap_approached_ice_with_card, swappable_into, transition_subroutine,

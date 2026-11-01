@@ -193,6 +193,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         ice_approached: _,       // engine's: it only decides whether Mti Mwekundu's move lets the Runner jack out, which the Jack out control shows
         gained_for_the_run: _,   // drawn: the encounter's list (facts::install_facts), and outside it the ice's sheet ("» … — for the rest of this run") and hud::in_effect, both clients
         forced_encounter: _,     // drawn: board::phase ("Encounter ice 1 of 2 again"), the terminal's run strip ("encountering it again")
+        uninstalled_ice: _,      // engine's: the handle a forced encounter keeps an accessed piece of ice by (Chrysalis); the ice is drawn from the run's own list like any ice encountered away from the Runner's position, and the access prompt already showed the card
         suspended: _,            // drawn: hud::in_effect ("This run: after this encounter, back to the encounter with Konjin" / "to the breach"), both clients
         bad_publicity_credits: _, // drawn: hud::readouts, beside the Runner's credits
         bonus_run_credits: _,    // drawn: hud::readouts, beside the Runner's credits

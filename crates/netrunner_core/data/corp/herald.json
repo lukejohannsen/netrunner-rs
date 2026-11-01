@@ -1,0 +1,99 @@
+{
+  "id": "herald",
+  "title": "Herald",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 1,
+  "trash_cost": 1,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this ice in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": {
+        "Not": {
+          "AccessingIn": "Archives"
+        }
+      },
+      "effects": [
+        "ForceEncounter"
+      ],
+      "text": "When the Runner accesses this ice anywhere except in Archives, they encounter it."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Gain 2[credit].",
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          2
+        ]
+      }
+    },
+    {
+      "text": "You may pay up to 2[credit] to place that many advancement counters on 1 installed card you can advance.",
+      "effect": {
+        "ChooseNumber": {
+          "chooser": "Corp",
+          "min": 0,
+          "max": {
+            "Fixed": 2
+          },
+          "of": {
+            "Credits": "Corp"
+          },
+          "then": {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "ChosenNumber",
+                  1
+                ]
+              },
+              "effect": {
+                "Sequence": [
+                  {
+                    "LoseCreditsAmount": [
+                      "Corp",
+                      "ChosenNumber"
+                    ]
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnInstalled",
+                      "filter": "Advanceable",
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "PlaceAdvancementCounters": "ChosenNumber"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "text": "You may pay up to 2[credit] to place that many advancement counters on 1 installed card you can advance."
+        }
+      }
+    }
+  ],
+  "built_from": 11115,
+  "is_playable": true
+}

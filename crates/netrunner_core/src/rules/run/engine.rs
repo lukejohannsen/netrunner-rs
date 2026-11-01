@@ -257,7 +257,7 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { finishes: None, ice_approached: 0, suspended: Vec::new(), gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, redirect_at_success: false, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, click_lost_to_break: false, reached_success_phase: false, breached: None, breaches_after: Vec::new(), encounters: 0, ice_passed: 0, passed: Vec::new(), rezzed: Vec::new(), used: Vec::new(), fully_broken_ice: Vec::new(), last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
+    state.active_run = Some(RunState { finishes: None, ice_approached: 0, suspended: Vec::new(), uninstalled_ice: None, gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, redirect_at_success: false, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, click_lost_to_break: false, reached_success_phase: false, breached: None, breaches_after: Vec::new(), encounters: 0, ice_passed: 0, passed: Vec::new(), rezzed: Vec::new(), used: Vec::new(), fully_broken_ice: Vec::new(), last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -497,6 +497,33 @@ fn force_encounter_elsewhere(state: &mut GameState, registry: &CardRegistry, ins
         return Ok(Vec::new());
     }
     let Some(fresh) = build_run_ice(installed, registry)? else { return Ok(Vec::new()) };
+    encounter_away(state, registry, fresh, None)
+}
+
+/// `Effect::ForceEncounter` resolved as a piece of ice being accessed in HQ
+/// or R&D, which is not installed — Chrysalis, Herald and Sapper's "When
+/// the Runner accesses this ice anywhere except in Archives, they
+/// encounter it". The encounter is `force_encounter_elsewhere`'s, the
+/// access suspended under it and resumed after, with the ice built from
+/// its card under a handle minted for the encounter (`RunState::
+/// uninstalled_ice`) and counted rezzed, because its subroutines are
+/// active during the encounter (CR 9.1.8h) and the ice is faceup to the
+/// Runner, who is accessing it. Nothing for a card that is not ice or not
+/// the one being accessed, or outside an access.
+pub(crate) fn encounter_accessed_ice(state: &mut GameState, registry: &CardRegistry, card: &crate::dsl::CardId) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
+    if run.phase != RunPhase::AccessingCard || !crate::rules::run::is_being_accessed(state, card) {
+        return Ok(Vec::new());
+    }
+    let server = run.server;
+    let install_id = state.allocate_install_id();
+    let standing_in = InstalledCard { install_id, card: card.clone(), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() };
+    let Some(fresh) = build_run_ice(&standing_in, registry)? else { return Ok(Vec::new()) };
+    encounter_away(state, registry, fresh, Some(install_id))
+}
+
+fn encounter_away(state: &mut GameState, registry: &CardRegistry, fresh: RunIce, uninstalled: Option<crate::rules::state::InstallId>) -> Result<Vec<GameEvent>, RulesError> {
+    let install = fresh.install_id;
     let may_gain = crate::rules::active::may_have_granted(state, registry, install);
     let own = continuous::own_subroutines(state, registry, install);
     let run = state.active_run.as_mut().expect("checked by force_encounter");
@@ -509,6 +536,7 @@ fn force_encounter_elsewhere(state: &mut GameState, registry: &CardRegistry, ins
         ice_bypassed: run.ice_bypassed,
         fully_broken: run.fully_broken,
         this_encounter: std::mem::take(&mut run.this_encounter),
+        uninstalled_ice: std::mem::replace(&mut run.uninstalled_ice, uninstalled),
     });
     run.position = 0;
     run.phase = RunPhase::EncounterIce;
@@ -559,6 +587,7 @@ fn resume_suspended(run: &mut RunState) -> bool {
     run.ice_bypassed = suspended.ice_bypassed;
     run.fully_broken = suspended.fully_broken;
     run.this_encounter = suspended.this_encounter;
+    run.uninstalled_ice = suspended.uninstalled_ice;
     true
 }
 
@@ -788,7 +817,9 @@ pub(crate) fn reconcile_ice(
     // `suspended` and is brought back into step after it. The encounter
     // ends here if its ice has left the table or been derezzed.
     if !run.suspended.is_empty() {
-        let standing = run.ice.first().is_some_and(|ice| state.corp.installed.iter().any(|c| c.install_id == ice.install_id && c.rezzed));
+        let standing = run.ice.first().is_some_and(|ice| {
+            Some(ice.install_id) == run.uninstalled_ice || state.corp.installed.iter().any(|c| c.install_id == ice.install_id && c.rezzed)
+        });
         if standing {
             return Ok(None);
         }

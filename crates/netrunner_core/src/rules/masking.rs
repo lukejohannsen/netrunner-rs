@@ -462,6 +462,9 @@ pub struct PublicSuspendedEncounter {
     pub forced_encounter: bool,
     pub fully_broken: bool,
     pub this_encounter: crate::rules::run::EncounterTally,
+    /// `SuspendedEncounter::uninstalled_ice`: public, as the run's is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uninstalled_ice: Option<crate::rules::state::InstallId>,
 }
 
 /// `run::RunState` as seen by a particular viewer. Drops
@@ -492,6 +495,10 @@ pub struct PublicRunState {
     /// Runner's position interrupted, innermost last.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub suspended: Vec<PublicSuspendedEncounter>,
+    /// `RunState::uninstalled_ice`: public, as the accessed card it
+    /// stands for is to both players.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uninstalled_ice: Option<crate::rules::state::InstallId>,
     /// `RunState::event_counters`: public, as counters on a card are.
     #[serde(default)]
     pub event_counters: u32,
@@ -1533,8 +1540,10 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
                 forced_encounter: suspended.forced_encounter,
                 fully_broken: suspended.fully_broken,
                 this_encounter: suspended.this_encounter.clone(),
+                uninstalled_ice: suspended.uninstalled_ice,
             })
             .collect(),
+        uninstalled_ice: run.uninstalled_ice,
         event_counters: run.event_counters,
         ice_approached: run.ice_approached,
         gained_for_the_run: run.gained_for_the_run.clone(),

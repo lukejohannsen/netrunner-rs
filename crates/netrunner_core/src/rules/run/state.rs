@@ -536,6 +536,10 @@ pub struct SuspendedEncounter {
     pub ice_bypassed: bool,
     pub fully_broken: bool,
     pub this_encounter: EncounterTally,
+    /// What `RunState::uninstalled_ice` was in the encounter this one
+    /// interrupted, put back with the rest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uninstalled_ice: Option<InstallId>,
 }
 
 /// One `Effect::SetRunEndedEffect`: what resolves when the run ends, and
@@ -614,6 +618,18 @@ pub struct RunState {
     /// players saw what forced each.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub suspended: Vec<SuspendedEncounter>,
+    /// The forced encounter under way is with a piece of ice that is not
+    /// installed — Chrysalis's "When the Runner accesses this ice anywhere
+    /// except in Archives, they encounter it" (CR 9.1.8h: its subroutines
+    /// are active during that encounter). The handle is minted for the
+    /// encounter alone (`run::encounter_accessed_ice`), since the run's ice
+    /// is keyed by install and the card is in HQ or R&D, on no server; no
+    /// install on the table ever has it, so this is what keeps the
+    /// encounter standing where an installed one is asked whether its ice
+    /// is still installed and rezzed (`reconcile_ice`). Public: both
+    /// players see the card being accessed and encountered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uninstalled_ice: Option<InstallId>,
     /// Counters on the event that began this run, while it is in the play
     /// area (CR 8.6.5) — Spree's "place 3 power counters on this event",
     /// spent by its "hosted power counter:" ability. Kept on the run
@@ -1000,6 +1016,7 @@ impl Default for RunState {
             breach_only: false,
             forced_encounter: false,
             suspended: Vec::new(),
+            uninstalled_ice: None,
             event_counters: 0,
             ice_approached: 0,
             gained_for_the_run: Vec::new(),

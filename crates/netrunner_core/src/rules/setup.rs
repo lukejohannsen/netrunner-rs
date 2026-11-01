@@ -110,7 +110,7 @@ impl GameState {
         // until it is made, and the game waits on that choice before either
         // mulligan, since a parked decision is answered before the phase.
         for (side, identity) in [(Side::Corp, &corp_deck.identity), (Side::Runner, &runner_deck.identity)] {
-            let draw = Effect::DrawCards(side, OPENING_HAND_SIZE);
+            let draw = Effect::DrawCards(side, starting_hand_size(registry, Some(identity)));
             let (effect, mut ctx) = match registry.get(identity).and_then(|definition| definition.before_starting_hand.clone()) {
                 Some(setup) => (Effect::Sequence(vec![setup, draw]), ability::ResolutionContext::for_card(Some(identity))),
                 None => (draw, ability::ResolutionContext::default()),
@@ -233,6 +233,19 @@ pub(crate) fn keep_hand(state: &GameState, registry: &CardRegistry) -> Result<(G
     Ok((next, events))
 }
 
+/// The starting hand `identity`'s player draws: the rules' 5 (CR 1.6.6)
+/// unless the identity prints its own (Andromeda's 9).
+fn starting_hand_size(registry: &CardRegistry, identity: Option<&crate::dsl::CardId>) -> u32 {
+    identity.and_then(|identity| registry.get(identity)).and_then(|definition| definition.starting_hand_size).unwrap_or(OPENING_HAND_SIZE)
+}
+
+fn identity_of(state: &GameState, side: Side) -> Option<&crate::dsl::CardId> {
+    match side {
+        Side::Corp => state.corp.identity.as_ref(),
+        Side::Runner => state.runner.identity.as_ref(),
+    }
+}
+
 /// Resolves `PlayerAction::TakeMulligan`, per its doc comment: returns the
 /// current hand to the deck, reshuffles, redraws a fresh
 /// `OPENING_HAND_SIZE`-card hand, then advances exactly like `keep_hand`.
@@ -246,9 +259,10 @@ pub(crate) fn take_mulligan(
 
     return_hand_to_deck(&mut next, side);
     shuffle_deck(&mut next, side);
+    let size = starting_hand_size(registry, identity_of(&next, side));
     events.extend(ability::evaluate_effect(
         &mut next,
-        &Effect::DrawCards(side, OPENING_HAND_SIZE),
+        &Effect::DrawCards(side, size),
         &mut ability::ResolutionContext::default(),
         registry,
     )?);
