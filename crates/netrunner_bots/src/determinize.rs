@@ -805,6 +805,7 @@ fn determinize_run(
             ice_bypassed: false,
             fully_broken: suspended.fully_broken,
             this_encounter: suspended.this_encounter.clone(),
+            uninstalled_ice: suspended.uninstalled_ice,
         })
         .collect();
 
@@ -854,6 +855,8 @@ fn determinize_run(
         // Public, and where a forced encounter away from the Runner's
         // position returns to (Konjin, Ganked!).
         suspended,
+        // Public: the accessed ice the encounter is with (Chrysalis).
+        uninstalled_ice: run.uninstalled_ice,
         event_counters: run.event_counters,
         ice_approached: run.ice_approached,
         gained_for_the_run: run.gained_for_the_run.clone(),

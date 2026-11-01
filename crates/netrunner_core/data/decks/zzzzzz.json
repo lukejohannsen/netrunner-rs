@@ -3,7 +3,7 @@
   "name": "Zzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: SanSan Stage 18's deck for Haarpsichord Studios: Entertainment Unleashed, on Zzzzz's list, so the sweeps meet a Corp whose Runner cannot steal more than one agenda each turn. Eternal-legal only. It trades a Weir and a Macrophage, which Paid Content and Zythum keep, for two Student Loans. SanSan Stage 23: Old Hollywood Grid",
+  "description": "Not a published list: SanSan Stage 18's deck for Haarpsichord Studios: Entertainment Unleashed, on Zzzzz's list, so the sweeps meet a Corp whose Runner cannot steal more than one agenda each turn. Eternal-legal only. It trades a Weir and a Macrophage, which Paid Content and Zythum keep, for two Student Loans. SanSan Stage 23: Old Hollywood Grid One CPC Generator became an Archangel, ice the Corp may pay to have the Runner encounter when they access it (Engine words, Stage 5).",
   "style": [
     "fast-advance"
   ],
@@ -20,10 +20,6 @@
     {
       "card": "astroscript_pilot_program",
       "count": 2
-    },
-    {
-      "card": "cpc_generator",
-      "count": 1
     },
     {
       "card": "observe_and_destroy",
@@ -159,6 +155,10 @@
     },
     {
       "card": "old_hollywood_grid",
+      "count": 1
+    },
+    {
+      "card": "archangel",
       "count": 1
     }
   ]

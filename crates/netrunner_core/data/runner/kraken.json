@@ -1,0 +1,46 @@
+{
+  "id": "kraken",
+  "title": "Kraken",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "play_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesThisTurn": "OnAgendaStolen"
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseServer": {}
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                "Ice",
+                "InChosenServer"
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnArchives"
+          }
+        }
+      ],
+      "text": "Choose a server. The Corp trashes 1 piece of ice protecting that server."
+    }
+  ],
+  "built_from": 2090,
+  "is_playable": true
+}

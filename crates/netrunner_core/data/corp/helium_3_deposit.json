@@ -1,0 +1,46 @@
+{
+  "id": "helium_3_deposit",
+  "title": "Helium-3 Deposit",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "HostsCounters": "Power"
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "ChooseNumber": {
+                "chooser": "Corp",
+                "min": 0,
+                "max": {
+                  "Fixed": 2
+                },
+                "then": {
+                  "AddCounters": "ChosenNumber"
+                },
+                "text": "place up to 2 power counters on a card with at least 1 power counter on it"
+              }
+            }
+          }
+        }
+      ],
+      "text": "When you score Helium-3 Deposit, place up to 2 power counters on a card with at least 1 power counter on it."
+    }
+  ],
+  "built_from": 6101,
+  "is_playable": true
+}

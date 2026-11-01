@@ -3240,10 +3240,13 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
-        Effect::ForceEncounter => {
-            let Some(install) = ctx.acting_install else { return Ok(Vec::new()) };
-            crate::rules::run::force_encounter(state, registry, install)
-        }
+        Effect::ForceEncounter => match (ctx.acting_install, acting_card) {
+            (Some(install), _) => crate::rules::run::force_encounter(state, registry, install),
+            // An accessed card in HQ or R&D has no install: Chrysalis's
+            // "they encounter it" (`run::encounter_accessed_ice`).
+            (None, Some(card)) => crate::rules::run::encounter_accessed_ice(state, registry, &card.clone()),
+            (None, None) => Ok(Vec::new()),
+        },
 
         Effect::MoveThisIceInnermostAndEncounter => {
             let Some(install) = ctx.acting_install else { return Ok(Vec::new()) };

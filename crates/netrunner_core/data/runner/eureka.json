@@ -1,0 +1,78 @@
+{
+  "id": "eureka",
+  "title": "Eureka!",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "TopOfOwnStack",
+            "filter": "Any",
+            "min": 1,
+            "max": 1,
+            "reveal": true,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "ActingCardMatches": {
+                    "InstallableRunnerCardWithDiscount": {
+                      "Credits": 10
+                    }
+                  }
+                },
+                "effect": {
+                  "PresentChoice": {
+                    "chooser": "Runner",
+                    "options": [
+                      {
+                        "InstallRunnerCardFromZone": {
+                          "from": "OwnStack",
+                          "discount": {
+                            "Credits": 10
+                          }
+                        }
+                      },
+                      {
+                        "TrashCard": {
+                          "TopOfStack": {
+                            "side": "Runner",
+                            "zone": "Stack"
+                          }
+                        }
+                      }
+                    ],
+                    "texts": [
+                      "You may install that card, lowering the install cost by 10[credit], if able",
+                      "otherwise, trash it"
+                    ]
+                  }
+                },
+                "otherwise": {
+                  "TrashCard": {
+                    "TopOfStack": {
+                      "side": "Runner",
+                      "zone": "Stack"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Reveal the top card of your stack. You may install that card, lowering the install cost by 10[credit], if able; otherwise, trash it."
+    }
+  ],
+  "built_from": 4027,
+  "is_playable": true
+}

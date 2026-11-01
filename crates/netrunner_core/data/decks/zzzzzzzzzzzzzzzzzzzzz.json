@@ -1,0 +1,157 @@
+{
+  "id": "zzzzzzzzzzzzzzzzzzzzz",
+  "name": "Zzzzzzzzzzzzzzzzzzzzz",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Andromeda: Dispossessed Ristie, who draws a starting hand of nine. Zyrian's list, its identity swapped. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words, Stage 5. One Fisk Investment Seminar became a Kraken, which has the Corp trash ice after a steal.",
+  "style": [
+    "pressure"
+  ],
+  "identity": "andromeda_dispossessed_ristie",
+  "cards": [
+    {
+      "card": "shibboleth",
+      "count": 2
+    },
+    {
+      "card": "femme_fatale",
+      "count": 2
+    },
+    {
+      "card": "afterimage",
+      "count": 2
+    },
+    {
+      "card": "aurora",
+      "count": 2
+    },
+    {
+      "card": "ninja",
+      "count": 2
+    },
+    {
+      "card": "amina",
+      "count": 2
+    },
+    {
+      "card": "slipstream",
+      "count": 1
+    },
+    {
+      "card": "jackpot",
+      "count": 2
+    },
+    {
+      "card": "hernando_cortez",
+      "count": 1
+    },
+    {
+      "card": "rosetta_2_0",
+      "count": 2
+    },
+    {
+      "card": "aeneas_informant",
+      "count": 2
+    },
+    {
+      "card": "aumakua",
+      "count": 2
+    },
+    {
+      "card": "keros_mcintyre",
+      "count": 1
+    },
+    {
+      "card": "drive_by",
+      "count": 2
+    },
+    {
+      "card": "fisk_investment_seminar",
+      "count": 1
+    },
+    {
+      "card": "forger",
+      "count": 1
+    },
+    {
+      "card": "crowbar",
+      "count": 1
+    },
+    {
+      "card": "spike",
+      "count": 1
+    },
+    {
+      "card": "paparazzi",
+      "count": 1
+    },
+    {
+      "card": "dorm_computer",
+      "count": 1
+    },
+    {
+      "card": "cerberus_rex_h2",
+      "count": 1
+    },
+    {
+      "card": "switchblade",
+      "count": 1
+    },
+    {
+      "card": "public_terminal",
+      "count": 1
+    },
+    {
+      "card": "tri_maf_contact",
+      "count": 1
+    },
+    {
+      "card": "zona_sul_shipping",
+      "count": 1
+    },
+    {
+      "card": "logos",
+      "count": 1
+    },
+    {
+      "card": "box_e",
+      "count": 1
+    },
+    {
+      "card": "calling_in_favors",
+      "count": 1
+    },
+    {
+      "card": "express_delivery",
+      "count": 1
+    },
+    {
+      "card": "savoir_faire",
+      "count": 2
+    },
+    {
+      "card": "hostage",
+      "count": 2
+    },
+    {
+      "card": "mass_install",
+      "count": 2
+    },
+    {
+      "card": "same_old_thing",
+      "count": 1
+    },
+    {
+      "card": "john_masanori",
+      "count": 1
+    },
+    {
+      "card": "oracle_may",
+      "count": 1
+    },
+    {
+      "card": "kraken",
+      "count": 1
+    }
+  ]
+}

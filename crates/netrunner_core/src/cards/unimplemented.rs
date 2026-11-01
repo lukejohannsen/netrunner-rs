@@ -133,7 +133,6 @@ pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *23 Seconds* (`23_seconds`): tranche F5 of the FFG plan.
 pub(crate) const S23S_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("chrysalis", "Chrysalis"),
 ];
 
 /// *Blood Money* (`blood_money`): tranche F5 of the FFG plan.
@@ -154,14 +153,12 @@ pub(crate) const ML_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("on_the_lam", "On the Lam"),
     ("baba_yaga", "Baba Yaga"),
     ("mind_game", "Mind Game"),
-    ("sapper", "Sapper"),
 ];
 
 /// *Quorum* (`quorum`): tranche F5 of the FFG plan.
 pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("encore", "Encore"),
     ("net_quarantine", "Net Quarantine"),
-    ("herald", "Herald"),
 ];
 
 /// *Terminal Directive Cards* (`terminal_directive_cards`): tranche F5 of the FFG
@@ -221,7 +218,6 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sync_everything_everywhere", "SYNC: Everything, Everywhere"),
     ("rebranding_team", "Rebranding Team"),
-    ("archangel", "Archangel"),
     ("tl_dr", "TL;DR"),
     ("24_7_news_cycle", "24/7 News Cycle"),
     ("ad_blitz", "Ad Blitz"),
@@ -360,7 +356,6 @@ pub(crate) const ATR_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Source* (`the_source`): tranche F8 of the FFG plan.
 pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("helium_3_deposit", "Helium-3 Deposit"),
     ("it_department", "IT Department"),
     ("industrial_genomics_growing_solutions", "Industrial Genomics: Growing Solutions"),
     ("self_destruct", "Self-destruct"),
@@ -423,7 +418,6 @@ pub(crate) const ST_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("scheherazade", "Scheherazade"),
     ("recon", "Recon"),
     ("copycat", "Copycat"),
-    ("eureka", "Eureka!"),
 ];
 
 /// *Mala Tempora* (`mala_tempora`): tranche F10 of the FFG plan.
@@ -491,9 +485,7 @@ pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Humanity's Shadow* (`humanitys_shadow`): tranche F11 of the FFG plan.
 pub(crate) const HS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("surge", "Surge"),
-    ("andromeda_dispossessed_ristie", "Andromeda: Dispossessed Ristie"),
     ("replicator", "Replicator"),
-    ("kraken", "Kraken"),
     ("data_hound", "Data Hound"),
 ];
 
