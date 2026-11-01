@@ -90,7 +90,12 @@ pub enum Class {
     /// turn a **successful** run on R&D ends" counts only those. Public:
     /// both players saw the run succeed or not. The server alone, for a
     /// filter that does not ask, is both columns (`Occurrences::meant_by`).
-    RunEnded { server: ServerClass, successful: bool },
+    ///
+    /// `unsuccessful` is its own column, because a run can be neither (CR
+    /// 6.8.4a): John Masanori's "the first time you make an
+    /// **unsuccessful** run each turn" does not count a run Flagship kept
+    /// from being declared successful.
+    RunEnded { server: ServerClass, successful: bool, unsuccessful: bool },
     /// A pass on an accessed card (`Trigger::OnAccessPassed`), counted by
     /// whether the card was in Archives and not by the card — which, out
     /// of HQ or R&D, only the Runner saw. Maw's "the first time each turn
@@ -288,6 +293,23 @@ impl ServerClass {
     }
 }
 
+/// How a run ended, for its column (`Class::RunEnded`): declared
+/// successful, declared unsuccessful (CR 6.8.4), or neither (6.8.4a).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunOutcome {
+    Neither,
+    Successful,
+    Unsuccessful,
+}
+
+impl RunOutcome {
+    const ALL: [RunOutcome; 3] = [RunOutcome::Neither, RunOutcome::Successful, RunOutcome::Unsuccessful];
+
+    fn of(self, server: ServerClass) -> Class {
+        Class::RunEnded { server, successful: self == RunOutcome::Successful, unsuccessful: self == RunOutcome::Unsuccessful }
+    }
+}
+
 impl Class {
     fn column(self) -> usize {
         match self {
@@ -295,7 +317,7 @@ impl Class {
             Class::Server(server) => server as usize,
             Class::Damage(kind) => kind as usize,
             Class::Ice(facts) => facts.bits(),
-            Class::RunEnded { server, successful } => server as usize + if successful { ServerClass::COUNT } else { 0 },
+            Class::RunEnded { server, successful, unsuccessful } => server as usize + ServerClass::COUNT * (usize::from(successful) + 2 * usize::from(unsuccessful)),
             Class::Accessed { in_archives } => in_archives as usize,
             Class::RunStarted { server, guarded } => server as usize + if guarded { ServerClass::COUNT } else { 0 },
             Class::Nothing => 0,
@@ -330,6 +352,10 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // `mask_event_for_player` strikes the advanced card's identity, and
         // the Corp is not shown what is accessed out of R&D.
         Trigger::OnAdvance | Trigger::OnAccessed => true,
+        // A placement strikes the card as an advance does.
+        Trigger::OnAdvancementCounterPlaced => true,
+        // About no card: a credit pool, and a trace, are public.
+        Trigger::OnCreditsLost | Trigger::OnTraceInitiated => false,
         // Played, rezzed, encountered, scored, stolen, forfeited, trashed
         // faceup by the Runner, or a faceup card's ability: on the table.
         Trigger::OnPlay
@@ -476,7 +502,7 @@ fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
         About::Server(server) => {
             let server = ServerClass::of(*server);
             match (moment.successful, moment.guarded) {
-                (Some(successful), _) => Class::RunEnded { server, successful },
+                (Some(successful), _) => Class::RunEnded { server, successful, unsuccessful: moment.unsuccessful == Some(true) },
                 (None, Some(guarded)) => Class::RunStarted { server, guarded },
                 (None, None) => Class::Server(server),
             }
@@ -572,7 +598,7 @@ impl Occurrences {
         // server it names is both of its columns.
         let server_bit = |server: ServerClass| {
             if trigger == Trigger::OnRunEnded {
-                bit(Class::RunEnded { server, successful: false }) | bit(Class::RunEnded { server, successful: true })
+                RunOutcome::ALL.iter().map(|outcome| bit(outcome.of(server))).fold(0, |mask, column| mask | column)
             } else if trigger == Trigger::OnRunStart {
                 bit(Class::RunStarted { server, guarded: false }) | bit(Class::RunStarted { server, guarded: true })
             } else {
@@ -601,9 +627,18 @@ impl Occurrences {
             Some(EventFilter::Successful) if trigger == Trigger::OnRunEnded => Some(
                 [ServerClass::Archives, ServerClass::RnD, ServerClass::Hq, ServerClass::Remote]
                     .into_iter()
-                    .map(|server| bit(Class::RunEnded { server, successful: true }))
+                    .map(|server| bit(RunOutcome::Successful.of(server)))
                     .fold(0, |mask, column| mask | column),
             ),
+            Some(EventFilter::Unsuccessful) if trigger == Trigger::OnRunEnded => Some(
+                [ServerClass::Archives, ServerClass::RnD, ServerClass::Hq, ServerClass::Remote]
+                    .into_iter()
+                    .map(|server| bit(RunOutcome::Unsuccessful.of(server)))
+                    .fold(0, |mask, column| mask | column),
+            ),
+            Some(EventFilter::Unsuccessful) => {
+                return Err(format!("only a run's end says whether the run was unsuccessful, not a {trigger:?}"));
+            }
             Some(EventFilter::NotInArchives) if trigger == Trigger::OnAccessPassed => Some(bit(Class::Accessed { in_archives: false })),
             Some(EventFilter::ProtectedByTwoOrMoreIce) if trigger == Trigger::OnRunStart => Some(
                 [ServerClass::Archives, ServerClass::RnD, ServerClass::Hq, ServerClass::Remote]
@@ -705,18 +740,19 @@ impl Occurrences {
     }
 }
 
-/// What `definition`'s "first time each turn" entries count, together: one
-/// printed ability in as many entries as it has triggers. An entry
+/// What `definition`'s "first time each turn" entries printing `text`
+/// count, together: one printed ability in as many entries as it has
+/// triggers. An entry
 /// `Occurrences::meant_by` refuses counts nothing — `validate` has already
 /// refused the card file. Read on `state`: "on your mark" is the turn's
 /// mark (CR 10.11.1a), and no server at all while there is none, so nothing
 /// counted is a first time of it.
-pub(crate) fn first_time_on(definition: &CardDefinition, state: &crate::rules::GameState) -> Vec<Occurrences> {
+pub(crate) fn first_time_on(definition: &CardDefinition, text: &Option<String>, state: &crate::rules::GameState) -> Vec<Occurrences> {
     let mark = crate::rules::lingering::mark(state);
     definition
         .triggers
         .iter()
-        .filter(|triggered| triggered.first_each_turn)
+        .filter(|triggered| triggered.first_each_turn && &triggered.text == text)
         .filter_map(|triggered| {
             let when = triggered.when.as_ref().map(|filter| filter.with_mark(mark).with_chosen_card_type(crate::rules::lingering::chosen_card_type_of(state, &definition.id, None)));
             Occurrences::meant_by(triggered.trigger, when.as_ref(), definition.side).ok()
@@ -1104,7 +1140,7 @@ impl TurnLog {
     /// outside the engine asks, so it does not have to know which.
     pub fn times_on(&self, trigger: Trigger, server: ServerClass) -> u32 {
         match trigger {
-            Trigger::OnRunEnded => [false, true].into_iter().map(|successful| self.times_about(trigger, Class::RunEnded { server, successful })).sum(),
+            Trigger::OnRunEnded => RunOutcome::ALL.iter().map(|outcome| self.times_about(trigger, outcome.of(server))).sum(),
             Trigger::OnRunStart => [false, true].into_iter().map(|guarded| self.times_about(trigger, Class::RunStarted { server, guarded })).sum(),
             _ => self.times_about(trigger, Class::Server(server)),
         }
@@ -1396,6 +1432,26 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
                 installed.server == server && installed.slot == crate::rules::state::InstallSlot::Root && installed.install_id != advanced && counts_here(&installed.card)
             }) {
                 installed.this_turn.bump(turn, Trigger::OnAdvance);
+            }
+        }
+        // And on every card in the root of the server a counter was placed
+        // on a card in the root of, that counts the placements there —
+        // NeoTokyo Grid's first time (`EventFilter::InRootOfThisServer`).
+        // Only those copies, as for Oberth Protocol's advances.
+        if moment.trigger == Trigger::OnAdvancementCounterPlaced
+            && let About::Card { install: Some(placed), .. } = moment.about
+            && let Some(server) = state.find_corp_install(placed).filter(|installed| installed.slot == crate::rules::state::InstallSlot::Root).map(|installed| installed.server)
+        {
+            let turn = state.turn;
+            let counts_here = |card: &crate::dsl::CardId| {
+                registry.get(card).is_some_and(|definition| {
+                    definition.triggers.iter().any(|triggered| {
+                        triggered.first_each_turn && triggered.trigger == Trigger::OnAdvancementCounterPlaced && triggered.when == Some(EventFilter::InRootOfThisServer)
+                    })
+                })
+            };
+            for installed in state.corp.installed.iter_mut().filter(|installed| installed.server == server && installed.slot == crate::rules::state::InstallSlot::Root && counts_here(&installed.card)) {
+                installed.this_turn.bump(turn, Trigger::OnAdvancementCounterPlaced);
             }
         }
         // And on the rig install it is about, for what a rig copy is

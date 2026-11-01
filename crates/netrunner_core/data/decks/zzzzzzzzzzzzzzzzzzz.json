@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Weyland Consortium: Because We Built It, whose recurring credit pays only to advance ice. Yield Curve's list, its identity swapped: its Hortum and Tyrant are ice the credit can advance. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words, Stage 2.",
+  "description": "Not a published list: built so the sweeps reach Weyland Consortium: Because We Built It, whose recurring credit pays only to advance ice. Yield Curve's list, its identity swapped: its Hortum and Tyrant are ice the credit can advance. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words, Stage 2. One Research Station became a Simone Diego, whose credits advance cards in her server (Engine words, Stage 3).",
   "style": [
     "traps"
   ],
@@ -62,10 +62,6 @@
       "count": 2
     },
     {
-      "card": "research_station",
-      "count": 1
-    },
-    {
       "card": "drudge_work",
       "count": 2
     },
@@ -112,6 +108,10 @@
     {
       "card": "tyrant",
       "count": 2
+    },
+    {
+      "card": "simone_diego",
+      "count": 1
     }
   ]
 }

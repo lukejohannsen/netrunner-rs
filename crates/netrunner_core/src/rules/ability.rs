@@ -2273,8 +2273,11 @@ pub fn evaluate_effect(
             let advancement_tokens = installed.advancement_tokens;
             let install = installed.install_id;
             // Not `CardAdvanced`: placing a counter is not advancing (CR
-            // 1.18.2), so this must not reach `Trigger::OnAdvance`.
-            Ok(vec![GameEvent::AdvancementCountersPlaced { install, card: Some(card_id.clone()), advancement_tokens }])
+            // 1.18.2), so this must not reach `Trigger::OnAdvance` — but it
+            // is a placement, which NeoTokyo Grid hears.
+            let mut events = Vec::new();
+            dispatcher::emit(state, registry, &mut events, GameEvent::AdvancementCountersPlaced { install, card: Some(card_id.clone()), advancement_tokens })?;
+            Ok(events)
         }
 
         Effect::RemoveAdvancementCounters(amount) => {
@@ -2301,7 +2304,9 @@ pub fn evaluate_effect(
             if moved > 0 {
                 let installed = acting_corp_install_mut(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
                 installed.advancement_tokens = installed.advancement_tokens.saturating_add(moved);
-                events.push(GameEvent::AdvancementCountersPlaced { install: here, card: Some(card_id.clone()), advancement_tokens: installed.advancement_tokens });
+                let advancement_tokens = installed.advancement_tokens;
+                // A move places them here (CR 1.9.2b).
+                dispatcher::emit(state, registry, &mut events, GameEvent::AdvancementCountersPlaced { install: here, card: Some(card_id.clone()), advancement_tokens })?;
             }
             Ok(events)
         }
@@ -2440,7 +2445,7 @@ pub fn evaluate_effect(
             if let Some(events) = prevention::trace(state, registry, base, effect, ctx)? {
                 return Ok(events);
             }
-            Ok(start_trace(state, base, on_success, on_failure.as_deref(), acting_card.cloned(), ctx.acting_install))
+            start_trace(state, registry, base, on_success, on_failure.as_deref(), acting_card.cloned(), ctx.acting_install)
         }
 
         Effect::AccessFewer { count } => {
@@ -2499,7 +2504,10 @@ pub fn evaluate_effect(
             let lost = if locked { 0 } else { (*amount).min(before) };
             state.resources_mut(*side).credits = Credits(before - lost);
             ctx.credits_lost = lost;
-            let mut events = vec![GameEvent::CreditsLost { side: *side, amount: lost }];
+            // Dispatched where it happens: Ixodidae's "whenever the Corp
+            // loses at least 1[credit]".
+            let mut events = Vec::new();
+            dispatcher::emit(state, registry, &mut events, GameEvent::CreditsLost { side: *side, amount: lost })?;
             // The card whose text it is, as for a gain (Gold Farmer's "they
             // lose 1[credit]", which GameNET hears).
             if let Some(took) = took_credits(&events, *side, ctx.prompting_card.or(acting_card)) {
@@ -3108,7 +3116,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, innermost, only_server } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, this_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, innermost, only_server } => {
             // "Ignoring credit costs": a discount of every credit, which a
             // price never goes below 0 for.
             let discount = &if *ignore_credit_costs { u32::MAX } else { *discount };
@@ -3153,6 +3161,10 @@ pub fn evaluate_effect(
             if *another_server {
                 let own = acting_corp_position(state, ctx).map(|position| state.corp.installed[position].server);
                 allowed.retain(|server| Some(*server) != own);
+            }
+            if *this_server {
+                let own = acting_corp_position(state, ctx).map(|position| state.corp.installed[position].server);
+                allowed.retain(|server| Some(*server) == own);
             }
             // Not in that root, while it is a server: a remote nothing is
             // left in has ceased to exist (CR 4.6.8e) and its number may be
@@ -5421,7 +5433,14 @@ fn carried_out_by(registry: &CardRegistry, ctx: &ResolutionContext<'_>) -> Optio
 /// bids are made. What `Effect::Trace` does once nobody has lowered its
 /// base strength, and what the asking does when it is over
 /// (`prevention::finish`), which must not ask again.
-pub(crate) fn start_trace(state: &mut GameState, base: u32, on_success: &Effect, on_failure: Option<&Effect>, card: Option<CardId>, install: Option<InstallId>) -> Vec<GameEvent> {
+/// The trace is initiated (CR 10.8.6a), and dispatched as it is: "when a
+/// trace is initiated" abilities (Power Tap) meet their condition before
+/// either player bids.
+pub(crate) fn start_trace(state: &mut GameState, registry: &CardRegistry, base: u32, on_success: &Effect, on_failure: Option<&Effect>, card: Option<CardId>, install: Option<InstallId>) -> Result<Vec<GameEvent>, RulesError> {
+    // Heard before the trace parks, which would hold every trigger until
+    // the bids are in (`GameState::resolution_halted`).
+    let mut events = Vec::new();
+    dispatcher::emit(state, registry, &mut events, GameEvent::TraceInitiated { base, initiating_card: card.clone() })?;
     state.active_trace = Some(TraceState {
         initiating_card: card.clone(),
         initiating_install: install,
@@ -5431,7 +5450,7 @@ pub(crate) fn start_trace(state: &mut GameState, base: u32, on_success: &Effect,
         effect_on_failure: on_failure.cloned(),
         resume: TraceResume::None,
     });
-    vec![GameEvent::TraceInitiated { base, initiating_card: card }]
+    Ok(events)
 }
 
 /// Ends the run in progress as a card's text does, if one is: the

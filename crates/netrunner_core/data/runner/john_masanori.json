@@ -1,0 +1,40 @@
+{
+  "id": "john_masanori",
+  "title": "John Masanori",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "The first time you make a successful run each turn, draw 1 card."
+    },
+    {
+      "trigger": "OnRunEnded",
+      "subject": "Any",
+      "when": "Unsuccessful",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "The first time you make an unsuccessful run each turn, take 1 tag."
+    }
+  ],
+  "built_from": 4009,
+  "is_playable": true
+}

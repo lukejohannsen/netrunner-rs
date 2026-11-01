@@ -325,9 +325,10 @@ pub struct TriggeredEffect {
     /// asked at resolution, after a nested event may have counted a
     /// second, and a card file that writes a 1 can write a 0.
     ///
-    /// A card's `first_each_turn` entries are one printed ability in as
-    /// many entries as it has triggers ("an agenda is scored **or**
-    /// stolen"), and share one count.
+    /// A card's `first_each_turn` entries that print one `text` are one
+    /// printed ability in as many entries as it has triggers ("an agenda is
+    /// scored **or** stolen"), and share one count; entries printing two
+    /// sentences are two abilities, each with its own (John Masanori).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub first_each_turn: bool,
     /// "The **first time** you break a subroutine **during each
@@ -1269,6 +1270,13 @@ pub enum PaysFor {
     /// `engine::advance_card`. Composition didn't work: an advance was
     /// `Purpose::Other`, which no word covers.
     Advancing(crate::dsl::CardFilter),
+    /// The basic action to advance a card in the root of or protecting the
+    /// server this card is installed in — Simone Diego's "You can spend
+    /// hosted credits to take the basic action to advance cards in the root
+    /// of or protecting this server". Composition didn't work: `Advancing`'s
+    /// filter reads the card, never where it sits, as
+    /// `RezzingIceProtectingThisServer` is to `Rezzing`.
+    AdvancingInThisServer,
 }
 
 /// Semantic checks `serde`'s structural `Deserialize` can't express on its
@@ -1550,7 +1558,7 @@ impl CardDefinition {
             EventFilter::InRoot => triggered.trigger == Trigger::OnInstall,
             // Only a Corp card is in a root, and only the Corp installs
             // into one.
-            EventFilter::InRootOfThisServer => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
+            EventFilter::InRootOfThisServer => matches!(triggered.trigger, Trigger::OnInstall | Trigger::OnAdvancementCounterPlaced) && self.side == crate::rules::Side::Corp,
             // Only an advance is counted on the root's copies, and only a
             // Corp card is in a server.
             EventFilter::InOrProtectingThisServer => triggered.trigger == Trigger::OnAdvance && self.side == crate::rules::Side::Corp,
@@ -1566,6 +1574,7 @@ impl CardDefinition {
             EventFilter::TrashedRezzed => triggered.trigger == Trigger::OnCardTrashed,
             // Only a run's end says whether the run was successful.
             EventFilter::Successful => triggered.trigger == Trigger::OnRunEnded,
+            EventFilter::Unsuccessful => triggered.trigger == Trigger::OnRunEnded,
             // Only a run's end says how it ended.
             EventFilter::JackedOut => triggered.trigger == Trigger::OnRunEnded,
             // Only a pass on an access says where the card was accessed.
@@ -1741,8 +1750,8 @@ impl CardDefinition {
                     return Err(self.first_time_misfit(format!("a root's copies count only the advances in its server; a {:?} is not counted", triggered.trigger)));
                 }
             } else if triggered.when == Some(EventFilter::InRootOfThisServer) {
-                if triggered.trigger != Trigger::OnInstall {
-                    return Err(self.first_time_misfit(format!("a root's copies count only the installs into it; a {:?} is not counted", triggered.trigger)));
+                if !matches!(triggered.trigger, Trigger::OnInstall | Trigger::OnAdvancementCounterPlaced) {
+                    return Err(self.first_time_misfit(format!("a root's copies count only the installs into it and the advancement counters placed in it; a {:?} is not counted", triggered.trigger)));
                 }
             } else if triggered.when == Some(EventFilter::ByThis) {
                 if !crate::rules::turn_log::CopyTurn::counts_by(triggered.trigger) {

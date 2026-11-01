@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Cerebral Imaging: Infinite Frontiers, whose maximum hand size is its credit pool. Zzzz's list, its identity swapped. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 4.",
+  "description": "Not a published list: built so the sweeps reach Cerebral Imaging: Infinite Frontiers, whose maximum hand size is its credit pool. Zzzz's list, its identity swapped. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 4. One Turing became a Minelayer, whose subroutine installs ice protecting its own server (Engine words, Stage 3).",
   "style": [
     "glacier"
   ],
@@ -59,10 +59,6 @@
     },
     {
       "card": "next_gold",
-      "count": 1
-    },
-    {
-      "card": "turing",
       "count": 1
     },
     {
@@ -183,6 +179,10 @@
     },
     {
       "card": "mandatory_upgrades",
+      "count": 1
+    },
+    {
+      "card": "minelayer",
       "count": 1
     }
   ]

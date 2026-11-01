@@ -53235,3 +53235,155 @@ mod engine_words_stage_2 {
         assert!(card.validate().is_err());
     }
 }
+
+mod engine_words_stage_3 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn corp_card(card: &str, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    /// Steps a run on (passing each window, continuing otherwise) until
+    /// `until` holds of the state.
+    fn run_until(mut state: GameState, registry: &CardRegistry, until: impl Fn(&GameState) -> bool) -> GameState {
+        for _ in 0..24 {
+            if until(&state) {
+                return state;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, registry, action).expect("onward").0;
+        }
+        panic!("never reached");
+    }
+
+    /// Jacks out of a run on HQ, past its unrezzed ice: an unsuccessful
+    /// run (CR 6.8.4).
+    fn jack_out_of_hq(state: GameState, registry: &CardRegistry) -> GameState {
+        let (running, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let can_jack_out = |state: &GameState| crate::rules::legal_actions_for(state, registry, Side::Runner).contains(&PlayerAction::JackOut);
+        let at_the_choice = run_until(running, registry, can_jack_out);
+        let (out, _) = apply_action(&at_the_choice, registry, PlayerAction::JackOut).expect("jack out");
+        assert!(out.last_completed_run.as_ref().is_some_and(|run| run.unsuccessful));
+        pass_until_settled(out, registry).0
+    }
+
+    #[test]
+    fn john_masanori_draws_for_the_first_successful_run_and_tags_for_the_first_unsuccessful_one() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("john_masanori")];
+        state.runner.stack = vec![id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        state.corp.installed = vec![corp_card("ice_wall", ServerId::Hq, InstallSlot::Ice, false)];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Archives);
+        let state = pass_until_settled(state, &registry).0;
+        assert_eq!((state.runner.grip.len(), state.runner.tags), (1, 0), "the first successful run draws");
+        // An unsuccessful run is its own first time: the successful one
+        // before it is another printed ability's.
+        let state = jack_out_of_hq(state, &registry);
+        assert_eq!((state.runner.grip.len(), state.runner.tags), (1, 1), "the first unsuccessful run tags");
+        let (state, _) = run_to_completion(state, &registry, ServerId::Archives);
+        let state = pass_until_settled(state, &registry).0;
+        let state = jack_out_of_hq(state, &registry);
+        assert_eq!((state.runner.grip.len(), state.runner.tags), (1, 1), "each once a turn");
+    }
+
+    #[test]
+    fn ixodidae_gains_a_credit_whenever_the_corp_loses_some() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("corporate_grant")];
+        state.runner.grip = vec![id("ixodidae")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("ixodidae"), trash_first: false, host: None }).expect("install");
+        let state = pass_until_settled(state, &registry).0;
+        assert_eq!((state.corp.resources.credits, state.runner.resources.credits), (Credits(9), Credits(10)), "paid 1, gained 1 for the Corp's loss");
+        let mut broke = runner_turn();
+        broke.corp.resources.credits = Credits(0);
+        broke.runner.rig = vec![rig("corporate_grant")];
+        broke.runner.grip = vec![id("ixodidae")];
+        let (broke, _) = apply_action(&broke, &registry, PlayerAction::InstallProgram { card_id: id("ixodidae"), trash_first: false, host: None }).expect("install");
+        let broke = pass_until_settled(broke, &registry).0;
+        assert_eq!(broke.runner.resources.credits, Credits(9), "a loss of nothing is no loss");
+    }
+
+    #[test]
+    fn power_tap_gains_a_credit_as_the_trace_is_initiated() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("power_tap")];
+        state.corp.installed = vec![corp_card("caduceus", ServerId::Hq, InstallSlot::Ice, true)];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let tracing = run_until(running, &registry, |state| state.active_trace.is_some());
+        assert_eq!(tracing.runner.resources.credits, Credits(11), "before either bid");
+    }
+
+    #[test]
+    fn neotokyo_grid_pays_for_the_first_counter_placed_in_its_root_each_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![
+            corp_card("neotokyo_grid", ServerId::Remote(0), InstallSlot::Root, true),
+            corp_card("hostile_takeover", ServerId::Remote(0), InstallSlot::Root, false),
+            corp_card("priority_requisition", ServerId::Remote(1), InstallSlot::Root, false),
+        ];
+        let advance = |card: &str| PlayerAction::AdvanceCard { target: fixture_install_id(card) };
+        let (state, _) = apply_action(&state, &registry, advance("priority_requisition")).expect("elsewhere");
+        assert_eq!(state.corp.resources.credits, Credits(9), "another server's root");
+        let (state, _) = apply_action(&state, &registry, advance("hostile_takeover")).expect("here");
+        assert_eq!(state.corp.resources.credits, Credits(9), "paid 1, gained 1");
+        let (state, _) = apply_action(&state, &registry, advance("hostile_takeover")).expect("again");
+        assert_eq!(state.corp.resources.credits, Credits(8), "once a turn");
+    }
+
+    #[test]
+    fn simone_diego_pays_to_advance_in_her_server_only() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(0);
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { counters: 2, ..corp_card("simone_diego", ServerId::Remote(0), InstallSlot::Root, true) },
+            corp_card("hostile_takeover", ServerId::Remote(0), InstallSlot::Root, false),
+            corp_card("priority_requisition", ServerId::Remote(1), InstallSlot::Root, false),
+        ];
+        let advance = |card: &str| PlayerAction::AdvanceCard { target: fixture_install_id(card) };
+        assert!(apply_action(&state, &registry, advance("priority_requisition")).is_err(), "not her server");
+        let (state, _) = apply_action(&state, &registry, advance("hostile_takeover")).expect("from her credits");
+        assert_eq!(state.corp.installed[0].counters, 1);
+    }
+
+    #[test]
+    fn minelayer_installs_ice_from_hq_protecting_its_own_server_for_free() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.resources.credits = Credits(0);
+        state.corp.hq = vec![id("enigma")];
+        state.corp.installed = vec![corp_card("minelayer", ServerId::Hq, InstallSlot::Ice, true), corp_card("ice_wall", ServerId::RnD, InstallSlot::Ice, true)];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let asked = run_until(running, &registry, |state| state.pending_decision.is_some());
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("choose Enigma");
+        let (offered, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let servers: Vec<PlayerAction> = crate::rules::legal_actions_for(&offered, &registry, Side::Corp)
+            .into_iter()
+            .filter(|action| matches!(action, PlayerAction::ChooseServerForPendingDecision { .. }))
+            .collect();
+        assert_eq!(servers, vec![PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }], "this server only");
+        let (installed, _) = apply_action(&offered, &registry, servers[0].clone()).expect("install");
+        assert!(installed.corp.installed.iter().any(|card| card.card == id("enigma") && card.server == ServerId::Hq), "for nothing, at 0[credit]");
+    }
+}
