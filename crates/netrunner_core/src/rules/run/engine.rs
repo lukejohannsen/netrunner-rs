@@ -222,8 +222,9 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
         return Err(RulesError::RunProhibited { server });
     }
     // "You may not make another run on that server for the remainder of
-    // this turn" (Marathon), asked where Front Company's is.
-    if crate::rules::lingering::prohibits_server(state, crate::dsl::Prohibition::Run, server) {
+    // this turn" (Marathon) and "The Runner cannot initiate a run on this
+    // server" (Off the Grid), asked where Front Company's is.
+    if crate::rules::continuous::run_prohibited_on(state, registry, server) {
         return Err(RulesError::RunProhibited { server });
     }
     // "Any costs to run a server must be paid at the time that server is

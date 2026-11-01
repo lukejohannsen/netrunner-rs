@@ -1,0 +1,32 @@
+{
+  "id": "corporate_shuffle",
+  "title": "Corporate Shuffle",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "ShuffleIntoDeck": [
+            "OwnHq"
+          ]
+        },
+        {
+          "DrawCards": [
+            "Corp",
+            5
+          ]
+        }
+      ],
+      "text": "Shuffle all cards in HQ into R&D. Draw 5 cards."
+    }
+  ],
+  "built_from": 4113,
+  "is_playable": true
+}

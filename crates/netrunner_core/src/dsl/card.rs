@@ -631,6 +631,16 @@ pub struct CardDefinition {
     /// didn't work: a Trojan's host was every installed piece of ice.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub host_must_be_rezzed: bool,
+    /// "You cannot use this resource more than once per turn" (Kati Jones,
+    /// Shell Corporation): one use limit shared by every paid ability the
+    /// card prints, where CR 9.3.6g gives each printed ability its own. So
+    /// every entry is keyed as the first (`printed_ability` is 0), and each
+    /// names `OncePerTurn` and spends it. A flag rather than `part_of`,
+    /// which says two entries are *one* printed ability and holds the
+    /// second to only reading the use; these are two abilities, either of
+    /// which spends it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub one_use_each_turn: bool,
     /// "Install … only on an **icebreaker**" (The Personal Touch): a piece
     /// of hardware installed onto an installed rig card this filter admits
     /// (`InstalledRunnerCard::hosted_on_rig_card`), and never into the rig
@@ -1245,10 +1255,20 @@ pub enum PaysFor {
     /// because every other word narrows a payment, and a card printing none
     /// has credits only its own text spends.
     Anything,
-    /// The rez cost of any card — Mumba Temple's "Use these credits to rez
-    /// cards". Composition didn't work: the other rez words are about
-    /// where the card sits, and this one is about nothing but the rez.
-    Rezzing,
+    /// The rez cost of a card the filter admits — Mumba Temple's "Use
+    /// these credits to rez cards" (`Any`), Dedicated Server's "Use these
+    /// credits to rez ice" (`Ice`). Definition-level, read off the card
+    /// being rezzed. Composition didn't work: the other rez words are about
+    /// where the card sits, and this one is about nothing but the rez. It
+    /// was a word with no filter until Dedicated Server.
+    Rezzing(crate::dsl::CardFilter),
+    /// The cost of advancing an installed card the filter admits — The
+    /// Weyland Consortium: Because We Built It's "Use this credit to advance
+    /// ice" (`Ice`). The basic action's 1[credit] (CR 5.2.6f, "Advance 1
+    /// installed card"), stated as `payment::Purpose::Advance` by
+    /// `engine::advance_card`. Composition didn't work: an advance was
+    /// `Purpose::Other`, which no word covers.
+    Advancing(crate::dsl::CardFilter),
 }
 
 /// Semantic checks `serde`'s structural `Deserialize` can't express on its
@@ -1381,6 +1401,7 @@ impl Default for CardDefinition {
             memory_cost: None,
             installs_on_ice: false,
             host_must_be_rezzed: false,
+            one_use_each_turn: false,
             installs_onto: None,
             hosted_cards_playable_from_grip: false,
             hosts_facedown: false,
@@ -1450,8 +1471,12 @@ impl CardDefinition {
 
     /// Which printed ability the paid ability at `index` is, for its use
     /// limit (`OncePerTurnKey::ability`): its own index, or the earlier
-    /// entry it is `part_of`.
+    /// entry it is `part_of` — or the first, on a card whose abilities
+    /// share one use (`one_use_each_turn`).
     pub fn printed_ability(&self, index: usize) -> u8 {
+        if self.one_use_each_turn {
+            return 0;
+        }
         self.abilities.get(index).and_then(|ability| ability.part_of).unwrap_or(index) as u8
     }
 
@@ -1792,13 +1817,20 @@ impl CardDefinition {
             return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "two once-per-turn triggers on one card would share one use (`OncePerTurnKey` is the card and which copy)"));
         }
         let spends = |requirement: &EffectRequirement| requirement.spends_once_per_turn();
-        if self.abilities.iter().enumerate().any(|(index, ability)| {
+        if !self.one_use_each_turn && self.abilities.iter().enumerate().any(|(index, ability)| {
             ability.requirement.as_ref().is_some_and(spends)
                 && self.abilities[..index].iter().enumerate().any(|(earlier, other)| {
                     self.printed_ability(earlier) == self.printed_ability(index) && other.requirement.as_ref().is_some_and(spends)
                 })
         }) {
             return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "two entries of one printed ability (`part_of`) would each spend its one use"));
+        }
+        // A use shared across the card's abilities is one every ability
+        // spends: an ability that did not would be usable a second time.
+        if self.one_use_each_turn
+            && (self.abilities.len() < 2 || !self.abilities.iter().all(|ability| ability.requirement.as_ref().is_some_and(spends) && ability.part_of.is_none()))
+        {
+            return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "`one_use_each_turn` is a use every one of two or more abilities spends"));
         }
         // The same two rules hold for the run's use limit, which is keyed
         // the same way.
@@ -2246,12 +2278,16 @@ impl CardDefinition {
                 (ContinuousKind::CannotBeDeclaredSuccessful | ContinuousKind::AccessOthersAtMost(_), _) => {
                     return misfit("RunsOnThisServer", "a run's success and its accesses are said of the runs on this card's server, by a card in its root");
                 }
+                // Off the Grid's "The Runner cannot initiate a run on this
+                // server", asked by `continuous::run_prohibited_on` as the
+                // server is announced.
+                (ContinuousKind::Cannot(crate::dsl::Prohibition::Run), Scope::RunsOnThisServer) if matches!(self.card_type, CardType::Upgrade | CardType::Asset) => {}
                 (ContinuousKind::Tags(_), Scope::Player(Side::Runner)) => {}
                 (ContinuousKind::Tags(_), _) => return misfit("Tags", "tags a Runner is considered to have are said of the Runner (`Player`)"),
                 (kind, Scope::Player(_)) if !matches!(kind, ContinuousKind::Cannot(_)) => {
                     return misfit("Player", "only a prohibition, the other player's hand size or a limit on a bid is about a player named by side");
                 }
-                (_, Scope::RunsOnThisServer) => return misfit("RunsOnThisServer", "only a run's success and its accesses are about the runs on a server"),
+                (_, Scope::RunsOnThisServer) => return misfit("RunsOnThisServer", "only a run's success, its accesses and whether it may be initiated are about the runs on a server"),
                 (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_) | ContinuousKind::CannotBeBrokenUsing(_) | ContinuousKind::StrengthCannotBeLowered | ContinuousKind::CannotHost | ContinuousKind::InsteadOfPassing(_), Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}
                 (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_) | ContinuousKind::CannotBeBrokenUsing(_) | ContinuousKind::StrengthCannotBeLowered | ContinuousKind::CannotHost | ContinuousKind::InsteadOfPassing(_), _) => {
                     return misfit("BreakLimit", "what may be broken on or trashed with a piece of ice during its encounter is said by the ice of itself (`This`)");

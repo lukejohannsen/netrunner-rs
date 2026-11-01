@@ -1501,6 +1501,9 @@ pub enum Effect {
     /// "the Runner shuffles it into the stack", after an `AddToDeck`.
     /// `OwnRAndD` alone is the Corp's "shuffle R&D" (Sadaka), the one Corp
     /// zone it names: nothing goes in, so no faceup card is turned down.
+    /// `OwnHq` alone is the Corp's other: "shuffle HQ into R&D" (Executive
+    /// Retreat, Corporate Shuffle), from one hidden zone into another, so
+    /// nothing is turned down there either.
     ShuffleIntoDeck(Vec<crate::dsl::CardZoneRef>),
     /// Places credits on the run's event, spendable during the run as its
     /// others are (`RunState::bonus_run_credits`, Overclock's pool) —

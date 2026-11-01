@@ -1,0 +1,18 @@
+{
+  "id": "dedicated_server",
+  "title": "Dedicated Server",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "trash_cost": 3,
+  "counter_kind": "Credit",
+  "recurring_credits": 2,
+  "pays_for": [
+    {
+      "Rezzing": "Ice"
+    }
+  ],
+  "triggers": [],
+  "built_from": 2072,
+  "is_playable": true
+}

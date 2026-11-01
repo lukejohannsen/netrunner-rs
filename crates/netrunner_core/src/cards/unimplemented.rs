@@ -302,7 +302,6 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("domestic_sleepers", "Domestic Sleepers"),
     ("mutate", "Mutate"),
-    ("the_root", "The Root"),
     ("mother_goddess", "Mother Goddess"),
     ("galahad", "Galahad"),
     ("bad_times", "Bad Times"),
@@ -358,7 +357,6 @@ pub(crate) const ATR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("bifrost_array", "Bifrost Array"),
     ("lycan", "Lycan"),
     ("merlin", "Merlin"),
-    ("shell_corporation", "Shell Corporation"),
     ("utopia_shard", "Utopia Shard"),
 ];
 
@@ -435,7 +433,6 @@ pub(crate) const ST_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("recon", "Recon"),
     ("copycat", "Copycat"),
     ("eureka", "Eureka!"),
-    ("off_the_grid", "Off the Grid"),
 ];
 
 /// *Mala Tempora* (`mala_tempora`): tranche F10 of the FFG plan.
@@ -471,7 +468,6 @@ pub(crate) const DT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
     ("paintbrush", "Paintbrush"),
     ("broadcast_square", "Broadcast Square"),
-    ("corporate_shuffle", "Corporate Shuffle"),
     ("marker", "Marker"),
 ];
 
@@ -485,7 +481,6 @@ pub(crate) const TA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("encryption_protocol", "Encryption Protocol"),
     ("sensei", "Sensei"),
     ("amazon_industrial_zone", "Amazon Industrial Zone"),
-    ("executive_retreat", "Executive Retreat"),
 ];
 
 /// *Cyber Exodus* (`cyber_exodus`): tranche F11 of the FFG plan.
@@ -498,10 +493,8 @@ pub(crate) const CE_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *A Study in Static* (`a_study_in_static`): tranche F11 of the FFG plan.
 pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("dedicated_server", "Dedicated Server"),
     ("bullfrog", "Bullfrog"),
     ("net_police", "Net Police"),
-    ("weyland_consortium_because_we_built_it", "Weyland Consortium: Because We Built It"),
     ("oversight_ai", "Oversight AI"),
 ];
 
@@ -511,7 +504,6 @@ pub(crate) const HS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("andromeda_dispossessed_ristie", "Andromeda: Dispossessed Ristie"),
     ("replicator", "Replicator"),
     ("kraken", "Kraken"),
-    ("kati_jones", "Kati Jones"),
     ("data_hound", "Data Hound"),
     ("simone_diego", "Simone Diego"),
 ];
@@ -536,7 +528,6 @@ pub(crate) const MO_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
     ("john_masanori", "John Masanori"),
-    ("kati_jones", "Kati Jones"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
     ("sundew", "Sundew"),
     ("spark_agency_worldswide_reach", "Spark Agency: Worldswide Reach"),

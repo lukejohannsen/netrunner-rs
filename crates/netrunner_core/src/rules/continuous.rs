@@ -357,6 +357,17 @@ pub(crate) fn may_be_declared_successful(state: &GameState, registry: &CardRegis
         && !cannot(state, registry, Prohibition::DeclaredSuccessful)
 }
 
+/// Whether the Runner may not initiate a run on `server` (CR 6.3.2a): a
+/// run there forbidden for a duration (`Prohibition::Run` on the lingering
+/// list, Marathon's "for the remainder of this turn"), or by an active card
+/// in its root for as long as it stands (`ContinuousKind::Cannot(Run)`
+/// about `RunsOnThisServer`, Off the Grid). The one question both the run
+/// and a card's offer of servers to run put, so they cannot disagree.
+pub(crate) fn run_prohibited_on(state: &GameState, registry: &CardRegistry, server: ServerId) -> bool {
+    lingering::prohibits_server(state, Prohibition::Run, server)
+        || any(state, registry, Target::Run { server }, |kind| *kind == ContinuousKind::Cannot(Prohibition::Run))
+}
+
 /// The most remote servers the Corp may have (A Teia: IP Recovery), or
 /// `None` with no limit.
 pub fn remote_server_limit(state: &GameState, registry: &CardRegistry) -> Option<u32> {

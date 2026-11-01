@@ -1,0 +1,37 @@
+{
+  "id": "shell_corporation",
+  "title": "Shell Corporation",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 3,
+  "counter_kind": "Credit",
+  "one_use_each_turn": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "AddCounters": 3
+      },
+      "text": "[click]: Place 3[credit] on this upgrade."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "TakeAllCountersAsCredits": "Corp"
+      },
+      "text": "[click]: Take all credits from this upgrade."
+    }
+  ],
+  "built_from": 6092,
+  "is_playable": true
+}

@@ -1,0 +1,25 @@
+{
+  "id": "the_root",
+  "title": "The Root",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 6,
+  "trash_cost": 4,
+  "unique": true,
+  "counter_kind": "Credit",
+  "recurring_credits": 3,
+  "pays_for": [
+    {
+      "Advancing": "Any"
+    },
+    {
+      "Installing": "Any"
+    },
+    {
+      "Rezzing": "Any"
+    }
+  ],
+  "triggers": [],
+  "built_from": 6008,
+  "is_playable": true
+}

@@ -1878,6 +1878,16 @@ pub fn evaluate_effect(
             crate::rules::pending_choice::shuffle_decks(state, Side::Corp, &crate::dsl::CardZoneRef::OwnRAndD, None);
             Ok(Vec::new())
         }
+        // HQ, into R&D — Executive Retreat's "shuffle HQ into R&D" and
+        // Corporate Shuffle's "Shuffle all cards in HQ into R&D". Both zones
+        // are hidden from the Runner, so nothing is recorded: the counts
+        // say how many went, and which is hidden information (CR 10.2.2a).
+        Effect::ShuffleIntoDeck(zones) if zones.as_slice() == [crate::dsl::CardZoneRef::OwnHq] => {
+            let mut cards = std::mem::take(&mut state.corp.hq);
+            state.corp.r_and_d.append(&mut cards);
+            crate::rules::pending_choice::shuffle_decks(state, Side::Corp, &crate::dsl::CardZoneRef::OwnRAndD, None);
+            Ok(Vec::new())
+        }
         // Every card in the root of the attacked server, into R&D —
         // Because I Can's "force the Corp to shuffle all cards in the root
         // of that server into R&D", in place of a breach. Each leaves the
@@ -2946,10 +2956,13 @@ pub fn evaluate_effect(
             // server" (Front Company): not offered, as `start_run` would
             // refuse it.
             let no_remote = crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::RunOnRemote);
-            // "You may not make another run on that server" (Marathon): not
-            // offered, as `start_run` would refuse it.
-            let barred = |server: &ServerId| crate::rules::lingering::prohibits_server(state, crate::dsl::Prohibition::Run, *server);
-            let any_barred = state.lingering.iter().any(|effect| matches!(effect.on, crate::rules::lingering::On::Server(_)));
+            // "You may not make another run on that server" (Marathon) and
+            // "The Runner cannot initiate a run on this server" (Off the
+            // Grid): not offered, as `start_run` would refuse it. Only a
+            // server something is installed in has a card to forbid it.
+            let barred = |server: &ServerId| crate::rules::continuous::run_prohibited_on(state, registry, *server);
+            let any_barred = state.lingering.iter().any(|effect| matches!(effect.on, crate::rules::lingering::On::Server(_)))
+                || state.corp.installed.iter().any(|installed| barred(&installed.server));
             // "Run the attacked server again": the last run's, if there was
             // one and it is still a server to run.
             // The one server a card names may since have gone, or be one

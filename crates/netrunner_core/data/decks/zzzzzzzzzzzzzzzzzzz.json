@@ -1,0 +1,117 @@
+{
+  "id": "zzzzzzzzzzzzzzzzzzz",
+  "name": "Zzzzzzzzzzzzzzzzzzz",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Weyland Consortium: Because We Built It, whose recurring credit pays only to advance ice. Yield Curve's list, its identity swapped: its Hortum and Tyrant are ice the credit can advance. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words, Stage 2.",
+  "style": [
+    "traps"
+  ],
+  "identity": "weyland_consortium_because_we_built_it",
+  "cards": [
+    {
+      "card": "hostile_takeover",
+      "count": 3
+    },
+    {
+      "card": "off_the_books",
+      "count": 1
+    },
+    {
+      "card": "greenmail",
+      "count": 1
+    },
+    {
+      "card": "sacrifice_zone_expansion",
+      "count": 2
+    },
+    {
+      "card": "punitive_counterstrike",
+      "count": 2
+    },
+    {
+      "card": "too_big_to_fail",
+      "count": 1
+    },
+    {
+      "card": "hostile_architecture",
+      "count": 2
+    },
+    {
+      "card": "hortum",
+      "count": 2
+    },
+    {
+      "card": "elizabeth_mills",
+      "count": 1
+    },
+    {
+      "card": "grndl_refinery",
+      "count": 1
+    },
+    {
+      "card": "broad_daylight",
+      "count": 2
+    },
+    {
+      "card": "divested_trust",
+      "count": 2
+    },
+    {
+      "card": "hadrians_wall",
+      "count": 2
+    },
+    {
+      "card": "research_station",
+      "count": 1
+    },
+    {
+      "card": "drudge_work",
+      "count": 2
+    },
+    {
+      "card": "oduduwa",
+      "count": 1
+    },
+    {
+      "card": "forced_connection",
+      "count": 2
+    },
+    {
+      "card": "audacity",
+      "count": 2
+    },
+    {
+      "card": "bailiff",
+      "count": 2
+    },
+    {
+      "card": "red_tape",
+      "count": 2
+    },
+    {
+      "card": "assassin",
+      "count": 1
+    },
+    {
+      "card": "corporate_sales_team",
+      "count": 2
+    },
+    {
+      "card": "docklands_crackdown",
+      "count": 2
+    },
+    {
+      "card": "snatch_and_grab",
+      "count": 2
+    },
+    {
+      "card": "shattered_remains",
+      "count": 2
+    },
+    {
+      "card": "tyrant",
+      "count": 2
+    }
+  ]
+}
