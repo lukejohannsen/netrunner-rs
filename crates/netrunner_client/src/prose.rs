@@ -627,7 +627,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::AddToScoreAreaAsAgenda(as_agenda) if as_agenda.to_the_runner => format!("add this card to the Runner's score area as {}", as_an_agenda(as_agenda)),
         Effect::AddToScoreAreaAsAgenda(as_agenda) => format!("add this card to your score area as {}", as_an_agenda(as_agenda)),
-        Effect::GainSubroutine { subroutine, after, duration, count } => {
+        Effect::GainSubroutine { subroutine, after, duration, count, encountered } => {
+            let which = if *encountered { "the ice being encountered" } else { "the ice" };
             let order = if *after { "after" } else { "before" };
             let copies = match count {
                 Some(amount) => format!("{} copies of ", describe_amount(amount)),
@@ -646,7 +647,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 netrunner_core::dsl::EffectDuration::UntilChosenAgain => "as long as it is not chosen again",
                 netrunner_core::dsl::EffectDuration::NextEncounter => "the next encounter this run",
             };
-            format!("the ice gains {copies}\u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
+            format!("{which} gains {copies}\u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }
         Effect::WinTheGame => "you win the game".to_string(),
         Effect::TurnHostedFaceup => "turn each hosted card faceup".to_string(),
@@ -711,6 +712,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::Draw, _) => "the Runner cannot draw cards",
                 (Prohibition::RezOutermostIce, _) => "the Corp cannot rez the outermost piece of ice during a run",
                 (Prohibition::RezIce, _) => "the Corp cannot rez ice",
+                (Prohibition::PlayCurrents, _) => "the Runner cannot play current events",
+                (Prohibition::InstallIce, _) => "the Corp cannot install ice",
                 (Prohibition::ResolveFirstThreeSubroutines, _) => "the first 3 subroutines of the next encounter do not resolve",
                 (Prohibition::ResolveFirstSubroutine, _) => "the first subroutine to resolve this run does not",
                 (Prohibition::CorpInstall, _) => "the Corp cannot install cards",
@@ -1100,6 +1103,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::DrawsEachTurnAtMost(most) => format!("the Runner cannot draw more than {} during each of their turns", plural(*most, "card", "cards")),
         ContinuousKind::BidAtMost(most) => format!("cannot spend more than {most} [credit] secretly in a psi game"),
         ContinuousKind::Tags(number) => format!("is considered to have {} tags", signed(number)),
+        ContinuousKind::BadPublicity(number) => format!("is considered to have {} bad publicity", signed(number)),
         ContinuousKind::InstallCost(number) => format!("costs {} to install", signed(number)),
         ContinuousKind::RezCost(number) => format!("costs {} to rez", signed(number)),
         ContinuousKind::TrashCost(number) => format!("costs {} to trash", signed(number)),
@@ -1178,6 +1182,8 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::Draw => "cannot draw cards",
             Prohibition::RezOutermostIce => "cannot rez the outermost piece of ice during a run",
             Prohibition::RezIce => "cannot rez ice",
+            Prohibition::PlayCurrents => "cannot play current events",
+            Prohibition::InstallIce => "cannot install more ice this turn",
             Prohibition::ResolveFirstThreeSubroutines => "cannot resolve the first 3 subroutines of the next encounter",
             Prohibition::ResolveFirstSubroutine => "cannot resolve the first subroutine that would resolve this run",
         }

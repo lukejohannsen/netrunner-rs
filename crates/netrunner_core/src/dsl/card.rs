@@ -2057,15 +2057,48 @@ impl CardDefinition {
         // "Choose 1 piece of ice to gain … for the remainder of this run",
         // a selection of ice whose `then` acts as the card chosen — for the
         // run only, since the chosen ice need not be the one encountered.
+        //
+        // The other is the ice being encountered (`encountered`, Marker,
+        // Sensei), said only inside a `LaterThisTurn` waiting for an
+        // encounter, the one moment there is such a piece of ice; and only
+        // for the encounter or the run, since the encounter is the one
+        // thing it is about. A selection names its ice when its filter is
+        // `Ice`, alone or among words that narrow it (Project Wotan's
+        // rezzed bioroid being approached).
         let gains = |effect: &Effect| {
             let mut found = Vec::new();
-            effect.for_each_effect(&mut |e| if let Effect::GainSubroutine { duration, .. } = e { found.push(*duration) });
+            effect.for_each_effect(&mut |e| if let Effect::GainSubroutine { duration, encountered: false, .. } = e { found.push(*duration) });
             found
+        };
+        let encountered_gains = |effect: &Effect| {
+            let mut found = 0;
+            effect.for_each_effect(&mut |e| if let Effect::GainSubroutine { encountered: true, .. } = e { found += 1 });
+            found
+        };
+        let encountered_gains_fit = |effect: &Effect| {
+            let mut waiting = 0;
+            effect.for_each_effect(&mut |e| {
+                if let Effect::LaterThisTurn { when: Trigger::OnEncounter, effect, .. } = e {
+                    effect.for_each_effect(&mut |inner| {
+                        if let Effect::GainSubroutine { encountered: true, duration: EffectDuration::Encounter | EffectDuration::Run, .. } = inner {
+                            waiting += 1;
+                        }
+                    });
+                }
+            });
+            waiting == encountered_gains(effect)
+        };
+        let names_ice = |filter: &crate::dsl::CardFilter| match filter {
+            crate::dsl::CardFilter::Ice => true,
+            crate::dsl::CardFilter::All(parts) => parts.contains(&crate::dsl::CardFilter::Ice),
+            _ => false,
         };
         let on_chosen_ice_for_the_run = |effect: &Effect| {
             let mut chosen = Vec::new();
             effect.for_each_effect(&mut |e| {
-                if let Effect::PromptChooseCards { filter: crate::dsl::CardFilter::Ice, then: Some(then), .. } = e {
+                if let Effect::PromptChooseCards { filter, then: Some(then), .. } = e
+                    && names_ice(filter)
+                {
                     chosen.extend(gains(then));
                 }
             });
@@ -2083,6 +2116,7 @@ impl CardDefinition {
             || self.abilities.iter().any(|ability| !on_chosen_ice_for_the_run(&ability.effect))
             || self.subroutines.iter().any(|subroutine| !gains(&subroutine.effect).is_empty())
             || self.interactive_on_access.iter().flat_map(|interactive| &interactive.effects).any(|effect| !gains(effect).is_empty())
+            || self.triggers.iter().flat_map(|triggered| &triggered.effects).chain(self.abilities.iter().map(|ability| &ability.effect)).chain(self.subroutines.iter().map(|subroutine| &subroutine.effect)).any(|effect| !encountered_gains_fit(effect))
         {
             return Err(CardValidationError::GainedSubroutineWithNoEncounter(self.id.clone()));
         }
@@ -2301,6 +2335,8 @@ impl CardDefinition {
                 // server is announced.
                 (ContinuousKind::Cannot(crate::dsl::Prohibition::Run), Scope::RunsOnThisServer) if matches!(self.card_type, CardType::Upgrade | CardType::Asset) => {}
                 (ContinuousKind::Tags(_), Scope::Player(Side::Runner)) => {}
+                (ContinuousKind::BadPublicity(_), Scope::Player(Side::Corp)) => {}
+                (ContinuousKind::BadPublicity(_), _) => return misfit("BadPublicity", "bad publicity the Corp is considered to have is said of the Corp (`Player`)"),
                 (ContinuousKind::Tags(_), _) => return misfit("Tags", "tags a Runner is considered to have are said of the Runner (`Player`)"),
                 (kind, Scope::Player(_)) if !matches!(kind, ContinuousKind::Cannot(_)) => {
                     return misfit("Player", "only a prohibition, the other player's hand size or a limit on a bid is about a player named by side");
@@ -2352,8 +2388,14 @@ impl CardDefinition {
                 // off the play areas, which is the only place it is asked;
                 // only a current waits there, and its `while` is not read.
                 (ContinuousKind::LosesAbilities, Scope::CorpInstalled(_)) if matches!(self.card_type, CardType::Event | CardType::Operation) && effect.condition.is_none() => {}
+                // And a Corp current's about the Runner's identity (Cerebral
+                // Static's "The Runner's identity loses its printed
+                // abilities"), Employee Strike's turned round: `Rig` with
+                // the identity's type, read by `current_takes` as the Corp's
+                // identity is read under `CorpInstalled`.
+                (ContinuousKind::LosesAbilities, Scope::Rig(crate::dsl::CardFilter::CardType(CardType::Identity))) if self.card_type == CardType::Operation && effect.condition.is_none() => {}
                 (ContinuousKind::LosesAbilities | ContinuousKind::CannotGainAbilities, _) => {
-                    return misfit("LosesAbilities", "what a card loses or cannot gain is said by the card hosted on it (`Host`), the ice hosting it (`Hosted`) or, of the Corp's installs, a current with no `while` (`CorpInstalled`)");
+                    return misfit("LosesAbilities", "what a card loses or cannot gain is said by the card hosted on it (`Host`), the ice hosting it (`Hosted`) or, of the Corp's installs, a current with no `while` (`CorpInstalled`), and of the Runner's identity a Corp current's (`Rig` of the identity)");
                 }
                 (ContinuousKind::Cannot(what), Scope::Player(side)) if what.binds() == *side => {}
                 // An agenda about its own score (Vulnerability Audit's "You
@@ -2974,7 +3016,7 @@ mod tests {
 
     #[test]
     fn validate_refuses_a_gained_subroutine_outside_an_encounter() {
-        let gains = Effect::GainSubroutine { subroutine: Box::new(SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None }), after: false, duration: EffectDuration::Encounter, count: None };
+        let gains = Effect::GainSubroutine { subroutine: Box::new(SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None }), after: false, duration: EffectDuration::Encounter, count: None, encountered: false };
         let resource = |trigger: Trigger, acts_on_subject: bool| CardDefinition {
             id: CardId("gainer".to_string()),
             side: Side::Runner,
@@ -3008,7 +3050,7 @@ mod tests {
                 requirement: None,
                 effect: serde_json::from_value(serde_json::json!({"PromptChooseCards": {
                     "side": "Corp", "source": "OwnInstalled", "filter": filter, "min": 1, "max": 1, "reveal": false, "shuffle_after": false,
-                    "then": Effect::GainSubroutine { subroutine: Box::new(SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None }), after: true, duration, count: None },
+                    "then": Effect::GainSubroutine { subroutine: Box::new(SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None }), after: true, duration, count: None, encountered: false },
                 }}))
                 .expect("a selection"),
                 cost_discount_if: None,

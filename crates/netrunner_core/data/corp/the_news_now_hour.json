@@ -1,0 +1,22 @@
+{
+  "id": "the_news_now_hour",
+  "title": "The News Now Hour",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 4,
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "PlayCurrents"
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "text": "The Runner cannot play current events."
+    }
+  ],
+  "triggers": [],
+  "built_from": 6045,
+  "is_playable": true
+}

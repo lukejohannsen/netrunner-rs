@@ -1,0 +1,21 @@
+{
+  "id": "cerebral_static",
+  "title": "Cerebral Static",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "continuous": [
+    {
+      "kind": "LosesAbilities",
+      "applies_to": {
+        "Rig": {
+          "CardType": "Identity"
+        }
+      },
+      "text": "The Runner's identity loses its printed abilities."
+    }
+  ],
+  "triggers": [],
+  "built_from": 6025,
+  "is_playable": true
+}

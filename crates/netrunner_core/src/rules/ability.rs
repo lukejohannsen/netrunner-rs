@@ -1712,8 +1712,18 @@ pub fn evaluate_effect(
         // "It" is the encountered ice, as the trigger's subject; a
         // resolution that finds the encounter over (a run ended by a
         // trigger ahead of it) has nothing left to add to.
-        Effect::GainSubroutine { subroutine, after, duration, count } => {
-            let Some(install) = ctx.acting_install else { return Err(RulesError::MissingActingCardContext) };
+        Effect::GainSubroutine { subroutine, after, duration, count, encountered } => {
+            let install = if *encountered {
+                // "The next piece of ice the Runner encounters" (Marker): the
+                // ice of the encounter in progress, whoever's text it is.
+                let Some(install) = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position)).map(|ice| ice.install_id) else {
+                    return Ok(Vec::new());
+                };
+                install
+            } else {
+                let Some(install) = ctx.acting_install else { return Err(RulesError::MissingActingCardContext) };
+                install
+            };
             // Ice that cannot gain abilities gains no subroutine (Hush's
             // host), now or for the rest of the run.
             if !crate::rules::active::may_have_granted(state, registry, install) {
@@ -6636,7 +6646,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         // rather than a running counter that a forfeit would have to
         // decrement.
         Amount::RunnerTags => crate::rules::continuous::tags(state, registry),
-        Amount::BadPublicity => state.corp.bad_publicity,
+        Amount::BadPublicity => crate::rules::continuous::bad_publicity(state, registry),
         Amount::CoreDamageTaken => state.runner.brain_damage as u32,
         Amount::IceProtectingThisServer => acting_corp_install(state, ctx).map_or(0, |installed| {
             state.corp.installed.iter().filter(|other| other.server == installed.server && other.slot == InstallSlot::Ice).count() as u32

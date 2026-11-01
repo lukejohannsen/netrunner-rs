@@ -1,0 +1,35 @@
+{
+  "id": "marker",
+  "title": "Marker",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 0,
+  "strength": 3,
+  "subroutines": [
+    {
+      "text": "The next piece of ice the Runner encounters during this run gains \"[subroutine] End the run.\" after its other subroutines for the remainder of that run.",
+      "effect": {
+        "LaterThisTurn": {
+          "when": "OnEncounter",
+          "this_run": true,
+          "effect": {
+            "GainSubroutine": {
+              "subroutine": {
+                "text": "End the run.",
+                "effect": "EndTheRun"
+              },
+              "after": true,
+              "duration": "Run",
+              "encountered": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 4116,
+  "is_playable": true
+}

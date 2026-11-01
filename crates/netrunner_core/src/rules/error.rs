@@ -183,6 +183,14 @@ pub enum RulesError {
     /// `Prohibition::Advance`).
     #[error("the Corp cannot advance cards this turn")]
     AdvanceProhibited,
+    /// The Runner cannot play this current now (The News Now Hour,
+    /// `Prohibition::PlayCurrents`).
+    #[error("the Runner cannot play the current {card:?} now")]
+    PlayProhibited { card: CardId },
+    /// The Corp cannot install ice now (Unscheduled Maintenance,
+    /// `Prohibition::InstallIce`).
+    #[error("the Corp cannot install another piece of ice this turn")]
+    IceInstallProhibited,
 
     /// The additional cost to run the server (CR 6.3.2b: Earth Station: SEA
     /// Headquarters) cannot be paid, so the run cannot be made.

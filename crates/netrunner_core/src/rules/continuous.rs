@@ -483,6 +483,17 @@ pub fn tags(state: &GameState, registry: &CardRegistry) -> u32 {
     (i64::from(state.runner.tags) + i64::from(considered)).max(0) as u32
 }
 
+/// The bad publicity the Corp has, counted as the table says: its own and
+/// what it is considered to have (`ContinuousKind::BadPublicity`, Corporate
+/// Scandal). The one question a count of bad publicity puts.
+pub fn bad_publicity(state: &GameState, registry: &CardRegistry) -> u32 {
+    let considered = sum(state, registry, Target::Bound(Side::Corp), |kind| match kind {
+        ContinuousKind::BadPublicity(number) => Some(number),
+        _ => None,
+    });
+    (i64::from(state.corp.bad_publicity) + i64::from(considered)).max(0) as u32
+}
+
 /// What `side`'s active cards add to the clicks it gains as its turn
 /// begins (Basilar Synthgland 2KVJ), asked as the allotment is assigned.
 /// And what the other side's active cards give it (`Scope::Player`, read

@@ -1,0 +1,37 @@
+{
+  "id": "unscheduled_maintenance",
+  "title": "Unscheduled Maintenance",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "InstallIce"
+      },
+      "applies_to": {
+        "Player": "Corp"
+      },
+      "while": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnWhen": {
+              "trigger": "OnInstall",
+              "when": {
+                "All": [
+                  { "Whose": "Corp" },
+                  { "Card": "Ice" }
+                ]
+              }
+            }
+          },
+          1
+        ]
+      },
+      "text": "The Corp cannot install more than 1 piece of ice each turn."
+    }
+  ],
+  "triggers": [],
+  "built_from": 6036,
+  "is_playable": true
+}

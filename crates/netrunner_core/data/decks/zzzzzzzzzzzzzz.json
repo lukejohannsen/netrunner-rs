@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Nisei Division: The Next Generation, Honor and Profit's Jinteki identity, a credit for every psi game. Zyzzyva's list, its identity swapped, with Port Anson Grid. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 2. Interns is in for Genotyping and Museum of History. Two Fetal AI take Viral Weaponization's place, two points for two. Two Mamba take Mlinzi's place. Two Psychic Field take Bio-Ethics Association's place.",
+  "description": "Not a published list: built so the sweeps reach Nisei Division: The Next Generation, Honor and Profit's Jinteki identity, a credit for every psi game. Zyzzyva's list, its identity swapped, with Port Anson Grid. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 2. Interns is in for Genotyping and Museum of History. Two Fetal AI take Viral Weaponization's place, two points for two. Two Mamba take Mlinzi's place. Two Psychic Field take Bio-Ethics Association's place. Engine words Stage 6 takes one Heritage Committee for Cerebral Static, a current that takes the Runner's identity's abilities.",
   "style": [
     "traps"
   ],
@@ -79,7 +79,7 @@
     },
     {
       "card": "heritage_committee",
-      "count": 2
+      "count": 1
     },
     {
       "card": "mumba_temple",
@@ -148,6 +148,10 @@
     {
       "card": "psychic_field",
       "count": 2
+    },
+    {
+      "card": "cerebral_static",
+      "count": 1
     }
   ]
 }

@@ -270,7 +270,7 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
         fewer_accesses: 0,
         breach_accesses_left: None,
         access_state: None,
-        bad_publicity_credits: state.corp.bad_publicity,
+        bad_publicity_credits: crate::rules::continuous::bad_publicity(state, registry),
         server,
         phase: RunPhase::Initiation,
         ice,

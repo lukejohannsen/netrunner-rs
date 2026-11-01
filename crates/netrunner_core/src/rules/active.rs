@@ -123,7 +123,7 @@ pub(crate) fn runner<'a>(state: &'a GameState, registry: &'a CardRegistry) -> im
         .runner
         .identity
         .iter()
-        .filter(|_| !crate::rules::lingering::loses_abilities(state, crate::rules::state::InstallId::RUNNER_IDENTITY))
+        .filter(|_| !crate::rules::lingering::loses_abilities(state, crate::rules::state::InstallId::RUNNER_IDENTITY) && !current_takes_runner_identity(state, registry))
         .map(|card| ActiveCard { side: Side::Runner, card, install: None, server: None, place: Place::Identity });
     let rig = state.runner.rig.iter().map(|installed| ActiveCard {
         side: Side::Runner,
@@ -208,9 +208,9 @@ pub(crate) fn installs_without_abilities(state: &GameState, registry: &CardRegis
             _ => Vec::new(),
         })
         .collect();
-    if currents_taking(state, registry).next().is_some() {
+    if currents_taking(state, registry).next().is_some() || current_takes_runner_identity(state, registry) {
         lost.extend(
-            state.corp.installed.iter().map(|card| card.install_id).chain([InstallId::CORP_IDENTITY]).filter(|install| current_takes(state, registry, *install)),
+            state.corp.installed.iter().map(|card| card.install_id).chain([InstallId::CORP_IDENTITY, InstallId::RUNNER_IDENTITY]).filter(|install| current_takes(state, registry, *install)),
         );
     }
     for card in state.runner.rig.iter().filter(|card| card.hosted_on_ice.is_some() || card.hosted_on_rig_card.is_some()) {
@@ -247,6 +247,22 @@ fn currents_taking<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl
         })
 }
 
+/// Whether a Corp current in play takes the abilities of the Runner's
+/// identity — Cerebral Static's "The Runner's identity loses its printed
+/// abilities" (`Scope::Rig` of the identity's type), Employee Strike's
+/// sentence about the other side. An identity is not in the rig, as the
+/// Corp's is not installed; the scope is the side's word for its table.
+fn current_takes_runner_identity(state: &GameState, registry: &CardRegistry) -> bool {
+    let Some(identity) = state.runner.identity.as_ref().and_then(|card| registry.get(card)) else { return false };
+    state
+        .corp
+        .play_area
+        .iter()
+        .filter_map(|played| registry.get(&played.card))
+        .flat_map(|definition| definition.continuous.iter())
+        .any(|effect| effect.kind == ContinuousKind::LosesAbilities && matches!(&effect.applies_to, Scope::Rig(filter) if card_matches_filter(identity, filter)))
+}
+
 /// Whether a current in play takes the abilities of the Corp install
 /// `install` ([`currents_taking`]). The filter is a definition's words, as
 /// every other `CorpInstalled` is read, and the copy's.
@@ -257,6 +273,9 @@ fn currents_taking<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl
 /// the one other Corp card on the table a current names, and a scope of its
 /// own would be a second reader of the same sentence.
 fn current_takes(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
+    if install == InstallId::RUNNER_IDENTITY {
+        return current_takes_runner_identity(state, registry);
+    }
     if install == InstallId::CORP_IDENTITY {
         let Some(definition) = state.corp.identity.as_ref().and_then(|card| registry.get(card)) else { return false };
         return currents_taking(state, registry).any(|filter| card_matches_filter(definition, filter));

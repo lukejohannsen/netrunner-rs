@@ -182,7 +182,6 @@ pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("emp_device", "EMP Device"),
     ("diwan", "Diwan"),
-    ("corporate_scandal", "Corporate Scandal"),
     ("lakshmi_smartfabrics", "Lakshmi Smartfabrics"),
 ];
 
@@ -311,20 +310,16 @@ pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("the_foundry_refining_the_process", "The Foundry: Refining the Process"),
     ("enhanced_login_protocol", "Enhanced Login Protocol"),
     ("heinlein_grid", "Heinlein Grid"),
-    ("cerebral_static", "Cerebral Static"),
     ("targeted_marketing", "Targeted Marketing"),
     ("sealed_vault", "Sealed Vault"),
     ("eden_fragment", "Eden Fragment"),
     ("will_o_the_wisp", "Will-o'-the-Wisp"),
-    ("scrubbed", "Scrubbed"),
-    ("unscheduled_maintenance", "Unscheduled Maintenance"),
     ("net_celebrity", "Net Celebrity"),
 ];
 
 /// *First Contact* (`first_contact`): tranche F8 of the FFG plan.
 pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("kitsune", "Kitsune"),
-    ("the_news_now_hour", "The News Now Hour"),
     ("wendigo", "Wendigo"),
     ("chronos_project", "Chronos Project"),
     ("lancelot", "Lancelot"),
@@ -389,7 +384,6 @@ pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("custom_biotics_engineered_for_success", "Custom Biotics: Engineered for Success"),
     ("next_design_guarding_the_net", "NEXT Design: Guarding the Net"),
     ("director_haas_pet_project", "Director Haas' Pet Project"),
-    ("project_wotan", "Project Wotan"),
     ("haas_arcology_ai", "Haas Arcology AI"),
     ("bioroid_efficiency_research", "Bioroid Efficiency Research"),
     ("howler", "Howler"),
@@ -452,7 +446,6 @@ pub(crate) const DT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
     ("paintbrush", "Paintbrush"),
     ("broadcast_square", "Broadcast Square"),
-    ("marker", "Marker"),
 ];
 
 /// *What Lies Ahead* (`what_lies_ahead`): tranche F11 of the FFG plan.
@@ -463,7 +456,6 @@ pub(crate) const WLA_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Trace Amount* (`trace_amount`): tranche F11 of the FFG plan.
 pub(crate) const TA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("encryption_protocol", "Encryption Protocol"),
-    ("sensei", "Sensei"),
     ("amazon_industrial_zone", "Amazon Industrial Zone"),
 ];
 

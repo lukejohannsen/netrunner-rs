@@ -53678,3 +53678,196 @@ mod engine_words_stage_5 {
         assert_eq!(done.corp.installed.iter().map(|card| card.card.clone()).collect::<Vec<_>>(), vec![id("ice_wall")]);
     }
 }
+
+/// Engine words, Stage 6: a subroutine given to the ice being encountered
+/// (Marker, Sensei), Project Wotan composed, and the currents' words — a
+/// prohibition on playing a current (The News Now Hour), one on installing
+/// more ice (Unscheduled Maintenance), bad publicity the Corp is
+/// considered to have (Corporate Scandal) and the Runner's identity losing
+/// its abilities (Cerebral Static) — with Scrubbed composed.
+mod engine_words_stage_6 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice(card: &str) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn played(card: &str) -> crate::rules::PlayedOperation {
+        crate::rules::PlayedOperation { card: id(card), handle: fixture_install_id(card) }
+    }
+
+    /// Passes windows and continues until `done` holds or something parks.
+    fn drive(mut state: GameState, registry: &CardRegistry, done: impl Fn(&GameState) -> bool) -> GameState {
+        for _ in 0..60 {
+            if done(&state) || state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.active_run.is_none() {
+                return state;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None if state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::Success) => PlayerAction::CompleteRun,
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0;
+        }
+        panic!("never done: {:?}", state.active_run.as_ref().map(|run| (run.phase, run.position)));
+    }
+
+    fn encountering(card: &'static str) -> impl Fn(&GameState) -> bool {
+        move |state| state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce && run.ice[run.position].card_id == id(card))
+    }
+
+    fn texts(state: &GameState) -> Vec<String> {
+        let run = state.active_run.as_ref().expect("a run");
+        run.ice[run.position].subroutines.iter().map(|subroutine| subroutine.definition.text.clone()).collect()
+    }
+
+    #[test]
+    fn marker_gives_the_next_ice_encountered_an_end_the_run_after_its_others() {
+        let registry = registry();
+        let mut state = runner_turn();
+        // Outermost first: Marker, then Enigma.
+        state.corp.installed = vec![ice("marker"), ice("enigma")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let at_enigma = drive(state, &registry, encountering("enigma"));
+        assert_eq!(texts(&at_enigma).len(), 3, "{:?}", texts(&at_enigma));
+        assert_eq!(texts(&at_enigma).last().map(String::as_str), Some("End the run."));
+        let run = at_enigma.active_run.as_ref().expect("a run");
+        assert_eq!(run.gained_for_the_run.iter().map(|gained| gained.ice).collect::<Vec<_>>(), vec![fixture_install_id("enigma")], "for the remainder of that run, and Marker gains none");
+    }
+
+    #[test]
+    fn sensei_gives_every_other_ice_encountered_an_end_the_run_for_the_encounter() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("sensei"), ice("enigma")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let at_enigma = drive(state, &registry, encountering("enigma"));
+        assert_eq!(texts(&at_enigma).len(), 3, "{:?}", texts(&at_enigma));
+        assert_eq!(texts(&at_enigma).last().map(String::as_str), Some("End the run."));
+        assert!(at_enigma.active_run.as_ref().expect("a run").gained_for_the_run.is_empty(), "only while it is encountered");
+    }
+
+    #[test]
+    fn marker_inside_gives_nothing_when_no_ice_follows() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("marker")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let done = drive(state, &registry, |_| false);
+        assert!(done.delayed.is_empty(), "the run took the waiting ability with it");
+    }
+
+    #[test]
+    fn project_wotan_gives_only_the_approached_rezzed_bioroid_an_end_the_run() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 5, ..crate::rules::InstalledCard { install_id: fixture_install_id("project_wotan"), card: id("project_wotan"), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() } }];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: fixture_install_id("project_wotan") }).expect("score");
+        let (scored, _) = close_all_windows(scored, &registry);
+        assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 3);
+        let wotan = PlayerAction::ActivateAbility { target: scored.corp.scored_agendas[0].install_id, ability_index: 0 };
+        assert!(apply_action(&scored, &registry, wotan.clone()).is_err(), "nothing approached");
+
+        for (card, bioroid) in [("ice_wall", false), ("eli_1_0", true)] {
+            let mut running = scored.clone();
+            running.phase = GamePhase::Action(Side::Runner);
+            running.corp.installed = vec![ice(card)];
+            let (approaching, _) = apply_action(&running, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+            let (approaching, _) = crate::rules::test_support::continue_run(&approaching, &registry).expect("approach the ice");
+            let (corp_window, _) = apply_action(&approaching, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+            let used = apply_action(&corp_window, &registry, wotan.clone());
+            assert_eq!(used.is_ok(), bioroid, "{card}");
+            let Ok((choosing, _)) = used else { continue };
+            let (chosen, _) = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Eli 1.0");
+            let (gained, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+            assert_eq!(gained.corp.scored_agendas[0].agenda_counters, 2);
+            let run = gained.active_run.as_ref().expect("the run goes on");
+            assert!(run.gained_for_the_run.len() == 1 && run.gained_for_the_run[0].after && run.gained_for_the_run[0].ice == fixture_install_id("eli_1_0"));
+        }
+    }
+
+    #[test]
+    fn scrubbed_lowers_the_first_ice_encountered_each_turn_by_two_for_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("scrubbed")];
+        state.corp.installed = vec![ice("enigma")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("scrubbed") }).expect("play");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.in_play.iter().map(|played| played.card.clone()).collect::<Vec<_>>(), vec![id("scrubbed")], "a current stays");
+        let (run, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let first = drive(run, &registry, encountering("enigma"));
+        let at = first.active_run.as_ref().expect("a run");
+        assert_eq!(crate::rules::continuous::ice_strength(&first, &registry, &at.ice[at.position]), 0, "2 − 2");
+        let ended = drive(first, &registry, |_| false);
+        let (ended, _) = close_all_windows(ended, &registry);
+        let (again, _) = apply_action(&ended, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run again");
+        let second = drive(again, &registry, encountering("enigma"));
+        let at = second.active_run.as_ref().expect("a run");
+        assert_eq!(crate::rules::continuous::ice_strength(&second, &registry, &at.ice[at.position]), 2, "not the first this turn");
+    }
+
+    #[test]
+    fn the_news_now_hour_bars_current_events_and_nothing_else() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("scrubbed"), id("sure_gamble")];
+        let barred = |state: &GameState| !crate::rules::legal_actions_for(state, &registry, Side::Runner).contains(&PlayerAction::PlayEvent { card_id: id("scrubbed") });
+        assert!(!barred(&state));
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("the_news_now_hour"), card: id("the_news_now_hour"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() }];
+        assert!(barred(&state));
+        assert!(matches!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("scrubbed") }), Err(RulesError::PlayProhibited { .. })));
+        assert!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }).is_ok(), "not a current");
+    }
+
+    #[test]
+    fn unscheduled_maintenance_lets_the_corp_install_one_piece_of_ice_a_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.in_play = vec![played("unscheduled_maintenance")];
+        state.corp.hq = vec![id("ice_wall"), id("enigma"), id("pad_campaign")];
+        let install = |card: &str, slot: InstallSlot, zone: ServerId| PlayerAction::InstallCard { card_id: id(card), zone, slot, trash_first: false };
+        let (one, _) = apply_action(&state, &registry, install("ice_wall", InstallSlot::Ice, ServerId::Hq)).expect("the first piece of ice");
+        let (one, _) = close_all_windows(one, &registry);
+        assert!(matches!(apply_action(&one, &registry, install("enigma", InstallSlot::Ice, ServerId::RnD)), Err(RulesError::IceInstallProhibited)));
+        assert!(!crate::rules::legal_actions_for(&one, &registry, Side::Corp).iter().any(|action| matches!(action, PlayerAction::InstallCard { slot: InstallSlot::Ice, .. })));
+        assert!(apply_action(&one, &registry, install("pad_campaign", InstallSlot::Root, ServerId::Remote(0))).is_ok(), "an asset is not ice");
+        let mut without = one.clone();
+        without.runner.in_play.clear();
+        assert!(apply_action(&without, &registry, install("enigma", InstallSlot::Ice, ServerId::RnD)).is_ok());
+    }
+
+    #[test]
+    fn corporate_scandal_gives_the_corp_one_more_bad_publicity_to_count() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("corporate_scandal")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("corporate_scandal") }).expect("play");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!((state.corp.bad_publicity, crate::rules::continuous::bad_publicity(&state, &registry)), (0, 1), "considered, not taken");
+        let (run, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        assert_eq!(run.active_run.as_ref().expect("a run").bad_publicity_credits, 1);
+    }
+
+    #[test]
+    fn cerebral_static_takes_the_runners_identity_abilities() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("kate_mac_mccaffrey_digital_tinker"));
+        let corroder = registry.get(&id("corroder")).expect("Corroder");
+        assert_eq!(crate::rules::continuous::install_cost_of(&state, &registry, corroder), 1, "Kate's discount");
+        state.corp.play_area = vec![played("cerebral_static")];
+        assert_eq!(crate::rules::continuous::install_cost_of(&state, &registry, corroder), 2, "no discount");
+        assert!(crate::rules::active::lost_abilities(&state, &registry, crate::rules::InstallId::RUNNER_IDENTITY));
+    }
+}

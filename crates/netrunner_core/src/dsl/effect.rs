@@ -1638,6 +1638,17 @@ pub enum Effect {
         /// Runner has", read as it is gained. `None` is one.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         count: Option<Amount>,
+        /// The ice being encountered gains it, not the acting install —
+        /// Marker's "The next piece of ice the Runner encounters during
+        /// this run gains “[subroutine] End the run.” … for the remainder
+        /// of that run" and Sensei's "while the Runner is encountering
+        /// another piece of ice, it gains …", each a `LaterThisTurn` on
+        /// `OnEncounter` that resolves as the ice that made it, so the
+        /// acting install is the wrong piece of ice. A word rather than an
+        /// effect of its own, as `GainIceSubtype`'s `ice` is: the sentences
+        /// differ only in which ice gains the subroutine.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        encountered: bool,
     },
     /// The acting install — a piece of ice, as it is rezzed — gains
     /// `subtype` while it remains rezzed: Lycian Multi-Munition's "choose 1
@@ -3758,12 +3769,28 @@ pub enum Prohibition {
     /// Composition didn't work: `Rez` is bound to one install and
     /// `RezOutermostIce` to one position in the run.
     RezIce,
+    /// The Runner cannot play current events — The News Now Hour's "The
+    /// Runner cannot play **current** events", a standing effect on the
+    /// Runner (`Scope::Player`). Asked of an event as it is offered and as
+    /// it is played (`engine::can_play_event_from`, `play_event_card`),
+    /// only of a current (`rules::current::is_current`). Composition
+    /// didn't work: no prohibition was about playing a card.
+    PlayCurrents,
+    /// The Corp cannot install ice — Unscheduled Maintenance's "The Corp
+    /// cannot install more than 1 piece of ice each turn", a standing
+    /// effect on the Corp `while` the turn has counted a Corp install of
+    /// ice (`TimesThisTurnWhen`; a piece of ice is installed seen as ice,
+    /// CR 3.4.2). Asked at the one door every Corp install passes
+    /// (`engine::place_corp_card`) and by the offer of a text install
+    /// (`corp_install_destinations`), of ice only. Composition didn't work:
+    /// `CorpInstall` refuses every card.
+    InstallIce,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 32] = [
+    pub const ALL: [Prohibition; 34] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -3796,13 +3823,15 @@ impl Prohibition {
         Prohibition::Draw,
         Prohibition::RezOutermostIce,
         Prohibition::RezIce,
+        Prohibition::PlayCurrents,
+        Prohibition::InstallIce,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
-            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::RezOutermostIce | Prohibition::RezIce => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw => Side::Runner,
+            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::InstallIce => Side::Corp,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::PlayCurrents => Side::Runner,
         }
     }
 
@@ -3813,7 +3842,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce | Prohibition::RezIce => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::PlayCurrents | Prohibition::InstallIce => None,
         }
     }
 }
