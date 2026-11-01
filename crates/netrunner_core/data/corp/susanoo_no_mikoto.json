@@ -1,0 +1,41 @@
+{
+  "id": "susanoo_no_mikoto",
+  "title": "Susanoo-no-Mikoto",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 9,
+  "strength": 7,
+  "unique": true,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "If the attacked server is not Archives, the Runner moves to the outermost position of Archives instead of passing this ice. The Runner cannot jack out this run until after they encounter a piece of ice.",
+      "effect": {
+        "Sequence": [
+          {
+            "Prohibit": {
+              "what": "JackOut",
+              "until": "UntilNextEncounter"
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "Not": {
+                  "DuringRunOn": "Archives"
+                }
+              },
+              "effect": {
+                "MoveRunToOutermost": "Archives"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 5020,
+  "is_playable": true
+}

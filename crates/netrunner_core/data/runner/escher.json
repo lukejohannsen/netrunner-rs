@@ -1,0 +1,63 @@
+{
+  "id": "escher",
+  "title": "Escher",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Hq"
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "Hq",
+            "effect": {
+              "Repeat": {
+                "times": {
+                  "CorpInstalls": "Ice"
+                },
+                "effect": {
+                  "PresentChoice": {
+                    "chooser": "Runner",
+                    "options": [
+                      {
+                        "PromptChooseCards": {
+                          "side": "Runner",
+                          "source": "OpponentInstalled",
+                          "filter": "Ice",
+                          "min": 2,
+                          "max": 2,
+                          "reveal": false,
+                          "shuffle_after": false,
+                          "then": {
+                            "SwapInstalledIce": [
+                              0,
+                              0
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "Sequence": []
+                      }
+                    ],
+                    "texts": [
+                      "rearrange any number of ice protecting all servers",
+                      ""
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 3031,
+  "is_playable": true
+}

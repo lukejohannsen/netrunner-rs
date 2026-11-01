@@ -307,6 +307,7 @@ fn duration(d: &EffectDuration) -> &'static str {
         EffectDuration::UntilYourNextTurnBegins => "until your next turn begins",
         EffectDuration::UntilChosenAgain => "until you choose again",
         EffectDuration::NextEncounter => "during the next encounter this run",
+        EffectDuration::UntilNextEncounter => "until the next encounter this run",
     }
 }
 
@@ -349,6 +350,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 EffectDuration::UntilYourNextTurnBegins => "the turns before your next",
                 EffectDuration::UntilChosenAgain => "the time until you choose again",
                 EffectDuration::NextEncounter => "the next encounter this run",
+                EffectDuration::UntilNextEncounter => "the time until the next encounter this run",
             };
             format!("{which} {sign}{delta} strength for the remainder of {until}")
         }
@@ -649,6 +651,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 netrunner_core::dsl::EffectDuration::UntilYourNextTurnBegins => "the turns before your next",
                 netrunner_core::dsl::EffectDuration::UntilChosenAgain => "as long as it is not chosen again",
                 netrunner_core::dsl::EffectDuration::NextEncounter => "the next encounter this run",
+                netrunner_core::dsl::EffectDuration::UntilNextEncounter => "the time until the next encounter this run",
             };
             format!("{which} gains {copies}\u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }
@@ -782,6 +785,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::MoveRunToIce(netrunner_core::dsl::MovedTo::PassedIce | netrunner_core::dsl::MovedTo::Ice { .. }) => "the Runner approaches the passed ice again, and may jack out".to_string(),
         Effect::MoveRunToIce(netrunner_core::dsl::MovedTo::ChosenThisWay | netrunner_core::dsl::MovedTo::Install(_)) => "the Runner moves to the chosen ice and approaches it, and may jack out".to_string(),
         Effect::MoveRunToIce(netrunner_core::dsl::MovedTo::ThisCard) => "the Runner moves to that ice and approaches it".to_string(),
+        Effect::MoveRunPast(_) => "the run continues as if the Runner had just passed the chosen ice".to_string(),
         Effect::InstallAgendaFromRunnerScoreArea => "install an agenda from the Runner's score area".to_string(),
         Effect::SwapApproachedIceWithCard { this_ice: true, .. } => "swap this ice with a card".to_string(),
         Effect::SwapApproachedIceWithCard { .. } => "swap the approached ice with a card".to_string(),

@@ -266,7 +266,6 @@ pub(crate) const OH_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Universe of Tomorrow* (`the_universe_of_tomorrow`): tranche F7 of the FFG plan.
 pub(crate) const UOT_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("surfer", "Surfer"),
     ("chronos_protocol_selective_mind_mapping", "Chronos Protocol: Selective Mind-mapping"),
     ("worlds_plaza", "Worlds Plaza"),
 ];
@@ -277,7 +276,6 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("glenn_station", "Glenn Station"),
     ("mark_yale", "Mark Yale"),
     ("satellite_grid", "Satellite Grid"),
-    ("the_twins", "The Twins"),
     ("showing_off", "Showing Off"),
     ("wanton_destruction", "Wanton Destruction"),
     ("hivemind", "Hivemind"),
@@ -358,7 +356,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("shi_kyu", "Shi.Kyū"),
     ("inazuma", "Inazuma"),
     ("shiro", "Shiro"),
-    ("susanoo_no_mikoto", "Susanoo-no-Mikoto"),
     ("plan_b", "Plan B"),
     ("diversified_portfolio", "Diversified Portfolio"),
     ("feint", "Feint"),
@@ -381,7 +378,6 @@ pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("tyrs_hand", "Tyr's Hand"),
     ("the_professor_keeper_of_knowledge", "The Professor: Keeper of Knowledge"),
     ("exile_streethawk", "Exile: Streethawk"),
-    ("escher", "Escher"),
     ("scavenge", "Scavenge"),
     ("cyber_cypher", "Cyber-Cypher"),
 ];
@@ -398,7 +394,6 @@ pub(crate) const OM_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const ST_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("bishop", "Bishop"),
     ("recon", "Recon"),
-    ("copycat", "Copycat"),
 ];
 
 /// *Mala Tempora* (`mala_tempora`): tranche F10 of the FFG plan.
@@ -448,7 +443,6 @@ pub(crate) const TA_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const CE_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("snitch", "Snitch"),
     ("personal_workshop", "Personal Workshop"),
-    ("sunset", "Sunset"),
     ("chimera", "Chimera"),
 ];
 
@@ -468,7 +462,6 @@ pub(crate) const HS_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Future Proof* (`future_proof`): tranche F11 of the FFG plan.
 pub(crate) const FP_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("midori", "Midori"),
 ];
 
 /// *NAPD Multiplayer* (`napd_multiplayer`): tranche F12 of the FFG plan.

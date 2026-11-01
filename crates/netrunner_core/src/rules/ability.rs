@@ -990,9 +990,9 @@ pub fn evaluate_effect(
         }
 
         Effect::SwapInstalledIce(a, b) => {
-            // Legal mid-run: `run::reconcile_ice` rebuilds the run's ICE
-            // list from `corp.installed` at the next step and keeps
-            // `position` on the same install. This used to be refused
+            // Legal mid-run: `run::follow_ice_swap` keeps the Runner's
+            // position, or the encountered ice, as CR 6.2.7 says, and
+            // `run::reconcile_ice` rebuilds the list. This used to be refused
             // outright (`CannotSwapIceDuringActiveRun`) because the list
             // was a snapshot that could not follow a swap.
             for id in [a, b] {
@@ -1023,7 +1023,11 @@ pub fn evaluate_effect(
             // Runner may not learn while keeping the fact that these two
             // installs traded places — which is on the table for anyone to
             // see, and which no `PlayerAction` names.
-            Ok(vec![GameEvent::IceSwapped { a: *a, b: *b, a_card: Some(card_a), b_card: Some(card_b) }])
+            let mut events = vec![GameEvent::IceSwapped { a: *a, b: *b, a_card: Some(card_a), b_card: Some(card_b) }];
+            // The run keeps its position or follows the encountered ice,
+            // as the step it is in says (CR 6.2.7).
+            events.extend(crate::rules::run::follow_ice_swap(state, registry, *a, *b)?);
+            Ok(events)
         }
 
         Effect::InstallFromZoneIgnoringCost { card_id, origin_zone, into, slot, insert_after } => {
@@ -3600,7 +3604,11 @@ pub fn evaluate_effect(
             _ => Ok(Vec::new()),
         },
         Effect::MoveRunToIce(crate::dsl::MovedTo::Ice { server, position }) => Ok(crate::rules::run::move_run_in_front_of(state, *server, *position as usize)),
-        Effect::MoveRunToIce(crate::dsl::MovedTo::Install(ice)) => crate::rules::run::move_run_in_front_of_install(state, registry, *ice),
+        Effect::MoveRunToIce(crate::dsl::MovedTo::Install(ice)) => crate::rules::run::move_run_in_front_of_install(state, registry, *ice, false),
+        // Copycat's choice is the only way in; any other place is a no-op
+        // until a card prints one.
+        Effect::MoveRunPast(crate::dsl::MovedTo::Install(ice)) => crate::rules::run::move_run_in_front_of_install(state, registry, *ice, true),
+        Effect::MoveRunPast(_) => Ok(Vec::new()),
         Effect::MoveRunToIce(crate::dsl::MovedTo::ChosenThisWay) => Ok(Vec::new()),
         Effect::MoveRunToIce(crate::dsl::MovedTo::ThisCard) => match ctx.acting_install {
             Some(ice) => crate::rules::run::move_run_back_to_ice(state, registry, ice),

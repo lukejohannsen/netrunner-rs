@@ -1,0 +1,43 @@
+{
+  "id": "the_twins",
+  "title": "The Twins",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "when": "ProtectingThisServer",
+      "acts_on_subject": true,
+      "requirement": {
+        "ActingCardMatches": "Rezzed"
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Trash": {
+                "from": "OwnHq",
+                "filter": "CopyOfThisCard",
+                "count": 1,
+                "reveal": true
+              }
+            },
+            "if_paid": "ForceEncounter",
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may reveal and trash another copy of that ice from HQ"
+          }
+        }
+      ],
+      "text": "Whenever the Runner passes a rezzed piece of ice protecting this server, you may reveal and trash another copy of that ice from HQ to force the Runner to encounter the piece of ice just passed again."
+    }
+  ],
+  "built_from": 7024,
+  "is_playable": true
+}

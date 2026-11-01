@@ -3,7 +3,7 @@
   "name": "Zymurgy",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Red Sand Stage 47's deck for AgInfusion: New Miracles for a New World, on A Thousand Cuts' list, so the sweeps meet a Corp that trashes the unrezzed ice the Runner approaches and sends the run to another server's outermost ice. Eternal-legal only. Red Sand Stage 51: two Mirāju for two Neural Katana, a code gate that sends a Runner who broke it to the outermost position of Archives instead of passing it; A Thousand Cuts keeps Neural Katana. Flashpoint Stage 16 put an Enforcing Loyalty and a Psychokinesis in for its two Genotyping. FFG F6 Stage 6: two Merger and a Global Food Initiative (3 influence) for a Braintrust, a Flower Sermon and a Fujii Asset Retrieval, the same seven points, each kept by other decks. Mumbad Stage 19 swaps one Hangeki for Clones are not People. Mumbad Stage 20 swaps one Bamboo Dome for Mumbad City Grid. Mumbad Stage 23 swapped a Whirlpool for Vikram 1.0. Cortex Lock and Tech Startup in for Kakurenbo (SanSan Stage 8). Crick in for a Thimblerig (SanSan Stage 9). SanSan Stage 19: a Whirlpool became It's a Trap!. SanSan Stage 21: Genetics Pavilion Two Komainu take Mlinzi's place. Two Swarm take Otoroshi's place. One Thimblerig became a Sapper, ice the Runner encounters when they access it in HQ or R&D (Engine words, Stage 5).",
+  "description": "Not a published list: Red Sand Stage 47's deck for AgInfusion: New Miracles for a New World, on A Thousand Cuts' list, so the sweeps meet a Corp that trashes the unrezzed ice the Runner approaches and sends the run to another server's outermost ice. Eternal-legal only. Red Sand Stage 51: two Mirāju for two Neural Katana, a code gate that sends a Runner who broke it to the outermost position of Archives instead of passing it; A Thousand Cuts keeps Neural Katana. Flashpoint Stage 16 put an Enforcing Loyalty and a Psychokinesis in for its two Genotyping. FFG F6 Stage 6: two Merger and a Global Food Initiative (3 influence) for a Braintrust, a Flower Sermon and a Fujii Asset Retrieval, the same seven points, each kept by other decks. Mumbad Stage 19 swaps one Hangeki for Clones are not People. Mumbad Stage 20 swaps one Bamboo Dome for Mumbad City Grid. Mumbad Stage 23 swapped a Whirlpool for Vikram 1.0. Cortex Lock and Tech Startup in for Kakurenbo (SanSan Stage 8). Crick in for a Thimblerig (SanSan Stage 9). SanSan Stage 19: a Whirlpool became It's a Trap!. SanSan Stage 21: Genetics Pavilion Two Komainu take Mlinzi's place. Two Swarm take Otoroshi's place. One Thimblerig became a Sapper, ice the Runner encounters when they access it in HQ or R&D (Engine words, Stage 5). Two Sunsets came in for both Reverse Infections, so the Corp's own arrangement of a server's ice is played beside Mandatory Seed Replacement's (Engine words Stage 9).",
   "style": [
     "traps"
   ],
@@ -64,10 +64,6 @@
     {
       "card": "rashida_jaheem",
       "count": 1
-    },
-    {
-      "card": "reverse_infection",
-      "count": 2
     },
     {
       "card": "water_monopoly",
@@ -140,6 +136,10 @@
     {
       "card": "sapper",
       "count": 1
+    },
+    {
+      "card": "sunset",
+      "count": 2
     }
   ]
 }

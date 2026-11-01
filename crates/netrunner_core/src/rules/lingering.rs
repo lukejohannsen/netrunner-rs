@@ -389,6 +389,7 @@ pub(crate) fn until(state: &GameState, duration: EffectDuration, controller: Sid
         EffectDuration::NextAction => Ok(Until::ActionsFinished { turn: state.turn, count: state.this_turn.actions_finished() + 1 }),
         EffectDuration::UntilChosenAgain => Ok(Until::ChosenAgain),
         EffectDuration::NextEncounter => run.map(|run| Until::ThroughEncounter(run.encounters + 1)).ok_or(RulesError::NoActiveRun),
+        EffectDuration::UntilNextEncounter => run.map(|run| Until::ThroughEncounter(run.encounters)).ok_or(RulesError::NoActiveRun),
     }
 }
 

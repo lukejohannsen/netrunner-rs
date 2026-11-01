@@ -3,7 +3,7 @@
   "name": "Zoom Lens",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Ele \"Smoke\" Scovak: Cynosure of the Net, the Intervention Shaper identity whose one recurring credit pays only for using icebreakers. Head Start's forty cards whole, Dinosaurus and three Shaper breakers to spend the credit on, under the identity that pays for them in place of Chaos Theory's extra [mu]. Eternal-legal only: Intervention is in neither pool. FFG F5 Stage 15. Flashpoint Stage 16 put two Data Breach in for its two Jailbreak. Flashpoint Stage 26 swapped a Diesel for Net Mercur, whose credits a stealth spend refills. FFG F5 Stage 39: two Cold Read for its two Infiltration, which Head Start keeps.  FFG F6 Stage 2: two Net Shield and a Diesel (each kept by other decks) for two NetChip and Chatterjee University. Two Record Reconstructor take Sure Gamble's place. Bookmark, London Library and Omni-drive came in for two Creative Commissions and a Gordian Blade, so a sweep plays a hardware that hosts from the grip, a resource that installs programs onto itself for free and takes them back, and a console that hosts one small program outside the memory limit.",
+  "description": "Not a published list: built so the sweeps reach Ele \"Smoke\" Scovak: Cynosure of the Net, the Intervention Shaper identity whose one recurring credit pays only for using icebreakers. Head Start's forty cards whole, Dinosaurus and three Shaper breakers to spend the credit on, under the identity that pays for them in place of Chaos Theory's extra [mu]. Eternal-legal only: Intervention is in neither pool. FFG F5 Stage 15. Flashpoint Stage 16 put two Data Breach in for its two Jailbreak. Flashpoint Stage 26 swapped a Diesel for Net Mercur, whose credits a stealth spend refills. FFG F5 Stage 39: two Cold Read for its two Infiltration, which Head Start keeps.  FFG F6 Stage 2: two Net Shield and a Diesel (each kept by other decks) for two NetChip and Chatterjee University. Two Record Reconstructor take Sure Gamble's place. Bookmark, London Library and Omni-drive came in for two Creative Commissions and a Gordian Blade, so a sweep plays a hardware that hosts from the grip, a resource that installs programs onto itself for free and takes them back, and a console that hosts one small program outside the memory limit. An Escher came in for the Spec Work, for a rearrangement of the Corp's ice in place of a breach (Engine words Stage 9).",
   "style": [
     "rig"
   ],
@@ -40,10 +40,6 @@
     {
       "card": "system_seizure",
       "count": 2
-    },
-    {
-      "card": "spec_work",
-      "count": 1
     },
     {
       "card": "kongamato",
@@ -103,6 +99,10 @@
     },
     {
       "card": "omni_drive",
+      "count": 1
+    },
+    {
+      "card": "escher",
       "count": 1
     }
   ]

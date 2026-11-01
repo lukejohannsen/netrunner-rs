@@ -54230,3 +54230,300 @@ mod engine_words_stage_8 {
         assert_eq!(state.runner.heap, vec![id("hunting_grounds")]);
     }
 }
+
+mod engine_words_stage_9 {
+    use super::*;
+    use crate::rules::RunPhase;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state
+    }
+
+    fn ice(card: &str, server: ServerId, rezzed: bool, install: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    fn root(card: &str, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Root, rezzed: true, ..Default::default() }
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn phase(state: &GameState) -> Option<RunPhase> {
+        state.active_run.as_ref().map(|run| run.phase)
+    }
+
+    /// The install the run stands on, and where.
+    fn standing(state: &GameState) -> (ServerId, usize, Option<InstallId>) {
+        let run = state.active_run.as_ref().expect("a run");
+        (run.server, run.position, run.ice.get(run.position).map(|ice| ice.install_id))
+    }
+
+    /// Both players pass and the Runner goes on until `done`, stopping at
+    /// anything parked.
+    fn pass_until(mut state: GameState, registry: &CardRegistry, done: impl Fn(&GameState) -> bool) -> GameState {
+        for _ in 0..64 {
+            if done(&state) {
+                return state;
+            }
+            let parked = state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.pending_payment.is_some();
+            assert!(!parked, "parked before it was done: {:?} {:?}", state.pending_decision, state.pending_paid_choice);
+            let action = match (&state.paid_ability_window, phase(&state)) {
+                (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+                (None, Some(RunPhase::Initiation | RunPhase::Movement)) => PlayerAction::ContinueRun,
+                (None, Some(RunPhase::EncounterIce)) => PlayerAction::ContinueRun,
+                (None, Some(RunPhase::Success)) => PlayerAction::CompleteRun,
+                other => panic!("stuck at {other:?}"),
+            };
+            state = act(&state, registry, action);
+        }
+        panic!("never done");
+    }
+
+    fn swap(state: &mut GameState, registry: &CardRegistry, a: u32, b: u32) {
+        let effect = crate::dsl::Effect::SwapInstalledIce(InstallId(a), InstallId(b));
+        crate::rules::evaluate_effect(state, &effect, &mut crate::rules::ResolutionContext::default(), registry).expect("swap");
+    }
+
+    fn corp_position(state: &GameState, install: u32) -> usize {
+        state.corp.installed.iter().position(|card| card.install_id == InstallId(install)).expect("installed")
+    }
+
+    fn order(state: &GameState, server: ServerId) -> Vec<u32> {
+        state.corp.installed.iter().filter(|card| card.server == server && card.slot == InstallSlot::Ice).map(|card| card.install_id.0).collect()
+    }
+
+    /// CR 6.2.7: a swap keeps the Runner's position during an approach
+    /// (b) and the movement phase (e), and follows the ice only while it
+    /// is encountered (d) — to another server if it went to one.
+    #[test]
+    fn a_swap_mid_run_keeps_the_runners_position_and_follows_only_the_encountered_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("ice_wall", ServerId::Hq, false, 101), ice("enigma", ServerId::Hq, false, 102), ice("wall_of_static", ServerId::RnD, false, 103)];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let approaching = pass_until(started, &registry, |state| phase(state) == Some(RunPhase::ApproachIce));
+        assert_eq!(standing(&approaching), (ServerId::Hq, 0, Some(InstallId(101))));
+
+        let mut swapped = approaching.clone();
+        swap(&mut swapped, &registry, 101, 103);
+        assert_eq!(phase(&swapped), Some(RunPhase::ApproachIce));
+        assert_eq!(standing(&swapped), (ServerId::Hq, 0, Some(InstallId(103))), "6.2.7b: approaching the new ice in that position");
+
+        let passed = pass_until(approaching, &registry, |state| phase(state) == Some(RunPhase::Movement));
+        assert_eq!(passed.active_run.as_ref().unwrap().position, 1);
+        let mut swapped = passed.clone();
+        swap(&mut swapped, &registry, 101, 102);
+        assert_eq!(order(&swapped, ServerId::Hq), vec![102, 101]);
+        let next = pass_until(swapped, &registry, |state| phase(state) == Some(RunPhase::ApproachIce));
+        assert_eq!(standing(&next), (ServerId::Hq, 1, Some(InstallId(101))), "6.2.7e: the passed ice swapped inward is approached again");
+
+        let mut swapped = passed;
+        swap(&mut swapped, &registry, 101, 103);
+        let next = pass_until(swapped, &registry, |state| phase(state) == Some(RunPhase::ApproachIce));
+        assert_eq!(standing(&next), (ServerId::Hq, 1, Some(InstallId(102))), "the position passed is passed, whatever is there now");
+
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("ice_wall", ServerId::Hq, true, 101), ice("enigma", ServerId::Hq, true, 102), ice("wall_of_static", ServerId::RnD, true, 103)];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let mut encountering = pass_until(started, &registry, |state| phase(state) == Some(RunPhase::EncounterIce));
+        swap(&mut encountering, &registry, 101, 103);
+        assert_eq!(phase(&encountering), Some(RunPhase::EncounterIce));
+        assert_eq!(standing(&encountering), (ServerId::RnD, 0, Some(InstallId(101))), "6.2.7d: the run goes with the encountered ice");
+    }
+
+    #[test]
+    fn midori_swaps_the_approached_ice_for_one_from_hq_and_the_runner_may_jack_out() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![root("midori", ServerId::Remote(0)), ice("enigma", ServerId::Remote(0), true, 101), ice("ice_wall", ServerId::Remote(0), false, 102)];
+        state.corp.hq = vec![id("hedge_fund"), id("wall_of_static")];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
+        let asked = pass_until(started, &registry, |state| state.pending_decision.is_some());
+        assert_eq!(standing(&asked).2, Some(InstallId(101)));
+        let state = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).is_err(), "Hedge Fund is not ice");
+        let state = act(&state, &registry, PlayerAction::ToggleCardSelection { position: 1 });
+        let state = act(&state, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(state.pending_paid_choice.is_some(), "the Runner may jack out");
+        let state = act(&state, &registry, PlayerAction::DeclinePendingPaidChoice);
+        let swapped = state.corp.installed.iter().find(|card| card.install_id == InstallId(101)).unwrap();
+        assert_eq!((swapped.card.0.as_str(), swapped.rezzed), ("wall_of_static", false), "installed unrezzed");
+        assert_eq!(state.corp.hq, vec![id("hedge_fund"), id("enigma")]);
+        assert_eq!(phase(&state), Some(RunPhase::ApproachIce));
+
+        // Once per run: the next approach asks nothing.
+        let next = pass_until(state, &registry, |state| state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::ApproachIce && run.position == 1));
+        assert!(next.pending_decision.is_none());
+    }
+
+    #[test]
+    fn surfer_swaps_the_encountered_barrier_with_its_neighbour_and_the_encounter_goes_on() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("surfer", 1)];
+        state.next_install_id = 2;
+        state.corp.installed = vec![ice("ice_wall", ServerId::Hq, true, 101), ice("enigma", ServerId::Hq, true, 102), ice("wall_of_static", ServerId::Hq, true, 103)];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let encountering = pass_until(started, &registry, |state| phase(state) == Some(RunPhase::EncounterIce));
+        let credits = encountering.runner.resources.credits;
+        let state = act(&encountering, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 });
+        let state = act(&state, &registry, PlayerAction::ToggleCardSelection { position: corp_position(&state, 101) });
+        let state = act(&state, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: corp_position(&state, 103) }).is_err(), "not directly before or after it");
+        let state = act(&state, &registry, PlayerAction::ToggleCardSelection { position: corp_position(&state, 102) });
+        let state = act(&state, &registry, PlayerAction::ConfirmCardSelection);
+        assert_eq!(order(&state, ServerId::Hq), vec![102, 101, 103]);
+        assert_eq!(phase(&state), Some(RunPhase::EncounterIce), "you are still encountering that ice");
+        assert_eq!(standing(&state), (ServerId::Hq, 1, Some(InstallId(101))), "from its new position");
+        assert_eq!(state.runner.resources.credits, Credits(credits.0 - 2));
+
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("surfer", 1)];
+        state.next_install_id = 2;
+        state.corp.installed = vec![ice("enigma", ServerId::Hq, true, 101), ice("ice_wall", ServerId::Hq, true, 102)];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let encountering = pass_until(started, &registry, |state| phase(state) == Some(RunPhase::EncounterIce));
+        assert!(apply_action(&encountering, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 }).is_err(), "a barrier only");
+    }
+
+    #[test]
+    fn copycat_continues_the_run_from_past_another_rezzed_copy_of_the_passed_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("copycat", 1)];
+        state.next_install_id = 2;
+        state.corp.installed = vec![ice("ice_wall", ServerId::Hq, false, 101), ice("ice_wall", ServerId::RnD, true, 102), ice("enigma", ServerId::RnD, true, 103), ice("ice_wall", ServerId::Archives, false, 104)];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let asked = pass_until(started, &registry, |state| state.pending_decision.is_some());
+        let state = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        assert!(state.runner.heap.contains(&id("copycat")), "trash Copycat");
+        for other in [101, 103, 104] {
+            assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: corp_position(&state, other) }).is_err(), "{other}: another rezzed copy only");
+        }
+        let state = act(&state, &registry, PlayerAction::ToggleCardSelection { position: corp_position(&state, 102) });
+        let state = act(&state, &registry, PlayerAction::ConfirmCardSelection);
+        assert_eq!(phase(&state), Some(RunPhase::Movement));
+        assert_eq!(standing(&state), (ServerId::RnD, 1, Some(InstallId(103))), "as if R&D's Ice Wall had just been passed");
+        let next = pass_until(state, &registry, |state| phase(state) == Some(RunPhase::ApproachIce));
+        assert_eq!(standing(&next), (ServerId::RnD, 1, Some(InstallId(103))));
+
+        let declined = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 });
+        assert!(declined.runner.rig.iter().any(|card| card.card.0 == "copycat"));
+        assert_eq!(declined.active_run.as_ref().unwrap().server, ServerId::Hq);
+    }
+
+    #[test]
+    fn sunset_arranges_the_ice_protecting_the_chosen_server() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("sunset")];
+        state.corp.installed = vec![ice("ice_wall", ServerId::Hq, true, 101), ice("enigma", ServerId::Hq, true, 102), ice("wall_of_static", ServerId::Hq, false, 103), ice("palisade", ServerId::RnD, true, 104)];
+        let state = act(&state, &registry, PlayerAction::PlayOperation { card_id: id("sunset") });
+        let mut state = act(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq });
+        for (first, second) in [(101, 103), (101, 102)] {
+            state = act(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+            assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: corp_position(&state, 104) }).is_err(), "R&D's ice is not that server's");
+            state = act(&state, &registry, PlayerAction::ToggleCardSelection { position: corp_position(&state, first) });
+            state = act(&state, &registry, PlayerAction::ToggleCardSelection { position: corp_position(&state, second) });
+            state = act(&state, &registry, PlayerAction::ConfirmCardSelection);
+        }
+        while state.pending_decision.is_some() {
+            state = act(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 });
+        }
+        assert_eq!(order(&state, ServerId::Hq), vec![103, 101, 102], "in any order");
+        assert!(state.corp.installed.iter().find(|card| card.install_id == InstallId(103)).is_some_and(|card| !card.rezzed), "nothing rezzed");
+    }
+
+    #[test]
+    fn escher_rearranges_ice_across_servers_instead_of_breaching_hq() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("escher")];
+        state.corp.installed = vec![ice("ice_wall", ServerId::RnD, false, 101), ice("enigma", ServerId::Archives, false, 102), ice("palisade", ServerId::Archives, false, 103)];
+        state.corp.hq = vec![id("hedge_fund")];
+        let started = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("escher") });
+        let mut state = pass_until(started, &registry, |state| state.pending_decision.is_some());
+        state = act(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        state = act(&state, &registry, PlayerAction::ToggleCardSelection { position: corp_position(&state, 101) });
+        state = act(&state, &registry, PlayerAction::ToggleCardSelection { position: corp_position(&state, 103) });
+        state = act(&state, &registry, PlayerAction::ConfirmCardSelection);
+        while state.pending_decision.is_some() {
+            state = act(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 });
+        }
+        assert_eq!(order(&state, ServerId::RnD), vec![103]);
+        assert_eq!(order(&state, ServerId::Archives), vec![102, 101], "the number protecting each server is kept");
+        assert_eq!(state.corp.hq, vec![id("hedge_fund")], "HQ was not breached");
+    }
+
+    #[test]
+    fn susanoo_moves_the_runner_to_archives_where_they_cannot_jack_out_until_an_encounter() {
+        let registry = registry();
+        let moved = |archives: Option<bool>| {
+            let mut state = runner_turn();
+            state.corp.installed = vec![ice("susanoo_no_mikoto", ServerId::Hq, true, 101)];
+            if let Some(rezzed) = archives {
+                state.corp.installed.push(ice("enigma", ServerId::Archives, rezzed, 102));
+            }
+            let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+            pass_until(started, &registry, |state| state.active_run.as_ref().is_some_and(|run| run.server == ServerId::Archives))
+        };
+        let jack_out_barred = |state: &GameState| crate::rules::lingering::prohibits(state, crate::dsl::Prohibition::JackOut);
+
+        let bare = moved(None);
+        assert_eq!(phase(&bare), Some(RunPhase::Movement), "in front of Archives");
+        assert!(jack_out_barred(&bare));
+        assert!(!crate::rules::legal_actions(&bare, &registry).contains(&PlayerAction::JackOut));
+
+        // From the outermost position of Archives, past ice nobody rezzed.
+        let passed = pass_until(moved(Some(false)), &registry, |state| phase(state) == Some(RunPhase::Movement));
+        assert_eq!(standing(&passed), (ServerId::Archives, 1, None));
+        assert!(jack_out_barred(&passed), "passing unrezzed ice is no encounter");
+
+        let rezzed = pass_until(moved(Some(true)), &registry, |state| phase(state) == Some(RunPhase::EncounterIce));
+        assert_eq!(standing(&rezzed).2, Some(InstallId(102)));
+        assert!(!jack_out_barred(&rezzed), "after they encounter a piece of ice");
+
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("susanoo_no_mikoto", ServerId::Archives, true, 101)];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives });
+        let after = pass_until(started, &registry, |state| phase(state) == Some(RunPhase::Movement));
+        assert_eq!(standing(&after).0, ServerId::Archives);
+        assert_eq!(after.active_run.as_ref().unwrap().position, 1, "on Archives the ice is passed");
+    }
+
+    #[test]
+    fn the_twins_trash_a_copy_from_hq_to_make_the_runner_encounter_the_passed_ice_again() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![root("the_twins", ServerId::Hq), ice("enigma", ServerId::Hq, true, 101)];
+        state.corp.hq = vec![id("hedge_fund"), id("enigma")];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let mut encountering = pass_until(started, &registry, |state| phase(state) == Some(RunPhase::EncounterIce));
+        let bypass = crate::dsl::Effect::BypassEncounteredIce;
+        crate::rules::evaluate_effect(&mut encountering, &bypass, &mut crate::rules::ResolutionContext::for_card(None), &registry).expect("bypass");
+        let asked = pass_until(encountering, &registry, |state| state.pending_paid_choice.is_some());
+        let again = act(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None });
+        assert_eq!(again.corp.hq, vec![id("hedge_fund")]);
+        assert!(again.corp.archives.iter().any(|card| card.card.0 == "enigma" && !card.facedown), "revealed and trashed");
+        assert_eq!(phase(&again), Some(RunPhase::EncounterIce));
+        assert_eq!(standing(&again).2, Some(InstallId(101)), "the piece of ice just passed, again");
+
+        let declined = act(&asked, &registry, PlayerAction::DeclinePendingPaidChoice);
+        assert_eq!(phase(&declined), Some(RunPhase::Movement));
+    }
+}

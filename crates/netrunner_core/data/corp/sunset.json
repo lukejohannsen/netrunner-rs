@@ -1,0 +1,65 @@
+{
+  "id": "sunset",
+  "title": "Sunset",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseServer": {
+            "only_protected_by_ice": true
+          }
+        },
+        {
+          "Repeat": {
+            "times": {
+              "CorpInstalls": "Ice"
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnInstalled",
+                      "filter": {
+                        "All": [
+                          "Ice",
+                          "InChosenServer"
+                        ]
+                      },
+                      "min": 2,
+                      "max": 2,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "SwapInstalledIce": [
+                          0,
+                          0
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "Arrange the ice protecting that server in any order",
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 2054,
+  "is_playable": true
+}

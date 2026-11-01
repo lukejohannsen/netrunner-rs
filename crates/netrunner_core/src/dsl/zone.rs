@@ -777,6 +777,23 @@ pub enum CardFilter {
     /// answer is the table's. Composition didn't work: a type filter says
     /// "ice", never "what fits where that card is".
     SwappableIntoThis,
+    /// A piece of ice directly before or after the install the selection
+    /// acts as, protecting the same server — Surfer's "swap a piece of
+    /// barrier ice currently being encountered with a piece of ice
+    /// **directly before or after it**", chosen inside the `then` of the
+    /// choice of the encountered ice. Instance-level: positions are the
+    /// table's (CR 6.2.3). Composition didn't work: `InAttackedServer` is
+    /// every piece of ice on the server, and no filter knew a neighbour.
+    NextToThis,
+    /// Another copy of the piece of ice `MovedTo` names, by title and not
+    /// by handle — Copycat's "choose **another rezzed copy of that piece
+    /// of ice** protecting any server". `MovedTo::PassedIce` is written
+    /// over as `MovedTo::Ice` when the choice the selection waits behind
+    /// parks (`with_passed_ice`), as `SamePositionAs`'s is; left unwritten
+    /// it admits nothing. Composition didn't work: `CopyOfThisCard` asks
+    /// about the card whose text it is, and Copycat's text is not the
+    /// ice's.
+    CopyOf(crate::dsl::MovedTo),
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -952,6 +969,8 @@ impl CardFilter {
                 | CardFilter::ScoredThisTurn
                 | CardFilter::AmongInstalls(_)
                 | CardFilter::SamePositionAs(_)
+                | CardFilter::NextToThis
+                | CardFilter::CopyOf(_)
         )
     }
 
@@ -1020,6 +1039,7 @@ impl CardFilter {
     pub fn with_passed_ice(self, server: ServerId, position: u32) -> CardFilter {
         match self {
             CardFilter::SamePositionAs(crate::dsl::MovedTo::PassedIce) => CardFilter::SamePositionAs(crate::dsl::MovedTo::Ice { server, position }),
+            CardFilter::CopyOf(crate::dsl::MovedTo::PassedIce) => CardFilter::CopyOf(crate::dsl::MovedTo::Ice { server, position }),
             CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_passed_ice(server, position)).collect()),
             CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_passed_ice(server, position)).collect()),
             CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_passed_ice(server, position))),
@@ -1137,6 +1157,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::BeingEncountered => true,
         CardFilter::BeingApproached => true,
         CardFilter::SwappableIntoThis => true,
+        CardFilter::NextToThis | CardFilter::CopyOf(_) => matches!(card.card_type, CardType::Ice(_)),
         CardFilter::PrintedCostAtMost(at_most) => match **at_most {
             crate::dsl::Amount::Fixed(n) => !matches!(card.card_type, CardType::Agenda | CardType::Identity) && card.cost <= n,
             _ => false,
