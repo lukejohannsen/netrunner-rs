@@ -3608,14 +3608,28 @@ pub(crate) fn purge_all_virus_counters(state: &mut GameState, registry: &CardReg
 
     let mut purged = Vec::new();
     let mut removed = 0;
+    // What a host keeps on the program it hosts (Progenitor), asked of
+    // each rig card before any counter goes.
+    let kept: Vec<(InstallId, u32)> = state
+        .runner
+        .rig
+        .iter()
+        .filter_map(|rigged| {
+            let card = registry.get(&rigged.card)?;
+            let keep = continuous::kept_through_purge(state, registry, card, rigged.install_id);
+            (keep > 0).then_some((rigged.install_id, keep))
+        })
+        .collect();
+    let keeps = |install: InstallId| kept.iter().find(|(kept, _)| *kept == install).map_or(0, |(_, keep)| *keep);
     for installed in state.corp.installed.iter_mut().filter(|c| holds_virus_counters(&c.card)) {
         removed += installed.counters;
         installed.counters = 0;
         purged.push(installed.card.clone());
     }
     for rigged in state.runner.rig.iter_mut().filter(|c| holds_virus_counters(&c.card)) {
-        removed += rigged.counters;
-        rigged.counters = 0;
+        let left = rigged.counters.min(keeps(rigged.install_id));
+        removed += rigged.counters - left;
+        rigged.counters = left;
         purged.push(rigged.card.clone());
     }
     // And the ones beside another kind (Contaminate's), which the card

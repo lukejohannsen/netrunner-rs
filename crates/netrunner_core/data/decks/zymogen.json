@@ -3,7 +3,7 @@
   "name": "Zymogen",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Jesminder Sareen: Girl Behind the Curtain, Kala Ghoda's Shaper identity, which prevents 1 tag the first time each run the Runner would take tags. Dead Reckoning's list, its identity swapped, with two Artist Colony (forfeit an agenda to search the stack for a card and install it), two Liberated Chela (five clicks and an agenda for 2 points, unless the Corp forfeits one) and a Wasteland (a credit the first time each turn the Runner trashes one of their own installs) for two Sacrificial Construct, a Net Shield, a Lampades and a Baker, each kept by Dead Reckoning. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Mumbad is in neither pool. FFG F6 Stage 4. Mumbad Stage 15 swapped in Safety First for a Beatriz Friere Gonzalez, which four other decks carry. Mumbad Stage 17: The Price of Freedom for a Careful Planning. Mumbad Stage 24 swapped an Into the Depths for Out of the Ashes. FFG F7 Stage 13 swapped both Pelangis for two DaVincis. SanSan Stage 19: a Gordian Blade became Analog Dreamers. One Cybertrooper Talut became a Eureka!, which installs the top card of the stack 10[credit] cheaper (Engine words, Stage 5).",
+  "description": "Not a published list: built so the sweeps reach Jesminder Sareen: Girl Behind the Curtain, Kala Ghoda's Shaper identity, which prevents 1 tag the first time each run the Runner would take tags. Dead Reckoning's list, its identity swapped, with two Artist Colony (forfeit an agenda to search the stack for a card and install it), two Liberated Chela (five clicks and an agenda for 2 points, unless the Corp forfeits one) and a Wasteland (a credit the first time each turn the Runner trashes one of their own installs) for two Sacrificial Construct, a Net Shield, a Lampades and a Baker, each kept by Dead Reckoning. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Mumbad is in neither pool. FFG F6 Stage 4. Mumbad Stage 15 swapped in Safety First for a Beatriz Friere Gonzalez, which four other decks carry. Mumbad Stage 17: The Price of Freedom for a Careful Planning. Mumbad Stage 24 swapped an Into the Depths for Out of the Ashes. FFG F7 Stage 13 swapped both Pelangis for two DaVincis. SanSan Stage 19: a Gordian Blade became Analog Dreamers. One Cybertrooper Talut became a Eureka!, which installs the top card of the stack 10[credit] cheaper (Engine words, Stage 5). Monolith came in for the Mind's Eye, console for console, so a sweep installs programs four credits cheaper and trashes one from the grip to prevent damage.",
   "style": [
     "rig"
   ],
@@ -55,10 +55,6 @@
     },
     {
       "card": "paules_cafe",
-      "count": 1
-    },
-    {
-      "card": "minds_eye",
       "count": 1
     },
     {
@@ -147,6 +143,10 @@
     },
     {
       "card": "eureka",
+      "count": 1
+    },
+    {
+      "card": "monolith",
       "count": 1
     }
   ]

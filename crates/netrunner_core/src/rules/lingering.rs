@@ -170,6 +170,12 @@ pub enum Lingering {
     /// third field no view carried: every bot sample taken during a Shred
     /// run believed the next "End the run" would end it.
     PreventRunEnding(EndRunPrevention),
+    /// "The first time you would take tags from now until your next turn
+    /// begins, prevent 1 tag" (Qianju PT): a prevention that stands for a
+    /// duration and asks nobody, as `PreventRunEnding` does, taken off the
+    /// list the first time something it is about is about to happen
+    /// (`rules::prevention::would`), however much of it is left.
+    Prevent(crate::dsl::Preventable),
     /// A change to a player's click allotment for their next turn —
     /// Aggressive Trendsetting's "+1 allotted [click] for your next turn",
     /// Caveat Emptor's "−1 allotted [click] for their next turn" — taken
@@ -423,7 +429,7 @@ pub fn strength(state: &GameState, on: InstallId) -> i32 {
         .filter(|effect| effect.on == On::Install(on) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::AdditionalCost { .. } => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::Prevent(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::AdditionalCost { .. } => 0,
         })
         .sum()
 }
@@ -478,7 +484,7 @@ pub fn ice_strength_terms(state: &GameState, on: InstallId) -> impl Iterator<Ite
         .filter(move |effect| (effect.on == On::Install(on) || effect.on == On::EachIce || server.is_some_and(|server| effect.on == On::Server(server))) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::AdditionalCost { .. } => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::Prevent(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::AdditionalCost { .. } => 0,
         })
 }
 
@@ -491,7 +497,7 @@ pub fn ice_rez_cost(state: &GameState) -> i32 {
         .filter(|effect| effect.on == On::EachIce && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::RezCost(delta) => delta,
-            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::AdditionalCost { .. } => 0,
+            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::Prevent(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::AdditionalCost { .. } => 0,
         })
         .sum()
 }

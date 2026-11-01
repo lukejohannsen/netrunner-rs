@@ -3,7 +3,7 @@
   "name": "Zero-Day Heist",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Los: Data Hijacker, Red Sand's Criminal identity, who gains 2[credit] the first time the Corp rezzes a piece of ice each turn. On Cold Reading's list, its identity swapped, with Red Sand Stage 5's Spot the Prey, Möbius, Exploit, Build Script and Mad Dash for two Hot Pursuit, an Easy Mark, a Special Order, two Credit Kiting, two No Free Lunch and two Pan-Weave; named to sort after every other deck, so the sweep schedule of those before it does not move. Red Sand Stage 6 takes a Maui and two Caldera for the Prognostic Q-Loop and two Tremolo. Red Sand Stage 7 takes two Flashbang for two Laser Pointer. Red Sand Stage 12 Red Sand Stage 13 Rosetta 2.0 (Red Sand Stage 15) Corporate Defector (Red Sand Stage 23) takes Poison Vial's slot Red Sand Stage 25: two Cat's Cradle for Aeneas Informant Red Sand Stage 26: two Saci for Aumakua Red Sand Stage 35: two Matryoshka for Keros Mcintyre Flashpoint Stage 32: a Slipstream for Charlatan, a run that pays the first rezzed ice it approaches its strength to bypass it. SanSan Stage 1 swapped Bankroll, a Thunder Art Gallery, a Doppelgänger and a Jeitinho for Drive By, Fisk Investment Seminar and Uninstall. Two Passport take Aurora's place. Two Alias take Shibboleth's place. Two Early Bird take Möbius's place. Two Crescentus take Femme Fatale's place. The Supplier came in for a Jackpot!, so a sweep hosts hardware and resources from the grip and installs one cheaper when the turn begins.",
+  "description": "Not a published list: built so the sweeps reach Los: Data Hijacker, Red Sand's Criminal identity, who gains 2[credit] the first time the Corp rezzes a piece of ice each turn. On Cold Reading's list, its identity swapped, with Red Sand Stage 5's Spot the Prey, Möbius, Exploit, Build Script and Mad Dash for two Hot Pursuit, an Easy Mark, a Special Order, two Credit Kiting, two No Free Lunch and two Pan-Weave; named to sort after every other deck, so the sweep schedule of those before it does not move. Red Sand Stage 6 takes a Maui and two Caldera for the Prognostic Q-Loop and two Tremolo. Red Sand Stage 7 takes two Flashbang for two Laser Pointer. Red Sand Stage 12 Red Sand Stage 13 Rosetta 2.0 (Red Sand Stage 15) Corporate Defector (Red Sand Stage 23) takes Poison Vial's slot Red Sand Stage 25: two Cat's Cradle for Aeneas Informant Red Sand Stage 26: two Saci for Aumakua Red Sand Stage 35: two Matryoshka for Keros Mcintyre Flashpoint Stage 32: a Slipstream for Charlatan, a run that pays the first rezzed ice it approaches its strength to bypass it. SanSan Stage 1 swapped Bankroll, a Thunder Art Gallery, a Doppelgänger and a Jeitinho for Drive By, Fisk Investment Seminar and Uninstall. Two Passport take Aurora's place. Two Alias take Shibboleth's place. Two Early Bird take Möbius's place. Two Crescentus take Femme Fatale's place. The Supplier came in for a Jackpot!, so a sweep hosts hardware and resources from the grip and installs one cheaper when the turn begins. Two Leverage and a Qianju PT came in for the Spot the Preys and a Mad Dash, so a sweep offers the Corp bad publicity against a turn's damage, and arms a prevention of the next tag.",
   "style": [
     "pressure"
   ],
@@ -34,10 +34,6 @@
       "count": 1
     },
     {
-      "card": "spot_the_prey",
-      "count": 2
-    },
-    {
       "card": "exploit",
       "count": 2
     },
@@ -47,7 +43,7 @@
     },
     {
       "card": "mad_dash",
-      "count": 2
+      "count": 1
     },
     {
       "card": "maui",
@@ -123,6 +119,14 @@
     },
     {
       "card": "the_supplier",
+      "count": 1
+    },
+    {
+      "card": "leverage",
+      "count": 2
+    },
+    {
+      "card": "qianju_pt",
       "count": 1
     }
   ]

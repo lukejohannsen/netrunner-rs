@@ -1,0 +1,55 @@
+{
+  "id": "progenitor",
+  "title": "Progenitor",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 0,
+  "continuous": [
+    {
+      "kind": "MayHost",
+      "applies_to": {
+        "InstallingOntoThis": {
+          "All": [
+            {
+              "CardType": "Program"
+            },
+            {
+              "HasSubtype": "Virus"
+            }
+          ]
+        }
+      },
+      "while": {
+        "Not": {
+          "AmountAtLeast": [
+            "HostedCards",
+            1
+          ]
+        }
+      },
+      "text": "You can install virus programs onto this program. Limit 1 hosted program."
+    },
+    {
+      "kind": {
+        "HostsMemory": {
+          "per": 4
+        }
+      },
+      "applies_to": "This",
+      "text": "The memory cost of the hosted program does not count against your memory limit."
+    },
+    {
+      "kind": {
+        "KeptThroughPurge": {
+          "per": 1
+        }
+      },
+      "applies_to": "Hosted",
+      "text": "[interrupt] → Whenever virus counters would be purged, prevent 1 virus counter on the hosted program from being removed."
+    }
+  ],
+  "triggers": [],
+  "built_from": 7043,
+  "is_playable": true
+}

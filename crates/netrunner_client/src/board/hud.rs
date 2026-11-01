@@ -390,6 +390,11 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         .filter_map(|effect| {
             let what = match (&effect.what, &effect.on) {
                 (Lingering::Strength(_), _) => return None,
+                // Qianju PT: the next tag, damage or the like, prevented.
+                (Lingering::Prevent(word), on) => {
+                    let whose = if *on == On::Player(Side::Corp) { "the Corp" } else { "the Runner" };
+                    format!("the first time {whose} would be affected, {}", crate::prose::describe_effect(&netrunner_core::dsl::Effect::Prevent(word.clone()), &netrunner_core::cards::CardRegistry::new()))
+                }
                 // One line per piece of ice for every type it gained, below.
                 (Lingering::GainSubtype(_), _) => return None,
                 // Armored Servers: one line per step it is a cost to.

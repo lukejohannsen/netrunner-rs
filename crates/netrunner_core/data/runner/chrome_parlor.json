@@ -1,0 +1,37 @@
+{
+  "id": "chrome_parlor",
+  "title": "Chrome Parlor",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnDamageAboutToResolve",
+      "when": {
+        "DamageFrom": {
+          "All": [
+            {
+              "CardType": "Hardware"
+            },
+            {
+              "HasSubtype": "Cybernetic"
+            }
+          ]
+        }
+      },
+      "effects": [
+        {
+          "Prevent": {
+            "Damage": {
+              "kind": null,
+              "up_to": 4294967295
+            }
+          }
+        }
+      ],
+      "text": "[interrupt] → Whenever you would suffer damage from a \"when installed\" ability on a piece of cybernetic hardware, prevent all of that damage."
+    }
+  ],
+  "built_from": 8044,
+  "is_playable": true
+}

@@ -75,6 +75,7 @@ pub(crate) fn matches(word: &Preventable, what: &WouldHappen, state: &GameState,
         (Preventable::RunEnding, WouldHappen::RunEnds { .. }) => true,
         (Preventable::TraceBaseStrength, WouldHappen::Trace { base }) => *base > 0,
         (Preventable::Expose, WouldHappen::Expose { .. }) => true,
+        (Preventable::BadPublicity(_), WouldHappen::BadPublicity { .. }) => true,
         _ => false,
     }
 }
@@ -86,7 +87,7 @@ fn prevents_up_to(word: &Preventable) -> u32 {
         // paid before the effect resolves.
         Preventable::Damage { x: true, .. } => 0,
         Preventable::Damage { up_to, .. } => *up_to,
-        Preventable::Tags(amount) => *amount,
+        Preventable::Tags(amount) | Preventable::BadPublicity(amount) => *amount,
         Preventable::Trash(_) | Preventable::EncounterAbility | Preventable::RunEnding | Preventable::TraceBaseStrength | Preventable::Expose => 1,
     }
 }
@@ -160,18 +161,47 @@ pub(crate) fn would(
         let amount = what.amount();
         return Ok(vec![GameEvent::Prevented { what, amount }]);
     }
+    // A prevention that stands for a duration (Qianju PT's "the first time
+    // you would take tags from now until your next turn begins, prevent 1
+    // tag") steps in next, before anybody is asked, and is gone once it
+    // has, however little was left for it.
+    let mut stood = Vec::new();
+    if !ctx.unpreventable
+        && let Some(position) = state.lingering.iter().position(|effect| {
+            effect.on == crate::rules::lingering::On::Player(what.affects())
+                && effect.holds(state)
+                && matches!(&effect.what, Lingering::Prevent(word) if matches(word, &what, state, registry))
+        })
+        && let Lingering::Prevent(word) = state.lingering.remove(position).what
+    {
+        let now = prevents_up_to(&word).min(what.amount());
+        stood.push(GameEvent::Prevented { what: what.clone(), amount: now });
+        if matches!(what, WouldHappen::Tags { .. }) {
+            dispatcher::emit(state, registry, &mut stood, GameEvent::TagsAvoided { amount: now })?;
+        }
+        match &mut what {
+            WouldHappen::Damage { amount, .. } | WouldHappen::Tags { amount } | WouldHappen::Draw { amount, .. } | WouldHappen::BadPublicity { amount } => *amount -= now,
+            WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } | WouldHappen::Expose { .. } => return Ok(stood),
+        }
+        if what.amount() == 0 {
+            return Ok(stood);
+        }
+    }
     // A draw is heard as damage is, and for the same reason: The Class
     // Act's "the first time each turn" counts the draws before it.
     // And an expose: Zaibatsu Loyalty's "when a card would be exposed,
     // you may rez this asset" is heard facedown, and only an announcement
     // could reach it.
-    let heard = matches!(what, WouldHappen::Damage { .. } | WouldHappen::Draw { .. } | WouldHappen::Expose { .. });
+    // And bad publicity: Broadcast Square's "whenever you would take bad
+    // publicity" is a trigger, not an interrupt anybody uses.
+    let heard = matches!(what, WouldHappen::Damage { .. } | WouldHappen::Draw { .. } | WouldHappen::Expose { .. } | WouldHappen::BadPublicity { .. });
     // "This damage cannot be prevented" (CR 9.3.3g, Stimhack): nobody is
     // asked, and nothing is announced for an interrupt to hear.
     if ctx.unpreventable || state.pending_prevention.is_some() || !(heard || could_prevent(state, registry, &what)) {
         let responsible = responsible_for(registry, ctx.acting_card);
         let source = ctx.acting_install;
-        return happen(state, registry, &what, what.amount(), responsible, source, Some(ctx));
+        stood.extend(happen(state, registry, &what, what.amount(), responsible, source, Some(ctx))?);
+        return Ok(stood);
     }
     state.pending_prevention = Some(PendingPrevention {
         what: what.clone(),
@@ -183,7 +213,7 @@ pub(crate) fn would(
         waiting: None,
     });
     let about_to = GameEvent::AboutToResolve { what };
-    let mut events = Vec::new();
+    let mut events = stood;
     dispatcher::emit(state, registry, &mut events, about_to)?;
     events.extend(settle_within(state, registry, Some(ctx))?.unwrap_or_default());
     Ok(events)
@@ -374,7 +404,7 @@ fn settle_within(
     }
     let mut events = Vec::new();
     while let Some(position) =
-        state.deferred_triggers.iter().position(|due| matches!(due.trigger, Trigger::OnDamageAboutToResolve | Trigger::OnDrawAboutToResolve | Trigger::OnExposeAboutToResolve) && due.continuation.is_none())
+        state.deferred_triggers.iter().position(|due| matches!(due.trigger, Trigger::OnDamageAboutToResolve | Trigger::OnDrawAboutToResolve | Trigger::OnExposeAboutToResolve | Trigger::OnBadPublicityAboutToResolve) && due.continuation.is_none())
     {
         let due = state.deferred_triggers.remove(position);
         events.extend(dispatcher::fire_deferred(state, registry, &due)?);
@@ -618,6 +648,14 @@ fn happen(
         WouldHappen::Draw { side, .. } => ability::draw_and_hear(state, registry, *side, amount),
         // Not prevented: the card is revealed, and the Runner remembers it.
         WouldHappen::Expose { install } => ability::expose(state, registry, *install),
+        // What is left of it is taken, and heard as taken (Editorial
+        // Division).
+        WouldHappen::BadPublicity { .. } => {
+            state.corp.bad_publicity = state.corp.bad_publicity.saturating_add(amount);
+            let mut events = Vec::new();
+            dispatcher::emit(state, registry, &mut events, GameEvent::BadPublicityGiven { amount })?;
+            Ok(events)
+        }
         WouldHappen::Trash { owner, install, by } => {
             let mut events = ability::trash_install(state, registry, *owner, *install, *by)?;
             // Carried out, so it is one of the encountered ice's trashes

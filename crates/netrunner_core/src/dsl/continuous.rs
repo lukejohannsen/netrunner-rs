@@ -344,6 +344,18 @@ pub enum ContinuousKind {
     /// HostedCards` — so its room is 4, the most [mu] any icebreaker in
     /// the catalog prints, and never refuses one.
     HostsMemory(Number),
+    /// This many of a card's virus counters are left on it when virus
+    /// counters are purged — Progenitor's "[interrupt] → Whenever virus
+    /// counters would be purged, prevent 1 virus counter on the hosted
+    /// program from being removed", about `Hosted`. Asked by the purge
+    /// (`engine::purge_all_virus_counters`) of each card it sweeps. A
+    /// standing effect rather than an interrupt (`dsl::Preventable`),
+    /// because nobody chooses to use it and it asks nobody — the
+    /// Prevention Rule's "a prevention nobody uses has no window" — and a
+    /// purge is not one number to count prevention against but every
+    /// card's own. Composition didn't work: nothing a card declared was
+    /// asked by a purge.
+    KeptThroughPurge(Number),
     /// A run it applies to cannot be declared successful — Flagship's
     /// "Runs against this server cannot be declared successful. (This effect
     /// does not cause runs to become unsuccessful.)" The Success Phase is

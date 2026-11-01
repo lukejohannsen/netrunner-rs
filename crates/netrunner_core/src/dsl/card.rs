@@ -1551,6 +1551,8 @@ impl CardDefinition {
             EventFilter::Card(_) | EventFilter::InstalledCard(_) => about == TriggerAbout::Card,
             EventFilter::Server(_) | EventFilter::ServerKind(_) | EventFilter::Mark | EventFilter::ChosenServer | EventFilter::ProtectedByIce => about == TriggerAbout::Server,
             EventFilter::Damage(_) => about == TriggerAbout::Damage,
+            // Only damage still parked has a card that is doing it.
+            EventFilter::DamageFrom(_) => triggered.trigger == Trigger::OnDamageAboutToResolve,
             EventFilter::AtLeast(_) => about == TriggerAbout::Cards,
             // Only a moment that names a player can be made one's.
             EventFilter::Whose(_) | EventFilter::Anyone => triggered.trigger.states_whose(),
@@ -2327,6 +2329,8 @@ impl CardDefinition {
                 (ContinuousKind::MayHost, _) => return misfit("MayHost", "what may be installed onto this card is said by `InstallingOntoThis`"),
                 // Djinn, a program, and Dinosaurus, a console.
                 (ContinuousKind::HostsMemory(_), Scope::This) if matches!(self.card_type, CardType::Program | CardType::Hardware) => {}
+                (ContinuousKind::KeptThroughPurge(_), Scope::Hosted) => {}
+                (ContinuousKind::KeptThroughPurge(_), _) => return misfit("KeptThroughPurge", "a host says of the program it hosts (`Hosted`) how many virus counters a purge leaves on it"),
                 (ContinuousKind::HostsMemory(_), _) => return misfit("HostsMemory", "a program or a piece of hardware says of itself (`This`) how many [mu] of programs it hosts"),
                 (ContinuousKind::CannotBeDeclaredSuccessful | ContinuousKind::AccessOthersAtMost(_), Scope::RunsOnThisServer)
                     if matches!(self.card_type, CardType::Upgrade | CardType::Asset) => {}

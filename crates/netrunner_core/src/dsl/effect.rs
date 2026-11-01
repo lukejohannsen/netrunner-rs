@@ -1265,6 +1265,15 @@ pub enum Effect {
     /// as `Prohibit` makes one for a "cannot"; `rules::prevention::
     /// run_ending` is what `Effect::EndTheRun` asks. See `EndRunPrevention`.
     ArmRunEndPrevention(EndRunPrevention),
+    /// "The first time you would take tags from now until your next turn
+    /// begins, prevent 1 tag" (Qianju PT): `what` stands as a lingering
+    /// prevention (`Lingering::Prevent`) for `until`, and the first time
+    /// something it is about is about to happen it prevents what it can of
+    /// it and is gone. Binds the player it protects, `Preventable`'s
+    /// `WouldHappen` side. Composition didn't work: `Prevent` acts on what
+    /// is parked now and refuses with nothing parked, and a `Prohibit`
+    /// prevents all of it, every time.
+    PreventTheFirst { what: Preventable, until: EffectDuration },
     /// Sabotage `u32`: the Corp trashes that many cards of their choice
     /// from HQ and/or the top of R&D (Cacophony). Parks a Corp
     /// `PendingDecision::ChooseCards` over HQ whose bounds are computed
@@ -3382,6 +3391,13 @@ pub enum Preventable {
     /// Composition didn't work: an expose is a reveal no card's text did
     /// to a player, and none of the words above is about one.
     Expose,
+    /// "Prevent all of that bad publicity" (Broadcast Square): bad
+    /// publicity about to be taken (`WouldHappen::BadPublicity`), which the
+    /// Corp then takes less of. A number as `Tags` is, `ALL` for all of it.
+    /// Composition didn't work: every word above is about something done to
+    /// the Runner, and bad publicity is done to the Corp. A cost of bad
+    /// publicity (`Cost::TakeBadPublicity`) is never prevented (CR 1.16.1a).
+    BadPublicity(u32),
 }
 
 impl Preventable {
@@ -4491,6 +4507,7 @@ impl Effect {
             | Effect::RedirectRunOnApproach(..)
             | Effect::RedirectRunOnSuccess(..)
             | Effect::ArmRunEndPrevention(..)
+            | Effect::PreventTheFirst { .. }
             | Effect::Sabotage(..)
             | Effect::Mill { .. }
             | Effect::HostCardOnThisCard(_)

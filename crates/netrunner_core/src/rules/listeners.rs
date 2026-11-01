@@ -523,6 +523,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // "When a card would be exposed" (Zaibatsu Loyalty): any card, so
         // the moment is about nothing a filter narrows.
         GameEvent::AboutToResolve { what: WouldHappen::Expose { .. } } => vec![moment(Trigger::OnExposeAboutToResolve, &About::Nothing, None)],
+        GameEvent::AboutToResolve { what: WouldHappen::BadPublicity { .. } } => vec![moment(Trigger::OnBadPublicityAboutToResolve, &About::Nothing, Some(Side::Corp))],
         GameEvent::AboutToResolve { what: WouldHappen::Tags { .. } | WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } } => Vec::new(),
         // Only the card itself prints it ("when this asset would be
         // uninstalled"), so the moment is the card's.
@@ -816,6 +817,17 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
             state.runner.rig.iter().any(|card| card.install_id == install && (card.hosted_on_ice == Some(about) || card.hosted_on_rig_card == Some(about)))
                 || state.corp.conditions.iter().any(|condition| condition.handle == install && condition.host == about)
         });
+    }
+    // "Damage from … a piece of cybernetic hardware" (Chrome Parlor): the
+    // card the parked damage is from.
+    if let EventFilter::DamageFrom(filter) = filter {
+        return matches!(moment.about, About::Damage(_))
+            && state
+                .pending_prevention
+                .as_ref()
+                .and_then(|pending| pending.source_card.as_ref())
+                .and_then(|card| registry.get(card))
+                .is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter));
     }
     // "Whenever you install a program **on Scheherazade**": the card the
     // moment is about sits on the listening install.

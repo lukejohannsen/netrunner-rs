@@ -54031,3 +54031,202 @@ mod engine_words_stage_7 {
         assert_eq!(crate::rules::memory::memory_balance(&state, &registry), 4, "outside the limit");
     }
 }
+
+mod engine_words_stage_8 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn root(card: &str, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Root, rezzed: true, ..Default::default() }
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn resolve(state: &mut GameState, registry: &CardRegistry, effect: crate::dsl::Effect, card: &str) -> Vec<crate::rules::GameEvent> {
+        let card = id(card);
+        crate::rules::evaluate_effect(state, &effect, &mut crate::rules::ResolutionContext::for_card(Some(&card)), registry).expect("resolves")
+    }
+
+    fn net(amount: usize) -> crate::dsl::Effect {
+        crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Net, amount)
+    }
+
+    #[test]
+    fn broadcast_square_prevents_the_bad_publicity_its_trace_beats() {
+        let registry = registry();
+        let give = crate::dsl::Effect::GiveBadPublicity(crate::dsl::Amount::Fixed(1));
+        let mut state = base_state();
+        resolve(&mut state, &registry, give.clone(), "hostile_takeover");
+        assert_eq!(state.corp.bad_publicity, 1, "nothing to hear it");
+
+        let mut state = base_state();
+        state.corp.installed = vec![root("broadcast_square", ServerId::Remote(0))];
+        resolve(&mut state, &registry, give, "hostile_takeover");
+        assert!(state.active_trace.is_some(), "trace[3], before the bad publicity is taken");
+        assert_eq!(state.corp.bad_publicity, 0);
+        let state = act(&state, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 });
+        let state = act(&state, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 });
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(state.pending_prevention.is_none());
+        assert_eq!(state.corp.bad_publicity, 0, "3 beats the Runner's 0: all of it prevented");
+    }
+
+    #[test]
+    fn chrome_parlor_prevents_the_damage_a_cybernetic_does_as_it_is_installed() {
+        let registry = registry();
+        for (parlor, expected) in [(false, (3, 1)), (true, (4, 0))] {
+            let mut state = runner_turn();
+            state.runner.grip = vec![id("brain_cage"), id("a"), id("b"), id("c"), id("d")];
+            if parlor {
+                state.runner.rig = vec![rig("chrome_parlor", 1)];
+                state.next_install_id = 2;
+            }
+            let state = act(&state, &registry, PlayerAction::InstallHardware { card_id: id("brain_cage"), host: None });
+            let (state, _) = close_all_windows(state, &registry);
+            assert_eq!((state.runner.grip.len(), state.runner.brain_damage), expected, "{parlor}: {:?}", state.runner.grip);
+        }
+    }
+
+    #[test]
+    fn tori_hanzo_turns_the_runs_first_net_damage_into_one_core_for_two_credits() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![root("tori_hanzo", ServerId::Remote(0))];
+        state.runner.grip = vec![id("a"), id("b"), id("c")];
+        let mut state = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
+        resolve(&mut state, &registry, net(2), "snare");
+        assert!(state.pending_paid_choice.is_some(), "the Corp may pay 2[credit]");
+        let credits = state.corp.resources.credits;
+        let paid = act(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None });
+        let (mut paid, _) = close_all_windows(paid, &registry);
+        assert_eq!(paid.corp.resources.credits, Credits(credits.0 - 2));
+        assert_eq!((paid.runner.grip.len(), paid.runner.brain_damage), (2, 1), "1 core damage instead of 2 net");
+        resolve(&mut paid, &registry, net(1), "snare");
+        let (paid, _) = close_all_windows(paid, &registry);
+        assert!(paid.pending_paid_choice.is_none(), "the first time during each run");
+        assert_eq!(paid.runner.grip.len(), 1);
+
+        let declined = act(&state, &registry, PlayerAction::DeclinePendingPaidChoice);
+        let (declined, _) = close_all_windows(declined, &registry);
+        assert_eq!((declined.runner.grip.len(), declined.runner.brain_damage), (1, 0));
+    }
+
+    #[test]
+    fn monolith_trashes_a_program_from_the_grip_to_prevent_one_net_damage() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("monolith", 1)];
+        state.next_install_id = 2;
+        state.runner.grip = vec![id("corroder"), id("sure_gamble"), id("a")];
+        resolve(&mut state, &registry, net(1), "snare");
+        assert!(state.pending_prevention.is_some(), "the Runner is asked");
+        let state = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 1 });
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.heap, vec![id("corroder")], "the program paid for it, and nothing else went");
+        assert_eq!(state.runner.grip.len(), 2);
+    }
+
+    #[test]
+    fn monolith_installs_up_to_three_programs_four_credits_cheaper() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(30);
+        state.runner.grip = vec![id("monolith"), id("gordian_blade"), id("cleaver")];
+        let state = act(&state, &registry, PlayerAction::InstallHardware { card_id: id("monolith"), host: None });
+        let state = act(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        let state = act(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 });
+        let state = act(&state, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(state.runner.rig.iter().any(|card| card.card.0 == "gordian_blade"));
+        assert_eq!(state.runner.resources.credits, Credits(30 - 18), "Gordian Blade's 4 less 4");
+    }
+
+    #[test]
+    fn qianju_pt_prevents_the_first_tag_until_the_next_turn_begins() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("qianju_pt", 1)];
+        let card = id("qianju_pt");
+        crate::rules::evaluate_effect(
+            &mut state,
+            &crate::dsl::Effect::PreventTheFirst { what: crate::dsl::Preventable::Tags(1), until: crate::dsl::EffectDuration::UntilYourNextTurnBegins },
+            &mut crate::rules::ResolutionContext::for_install(InstallId(1), &card),
+            &registry,
+        )
+        .expect("armed");
+        resolve(&mut state, &registry, crate::dsl::Effect::GiveTags(crate::dsl::Amount::Fixed(2)), "snare");
+        let (mut state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.tags, 1, "1 of the 2 prevented");
+        resolve(&mut state, &registry, crate::dsl::Effect::GiveTags(crate::dsl::Amount::Fixed(1)), "snare");
+        assert_eq!(state.runner.tags, 2, "the first time only");
+    }
+
+    #[test]
+    fn leverage_declined_prevents_all_damage_until_the_runners_next_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("leverage"), id("a"), id("b")];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("leverage") }).is_err(), "no successful run on HQ yet");
+        let state = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("approach");
+        let state = act(&state, &registry, PlayerAction::CompleteRun);
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(state.active_run.is_none(), "{:?}", state.active_run.as_ref().map(|run| run.phase));
+        let state = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("leverage") });
+        let took = act(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None });
+        assert_eq!(took.corp.bad_publicity, 2);
+        let declined = act(&state, &registry, PlayerAction::DeclinePendingPaidChoice);
+        let (mut declined, _) = close_all_windows(declined, &registry);
+        let grip = declined.runner.grip.len();
+        resolve(&mut declined, &registry, net(2), "snare");
+        assert_eq!(declined.runner.grip.len(), grip, "all of it prevented");
+    }
+
+    #[test]
+    fn progenitor_keeps_one_virus_counter_on_its_hosted_program_through_a_purge() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("progenitor", 1)];
+        state.next_install_id = 2;
+        state.runner.grip = vec![id("datasucker")];
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+        assert!(offered.contains(&PlayerAction::InstallProgram { card_id: id("datasucker"), trash_first: false, host: Some(InstallId(1)) }), "{offered:?}");
+        let state = act(&state, &registry, PlayerAction::InstallProgram { card_id: id("datasucker"), trash_first: false, host: Some(InstallId(1)) });
+        let (mut state, _) = close_all_windows(state, &registry);
+        let hosted = state.runner.rig.iter().position(|card| card.card.0 == "datasucker").expect("installed");
+        state.runner.rig[hosted].counters = 3;
+        resolve(&mut state, &registry, crate::dsl::Effect::PurgeVirusCounters, "cyberdex_virus_suite");
+        assert_eq!(state.runner.rig[hosted].counters, 1);
+    }
+
+    #[test]
+    fn hunting_grounds_prevents_an_encounter_ability_and_trashes_to_install_three_facedown() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("hunting_grounds", 1)];
+        // The top of the stack is the end of the list.
+        state.runner.stack = vec![id("sure_gamble"), id("corroder"), id("cleaver"), id("diesel")];
+        let mut state = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 1 });
+        for _ in 0..3 {
+            state = act(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 });
+            state = act(&state, &registry, PlayerAction::ConfirmCardSelection);
+        }
+        assert_eq!(state.runner.installed_facedown, vec![id("diesel"), id("cleaver"), id("corroder")]);
+        assert_eq!(state.runner.stack, vec![id("sure_gamble")]);
+        assert_eq!(state.runner.heap, vec![id("hunting_grounds")]);
+    }
+}

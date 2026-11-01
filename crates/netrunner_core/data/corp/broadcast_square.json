@@ -1,0 +1,29 @@
+{
+  "id": "broadcast_square",
+  "title": "Broadcast Square",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 5,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnBadPublicityAboutToResolve",
+      "effects": [
+        {
+          "Trace": {
+            "base": 3,
+            "on_success": {
+              "Prevent": {
+                "BadPublicity": 4294967295
+              }
+            }
+          }
+        }
+      ],
+      "text": "[interrupt] → Whenever you would take bad publicity, trace[3]. If successful, prevent all of that bad publicity."
+    }
+  ],
+  "built_from": 4112,
+  "is_playable": true
+}
