@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::cards::CardRegistry;
 use crate::dsl::{CardId, Cost, IceType};
 use crate::rules::action::{PlayerAction, TargetZone};
-use crate::rules::event::GameEvent;
+use crate::rules::event::{GameEvent, TrashedInstall};
 use crate::rules::{continuous, lingering};
 use crate::rules::turn_log::TurnLog;
 use crate::rules::run::{AccessCandidate, AccessPhase, AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId};
@@ -944,6 +944,9 @@ pub fn mask_action_for_player(action: &PlayerAction, actor: Side, viewer: impl I
 pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl Into<Viewer>) -> Option<GameEvent> {
     let viewer = viewer.into();
     let concealed = |card: &CardId| corp_card_concealed_from(state, card, viewer);
+    // An event that names its install is about that copy, not the card's
+    // other copies (`install_concealed_from`).
+    let install_concealed = |install: InstallId, card: &CardId| install_concealed_from(state, install, card, viewer);
     let visible = || Some(event.clone());
 
     match event {
@@ -988,6 +991,9 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // A Corp trash lands faceup only if the Runner had seen the card
         // (`ability::orient`); a facedown copy now in Archives means this
         // may have been it.
+        // One trashed off the table rezzed was faceup as it went and lands
+        // faceup, whatever other copy lies facedown elsewhere.
+        GameEvent::CardTrashed { side: Side::Corp, install: Some(TrashedInstall { rezzed: true, .. }), .. } => visible(),
         GameEvent::CardTrashed { side: Side::Corp, card, .. } => (!concealed(card)).then(visible).flatten(),
         // Removal from the game is always in the open — Spin Doctor's
         // self-removal comes off a rezzed card and Petty Cash is played
@@ -1036,7 +1042,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         GameEvent::IceSwapped { .. } => visible(),
         // A move keeps the card's install id and both servers are public,
         // so a viewer who cannot name it still watched it change roots.
-        GameEvent::CardMoved { install, card: Some(card), from, to } if concealed(card) => {
+        GameEvent::CardMoved { install, card: Some(card), from, to } if install_concealed(*install, card) => {
             Some(GameEvent::CardMoved { install: *install, card: None, from: *from, to: *to })
         }
         GameEvent::CardMoved { .. } => visible(),
@@ -1174,11 +1180,11 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::IceStrengthModified { card_id, .. }
         | GameEvent::IceBypassed { card_id, .. }
         | GameEvent::IceFullyBroken { card_id, .. }
-        | GameEvent::EncounterEnded { card_id, .. }
             if concealed(card_id) =>
         {
             None
         }
+        GameEvent::EncounterEnded { card_id, install, .. } if install_concealed(*install, card_id) => None,
         // Public by construction. Encounter events only ever name rezzed
         // ICE (`run::engine` passes unrezzed ICE without emitting them);
         // plays and Runner installs are faceup; `IceRezzed`, `AgendaScored`,
@@ -1399,6 +1405,28 @@ fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: 
 /// Corp. For the Runner, an installed copy they have seen
 /// (`InstalledCard::seen_by_runner`) conceals nothing; for a spectator,
 /// every face-down copy does.
+/// [`corp_card_concealed_from`] for an event that names the install it is
+/// about: whether *that copy* is one `viewer` cannot name. On the table it
+/// is decided by the copy alone — unrezzed and, for the Runner, never seen
+/// — and not by whether some other copy of the same card lies facedown: a
+/// Sand Storm moved and trashed in one action, beside an unrezzed second
+/// Sand Storm, had its move struck and its trash and encounter's end
+/// dropped from the Runner's log, though the Runner had encountered it
+/// rezzed. Off the table — the action that the event is part of took it
+/// away — it is concealed only where it can have gone facedown: a facedown
+/// copy in Archives, which is the card-wide rule's other half. Rejected:
+/// masking against the position before the action, which would take a
+/// second state through every caller to answer one question.
+fn install_concealed_from(state: &GameState, install: InstallId, card: &CardId, viewer: Viewer) -> bool {
+    if viewer.is(Side::Corp) {
+        return false;
+    }
+    match state.corp.installed.iter().find(|installed| installed.install_id == install) {
+        Some(installed) => !installed.rezzed && !(viewer.is(Side::Runner) && installed.seen_by_runner),
+        None => state.corp.archives.iter().any(|archived| archived.card == *card && archived.facedown),
+    }
+}
+
 fn corp_card_concealed_from(state: &GameState, card: &CardId, viewer: Viewer) -> bool {
     if viewer.is(Side::Corp) {
         return false;
@@ -2724,6 +2752,40 @@ mod tests {
 
         let runner_trash = GameEvent::CardTrashed { side: Side::Runner, card: id("cyberdex_trial"), from: crate::dsl::TrashedFrom::Hand, by: None, install: None, damage: None };
         assert_eq!(mask_event_for_player(&runner_trash, &state, Side::Runner), Some(runner_trash.clone()));
+    }
+
+    /// Sand Storm moved to Archives and was trashed there in one action,
+    /// while a second Sand Storm lay unrezzed protecting R&D. The events
+    /// are about the install that moved — rezzed, encountered, trashed
+    /// faceup — and not about the other copy, so naming them tells the
+    /// Runner nothing about it. Concealment was decided by the card's
+    /// name alone, so the facedown copy struck the move's name and dropped
+    /// the trash and the encounter's end from the Runner's log, which the
+    /// client's `board::diff` check caught as a move to nowhere.
+    #[test]
+    fn events_about_a_rezzed_install_are_not_hidden_by_a_facedown_copy_of_the_same_card() {
+        let mut corp = corp_state_with_cards();
+        corp.installed = vec![InstalledCard { install_id: InstallId(3), card: id("sand_storm"), server: ServerId::RnD, slot: InstallSlot::Ice, ..Default::default() }];
+        corp.archives = vec![ArchivedCard::faceup(id("sand_storm"))];
+        let state = game_state(corp);
+        let moved = GameEvent::CardMoved { install: InstallId(2), card: Some(id("sand_storm")), from: ServerId::Hq, to: ServerId::Archives };
+        let trashed = GameEvent::CardTrashed {
+            side: Side::Corp,
+            card: id("sand_storm"),
+            from: crate::dsl::TrashedFrom::Installed,
+            by: Some(Side::Corp),
+            install: Some(crate::rules::TrashedInstall { server: ServerId::Archives, rezzed: true, installing: false }),
+            damage: None,
+        };
+        let ended = GameEvent::EncounterEnded { card_id: id("sand_storm"), install: InstallId(2), broken_with: Vec::new(), fully_broken: false, unbroken: 1, broken: 0 };
+        for viewer in [Viewer::from(Side::Runner), Viewer::Spectator] {
+            for event in [&moved, &trashed, &ended] {
+                assert_eq!(mask_event_for_player(event, &state, viewer), Some(event.clone()), "{viewer:?}: {event:?}");
+            }
+        }
+        // The facedown copy itself is still struck when it is the one moved.
+        let other = GameEvent::CardMoved { install: InstallId(3), card: Some(id("sand_storm")), from: ServerId::RnD, to: ServerId::Hq };
+        assert_eq!(mask_event_for_player(&other, &state, Side::Runner), Some(GameEvent::CardMoved { install: InstallId(3), card: None, from: ServerId::RnD, to: ServerId::Hq }));
     }
 
     /// A move and a derez join the strike-in-place group: the handle is
