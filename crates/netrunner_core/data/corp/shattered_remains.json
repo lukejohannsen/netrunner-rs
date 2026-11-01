@@ -1,0 +1,47 @@
+{
+  "id": "shattered_remains",
+  "title": "Shattered Remains",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 0,
+  "advancement_requirement": 0,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": "ThisCardIsInstalled",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Credits": 1
+            },
+            "if_paid": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OpponentInstalled",
+                "filter": {
+                  "CardType": "Hardware"
+                },
+                "min": 0,
+                "max": 0,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OpponentDiscard",
+                "count": "HostedAdvancementTokens"
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "If you pay 1[credit] when the Runner accesses Shattered Remains, trash 1 piece of hardware for each advancement token on Shattered Remains"
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 6050,
+  "is_playable": true
+}

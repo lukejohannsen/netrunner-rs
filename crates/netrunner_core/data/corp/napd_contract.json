@@ -1,0 +1,27 @@
+{
+  "id": "napd_contract",
+  "title": "NAPD Contract",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "steal_cost": {
+    "Credits": 4
+  },
+  "continuous": [
+    {
+      "kind": {
+        "AdvancementRequirement": {
+          "per": 1,
+          "of": "BadPublicity"
+        }
+      },
+      "applies_to": "This",
+      "text": "This agenda gets +1 advancement requirement for each bad publicity you have."
+    }
+  ],
+  "triggers": [],
+  "built_from": 4119,
+  "is_playable": true
+}

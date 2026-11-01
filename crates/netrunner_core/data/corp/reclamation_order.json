@@ -1,0 +1,61 @@
+{
+  "id": "reclamation_order",
+  "title": "Reclamation Order",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseCardName": {
+            "chooser": "Corp",
+            "names": {
+              "All": [
+                {
+                  "CardTypeOneOf": [
+                    "Agenda",
+                    "Asset",
+                    "Operation",
+                    "Upgrade",
+                    {
+                      "Ice": "Barrier"
+                    }
+                  ]
+                },
+                {
+                  "Not": {
+                    "AmongCards": [
+                      "reclamation_order"
+                    ]
+                  }
+                }
+              ]
+            },
+            "then": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnArchives",
+                "filter": "ChosenName",
+                "min": 0,
+                "max": 45,
+                "reveal": true,
+                "shuffle_after": false,
+                "destination": "OwnHq"
+              }
+            },
+            "text": "Name a card other than Reclamation Order"
+          }
+        }
+      ],
+      "text": "Name a card other than Reclamation Order. Reveal any number of copies of the named card from Archives and add them to HQ."
+    }
+  ],
+  "built_from": 4111,
+  "is_playable": true
+}

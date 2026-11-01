@@ -1,0 +1,53 @@
+{
+  "id": "docklands_crackdown",
+  "title": "Docklands Crackdown",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 3,
+  "counter_kind": "Power",
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 2
+      },
+      "effect": {
+        "AddCounters": 1
+      },
+      "text": "[click], [click]: Place 1 power counter on Docklands Crackdown."
+    }
+  ],
+  "continuous": [
+    {
+      "kind": {
+        "InstallCost": {
+          "per": 1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": {
+        "OpponentInstalling": "Any"
+      },
+      "while": {
+        "Not": {
+          "AmountAtLeast": [
+            {
+              "TimesThisTurnWhen": {
+                "trigger": "OnCardInstalled",
+                "when": {
+                  "Whose": "Runner"
+                }
+              }
+            },
+            1
+          ]
+        }
+      },
+      "text": "The install cost of the first card the Runner installs each turn is increased by 1 for each power counter on Docklands Crackdown."
+    }
+  ],
+  "triggers": [],
+  "built_from": 6072,
+  "is_playable": true
+}

@@ -3,7 +3,7 @@
   "name": "Yield Curve",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach SSO Industries: Fueling Innovation, Kitara's Weyland identity, which when the Corp's turn ends may place an advancement token on an unadvanced piece of ice for each agenda point on installed faceup agendas. On Family Business's list, a Weyland deck with ice to advance. Eternal-legal only. Kitara Stage 13g. Red Sand Stage 3b: two Audacity for two Wake Up Call. FFG F6 Stage 5: two Bailiff, two Red Tape and an Assassin for two Formicary, two Masvingo and an Ice Wall, each kept by other decks. FFG F6 Stage 6: two Corporate Sales Team for Above the Law and Transport Monopoly, the same four points, each kept by other decks.",
+  "description": "Not a published list: built so the sweeps reach SSO Industries: Fueling Innovation, Kitara's Weyland identity, which when the Corp's turn ends may place an advancement token on an unadvanced piece of ice for each agenda point on installed faceup agendas. On Family Business's list, a Weyland deck with ice to advance. Eternal-legal only. Kitara Stage 13g. Red Sand Stage 3b: two Audacity for two Wake Up Call. FFG F6 Stage 5: two Bailiff, two Red Tape and an Assassin for two Formicary, two Masvingo and an Ice Wall, each kept by other decks. FFG F6 Stage 6: two Corporate Sales Team for Above the Law and Transport Monopoly, the same four points, each kept by other decks. Two Docklands Crackdown take Superdeep Borehole's place. Two Snatch and Grab take Shipment from Kaguya's place. Two Shattered Remains take Death and Taxes' place.",
   "style": [
     "traps"
   ],
@@ -42,10 +42,6 @@
       "count": 2
     },
     {
-      "card": "superdeep_borehole",
-      "count": 2
-    },
-    {
       "card": "hortum",
       "count": 2
     },
@@ -63,10 +59,6 @@
     },
     {
       "card": "divested_trust",
-      "count": 2
-    },
-    {
-      "card": "shipment_from_kaguya",
       "count": 2
     },
     {
@@ -90,10 +82,6 @@
       "count": 2
     },
     {
-      "card": "death_and_taxes",
-      "count": 2
-    },
-    {
       "card": "audacity",
       "count": 2
     },
@@ -111,6 +99,18 @@
     },
     {
       "card": "corporate_sales_team",
+      "count": 2
+    },
+    {
+      "card": "docklands_crackdown",
+      "count": 2
+    },
+    {
+      "card": "snatch_and_grab",
+      "count": 2
+    },
+    {
+      "card": "shattered_remains",
       "count": 2
     }
   ]

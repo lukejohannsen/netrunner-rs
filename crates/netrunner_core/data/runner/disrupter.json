@@ -1,0 +1,21 @@
+{
+  "id": "disrupter",
+  "title": "Disrupter",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "Prevent": "TraceBaseStrength"
+      },
+      "text": "[interrupt] → [trash]: Reduce the base trace strength of a trace to 0."
+    }
+  ],
+  "built_from": 2061,
+  "is_playable": true
+}

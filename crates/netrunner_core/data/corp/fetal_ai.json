@@ -1,0 +1,44 @@
+{
+  "id": "fetal_ai",
+  "title": "Fetal AI",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 2,
+  "steal_cost": {
+    "Credits": 2
+  },
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this agenda in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": {
+        "Not": {
+          "AccessingIn": "Archives"
+        }
+      },
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            2
+          ]
+        }
+      ],
+      "text": "When the Runner accesses this agenda anywhere except in Archives, do 2 net damage."
+    }
+  ],
+  "built_from": 2032,
+  "is_playable": true
+}

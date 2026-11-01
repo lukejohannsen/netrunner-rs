@@ -1,0 +1,57 @@
+{
+  "id": "psychic_field",
+  "title": "Psychic Field",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": "ThisCardIsInstalled",
+      "effects": [
+        {
+          "PsiGame": {
+            "on_match": {
+              "Sequence": []
+            },
+            "on_differ": {
+              "DealDamageAmount": [
+                "Net",
+                {
+                  "CardsInHand": "Runner"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "If the Runner exposes or accesses Psychic Field while installed, you and the Runner secretly spend 0[credit], 1[credit], or 2[credit]. Reveal spent credits. If you and the Runner spent a different number of credits, do 1 net damage for each card in the Runner's grip."
+    },
+    {
+      "trigger": "OnCardExposed",
+      "subject": "This",
+      "effects": [
+        {
+          "PsiGame": {
+            "on_match": {
+              "Sequence": []
+            },
+            "on_differ": {
+              "DealDamageAmount": [
+                "Net",
+                {
+                  "CardsInHand": "Runner"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "If the Runner exposes or accesses Psychic Field while installed, you and the Runner secretly spend 0[credit], 1[credit], or 2[credit]. Reveal spent credits. If you and the Runner spent a different number of credits, do 1 net damage for each card in the Runner's grip."
+    }
+  ],
+  "built_from": 5010,
+  "is_playable": true
+}

@@ -1,0 +1,31 @@
+{
+  "id": "utopia_fragment",
+  "title": "Utopia Fragment",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "StealCost": {
+          "CreditsAmount": {
+            "Times": {
+              "amount": "AccessedCardAdvancementCounters",
+              "times": 2
+            }
+          }
+        }
+      },
+      "applies_to": {
+        "Stealing": "Any"
+      },
+      "text": "As an additional cost to steal an agenda, the Runner must pay 2[credit] for each advancement token on that agenda."
+    }
+  ],
+  "triggers": [],
+  "built_from": 6110,
+  "is_playable": true
+}
