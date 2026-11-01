@@ -1,0 +1,62 @@
+{
+  "id": "virgo",
+  "title": "Virgo",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 5,
+  "subroutines": [
+    {
+      "text": "Trace[2]. If successful, give the Runner 1 tag. If your trace strength is 5 or greater, give the Runner 1 tag.",
+      "effect": {
+        "Trace": {
+          "base": 2,
+          "on_success": {
+            "Sequence": [
+              {
+                "GiveTags": {
+                  "Fixed": 1
+                }
+              },
+              {
+                "EffectIf": {
+                  "condition": {
+                    "AmountAtLeast": [
+                      "TraceStrength",
+                      5
+                    ]
+                  },
+                  "effect": {
+                    "GiveTags": {
+                      "Fixed": 1
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "on_failure": {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "TraceStrength",
+                  5
+                ]
+              },
+              "effect": {
+                "GiveTags": {
+                  "Fixed": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 6109,
+  "is_playable": true
+}

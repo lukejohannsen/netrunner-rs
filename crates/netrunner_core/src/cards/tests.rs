@@ -52895,3 +52895,149 @@ mod composable_leftovers_stage_5 {
         assert_eq!(state.runner.grip.len(), 1, "two net damage");
     }
 }
+
+mod engine_words_stage_1 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice(card: &str, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    /// Runs HQ into its one piece of ice and passes the encounter's window,
+    /// so the subroutines fire (or the first thing they park asks).
+    fn let_subroutines_fire(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (mut run, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        for _ in 0..12 {
+            if run.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) {
+                break;
+            }
+            let action = match &run.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            run = apply_action(&run, registry, action).expect("onward").0;
+        }
+        for _ in 0..4 {
+            let Some(window) = &run.paid_ability_window else { break };
+            let side = window.active_priority;
+            run = apply_action(&run, registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        run
+    }
+
+    /// "If your trace strength is 5 or greater" is asked whether or not the
+    /// trace succeeded (CR 10.8.5, whose example is Gemini).
+    #[test]
+    fn virgo_reads_the_trace_strength_on_either_outcome() {
+        let registry = registry();
+        for (corp_bid, runner_bid, tags) in [(3, 0, 2), (2, 0, 1), (3, 5, 1), (2, 4, 0)] {
+            let mut state = runner_turn();
+            state.corp.installed = vec![ice("virgo", true)];
+            let tracing = let_subroutines_fire(&state, &registry);
+            assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(2), "trace[2]");
+            let (bid, _) = apply_action(&tracing, &registry, PlayerAction::SubmitCorpTraceBid { amount: corp_bid }).expect("corp bids");
+            let (traced, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: runner_bid }).expect("runner bids");
+            assert_eq!(traced.runner.tags, tags, "Corp {corp_bid}, Runner {runner_bid}");
+        }
+    }
+
+    #[test]
+    fn a_trace_strength_outside_a_trace_is_refused() {
+        let mut card = registry().get(&id("gemini")).expect("Gemini").clone();
+        card.subroutines[0].effect = crate::dsl::Effect::DealDamageAmount(crate::dsl::DamageType::Net, crate::dsl::Amount::TraceStrength);
+        assert_eq!(card.validate(), Err(crate::dsl::CardValidationError::TraceMarginWithoutATrace(id("gemini"))));
+    }
+
+    #[test]
+    fn tyrant_is_advanced_only_while_rezzed_and_gains_a_subroutine_per_counter() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice("tyrant", false)];
+        let target = fixture_install_id("tyrant");
+        let advance = PlayerAction::AdvanceCard { target };
+        assert!(matches!(apply_action(&state, &registry, advance.clone()), Err(RulesError::CardNotAdvanceable { .. })), "unrezzed");
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&advance), "the mask asks the same question");
+        state.corp.installed[0].rezzed = true;
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&advance));
+        let (state, _) = apply_action(&state, &registry, advance.clone()).expect("rezzed");
+        let (state, _) = apply_action(&state, &registry, advance).expect("again");
+        assert_eq!(state.corp.installed[0].advancement_tokens, 2);
+        let mut run = runner_turn();
+        run.corp = state.corp.clone();
+        let (mut encountering, _) = apply_action(&run, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        for _ in 0..12 {
+            if encountering.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) {
+                break;
+            }
+            let action = match &encountering.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            encountering = apply_action(&encountering, &registry, action).expect("onward").0;
+        }
+        let encounter = encountering.active_run.as_ref().expect("encountering");
+        assert_eq!(encounter.ice[encounter.position].subroutines.len(), 2, "an End the run per counter");
+    }
+
+    /// CR 1.18.3: "the card can be advanced even while it is unrezzed" —
+    /// Swarm says only "You can advance this ice".
+    #[test]
+    fn swarm_is_advanced_unrezzed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice("swarm", false)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: fixture_install_id("swarm") }).expect("advance");
+        assert_eq!(state.corp.installed[0].advancement_tokens, 1);
+    }
+
+    #[test]
+    fn an_unrezzed_tyrant_is_not_a_card_you_can_advance() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice("tyrant", false), ice("swarm", false)];
+        let eligible = crate::rules::pending_choice::eligible_positions(&state, &registry, Side::Corp, &crate::dsl::CardZoneRef::OwnInstalled, &crate::dsl::CardFilter::Advanceable, None, None);
+        assert_eq!(eligible, vec![1], "Swarm only");
+    }
+
+    #[test]
+    fn blackmail_stops_every_rez_of_ice_for_the_run_and_nothing_else() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("ice_wall", false), crate::rules::InstalledCard { server: ServerId::Hq, slot: InstallSlot::Root, ..ice("caprice_nisei", false) }];
+        state.runner.grip = vec![id("blackmail")];
+        let play = PlayerAction::PlayEvent { card_id: id("blackmail") };
+        assert!(apply_action(&state, &registry, play.clone()).is_err(), "no bad publicity");
+        state.corp.bad_publicity = 1;
+        let (state, _) = apply_action(&state, &registry, play).expect("play");
+        let (running, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        assert!(running.active_run.is_some());
+        assert!(crate::rules::continuous::cannot(&running, &registry, crate::dsl::Prohibition::RezIce));
+        // On to the Corp's priority as the ice is approached, where its rez
+        // is the Corp's to try.
+        let mut window = running.clone();
+        for _ in 0..8 {
+            match &window.paid_ability_window {
+                Some(open) if open.active_priority == Side::Corp && window.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::ApproachIce) => break,
+                Some(open) => window = apply_action(&window, &registry, PlayerAction::PassPriority { side: open.active_priority }).expect("pass").0,
+                None => window = apply_action(&window, &registry, PlayerAction::ContinueRun).expect("onward").0,
+            }
+        }
+        assert!(window.active_run.is_some(), "still running");
+        let rez = |card: &str| PlayerAction::RezIce { ice: fixture_install_id(card) };
+        assert!(matches!(apply_action(&window, &registry, rez("ice_wall")), Err(RulesError::RezRestricted { .. })), "no ice");
+        assert!(apply_action(&window, &registry, rez("caprice_nisei")).is_ok(), "an upgrade is not ice");
+        let mut after = running;
+        after.active_run = None;
+        assert!(!crate::rules::continuous::cannot(&after, &registry, crate::dsl::Prohibition::RezIce), "for that run only");
+    }
+}

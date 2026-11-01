@@ -303,7 +303,6 @@ pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("domestic_sleepers", "Domestic Sleepers"),
     ("mutate", "Mutate"),
     ("the_root", "The Root"),
-    ("taurus", "Taurus"),
     ("mother_goddess", "Mother Goddess"),
     ("galahad", "Galahad"),
     ("bad_times", "Bad Times"),
@@ -357,8 +356,6 @@ pub(crate) const UAO_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *All That Remains* (`all_that_remains`): tranche F8 of the FFG plan.
 pub(crate) const ATR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("bifrost_array", "Bifrost Array"),
-    ("sagittarius", "Sagittarius"),
-    ("gemini", "Gemini"),
     ("lycan", "Lycan"),
     ("merlin", "Merlin"),
     ("shell_corporation", "Shell Corporation"),
@@ -370,7 +367,6 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("helium_3_deposit", "Helium-3 Deposit"),
     ("it_department", "IT Department"),
     ("industrial_genomics_growing_solutions", "Industrial Genomics: Growing Solutions"),
-    ("virgo", "Virgo"),
     ("self_destruct", "Self-destruct"),
     ("incubator", "Incubator"),
     ("ixodidae", "Ixodidae"),
@@ -430,7 +426,6 @@ pub(crate) const OM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("rook", "Rook"),
     ("false_echo", "False Echo"),
     ("john_masanori", "John Masanori"),
-    ("swarm", "Swarm"),
 ];
 
 /// *Second Thoughts* (`second_thoughts`): tranche F10 of the FFG plan.
@@ -468,7 +463,6 @@ pub(crate) const TC_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const FAL_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("tallie_perrault", "Tallie Perrault"),
     ("blackguard", "Blackguard"),
-    ("blackmail", "Blackmail"),
     ("toshiyuki_sakai", "Toshiyuki Sakai"),
 ];
 
@@ -499,7 +493,6 @@ pub(crate) const CE_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("snitch", "Snitch"),
     ("personal_workshop", "Personal Workshop"),
     ("sunset", "Sunset"),
-    ("woodcutter", "Woodcutter"),
     ("chimera", "Chimera"),
 ];
 
@@ -509,7 +502,6 @@ pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("bullfrog", "Bullfrog"),
     ("net_police", "Net Police"),
     ("weyland_consortium_because_we_built_it", "Weyland Consortium: Because We Built It"),
-    ("tyrant", "Tyrant"),
     ("oversight_ai", "Oversight AI"),
 ];
 
@@ -521,7 +513,6 @@ pub(crate) const HS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("kraken", "Kraken"),
     ("kati_jones", "Kati Jones"),
     ("data_hound", "Data Hound"),
-    ("salvage", "Salvage"),
     ("simone_diego", "Simone Diego"),
 ];
 

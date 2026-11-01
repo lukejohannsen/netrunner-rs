@@ -352,7 +352,9 @@ pub enum Effect {
     /// write a number (`number_or_amount`), as every trace before Kitara does.
     /// `on_success` may read the amount by which the Corp's total exceeded
     /// the Runner's (`Amount::TraceMargin`, Trojan Horse), written in when
-    /// the trace succeeds.
+    /// the trace succeeds; either outcome may read the Corp's trace
+    /// strength (`Amount::TraceStrength`, Gemini), written in as the trace
+    /// is determined.
     Trace {
         #[serde(deserialize_with = "number_or_amount", serialize_with = "write_number_or_amount")]
         base: Amount,
@@ -2842,6 +2844,17 @@ pub enum Amount {
     /// selection that parks; `validate` refuses one anywhere else, where it
     /// would read 0.
     TraceMargin,
+    /// The Corp's trace strength — base plus the Corp's bid (CR 10.8.2) —
+    /// for Gemini's, Virgo's, Taurus's and Sagittarius's "If your trace
+    /// strength is 5 or greater". A placeholder like `TraceMargin`,
+    /// written over in **both** outcomes as the trace is determined
+    /// (`rules::trace::submit_runner_bid`): CR 10.8.5's example is Gemini,
+    /// whose second clause is "when the trace is determined to be
+    /// successful or unsuccessful", so a card file writes it in
+    /// `on_success` and in `on_failure`. Composition didn't work: the
+    /// margin subtracts the Runner's link strength, and the strength alone
+    /// is what these cards ask.
+    TraceStrength,
     /// The printed advancement requirement of the agenda the triggering
     /// score or steal is about — Amani Senai's "X is the advancement
     /// requirement of the scored or stolen agenda", read off
@@ -3717,12 +3730,21 @@ pub enum Prohibition {
     /// install, and which piece is outermost is the run's to say when the
     /// rez is attempted, not when the prohibition is made.
     RezOutermostIce,
+    /// The Corp cannot rez ice — Blackmail's "The Corp cannot rez ice
+    /// during that run", made as the run starts (`PromptChooseServer::
+    /// on_start`) for `EffectDuration::Run`. Asked by `engine::rez_install`
+    /// of every piece of ice, so the rez action, the action list's probe
+    /// and a card's text that rezzes ice are refused alike, and a non-ice
+    /// card is untouched (CR 1.2.2: a "cannot" takes precedence).
+    /// Composition didn't work: `Rez` is bound to one install and
+    /// `RezOutermostIce` to one position in the run.
+    RezIce,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 31] = [
+    pub const ALL: [Prohibition; 32] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -3754,12 +3776,13 @@ impl Prohibition {
         Prohibition::UsePrograms,
         Prohibition::Draw,
         Prohibition::RezOutermostIce,
+        Prohibition::RezIce,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
-            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::RezOutermostIce => Side::Corp,
+            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::RezOutermostIce | Prohibition::RezIce => Side::Corp,
             Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw => Side::Runner,
         }
     }
@@ -3771,7 +3794,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce | Prohibition::RezIce => None,
         }
     }
 }

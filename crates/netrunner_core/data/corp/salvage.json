@@ -1,0 +1,54 @@
+{
+  "id": "salvage",
+  "title": "Salvage",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 0,
+  "advancement_requirement": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "Advance"
+      },
+      "applies_to": "This",
+      "while": {
+        "Not": {
+          "ActingCardMatches": "Rezzed"
+        }
+      },
+      "text": "You can advance this ice if it is rezzed."
+    },
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "Trace[2]. If successful, give the Runner 1 tag.",
+            "effect": {
+              "Trace": {
+                "base": 2,
+                "on_success": {
+                  "GiveTags": {
+                    "Fixed": 1
+                  }
+                }
+              }
+            }
+          },
+          "count": {
+            "per": 1,
+            "of": "HostedAdvancementTokens"
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "It gains \"[subroutine] Trace[2]. If successful, give the Runner 1 tag.\" for each hosted advancement counter."
+    }
+  ],
+  "subroutines": [],
+  "triggers": [],
+  "built_from": 2098,
+  "is_playable": true
+}

@@ -1304,7 +1304,7 @@ pub enum CardValidationError {
     ChosenNumberNobodyChose(CardId),
     #[error("card {0:?} says `RepeatThisProcess` outside an `Effect::Process`, where there is nothing to repeat")]
     RepeatOutsideAProcess(CardId),
-    #[error("card {0:?} reads `Amount::TraceMargin` outside the `on_success` of an `Effect::Trace`, where no trace succeeded and it is 0")]
+    #[error("card {0:?} reads `Amount::TraceMargin` or `TraceStrength` outside the outcome of an `Effect::Trace`, where no trace was determined and it is 0")]
     TraceMarginWithoutATrace(CardId),
     #[error("card {0:?} sets which copy of its identity is in play (`Effect::SetIdentityCopy`) other than as a Corp identity's secret number (`ChooseNumber` with `secret`), CR 1.5.2b")]
     IdentityCopySetInTheOpen(CardId),
@@ -1863,7 +1863,8 @@ impl CardDefinition {
         // nothing. The substitution stops at a `then`, so a root it
         // changes names the placeholder where no number was chosen.
         let mut chosen_number_nobody_chose = false;
-        // `Amount::TraceMargin` anywhere but a trace's `on_success` reads 0.
+        // `Amount::TraceMargin` or `TraceStrength` anywhere but a trace's
+        // outcome reads 0.
         let mut trace_margin_without_a_trace = false;
         // `RepeatThisProcess` outside an `Effect::Process` is a no-op: a
         // card that reads as repeating and does not.
@@ -1971,7 +1972,7 @@ impl CardDefinition {
             }
             // The walk stops at a trace, so a root it changes names the
             // margin where no trace succeeded.
-            trace_margin_without_a_trace |= root.clone().filled(&|amount| matches!(amount, crate::dsl::Amount::TraceMargin).then_some(1)) != *root;
+            trace_margin_without_a_trace |= root.clone().filled(&|amount| matches!(amount, crate::dsl::Amount::TraceMargin | crate::dsl::Amount::TraceStrength).then_some(1)) != *root;
             repeat_outside_a_process |= root.clone().with_process(&Effect::Sequence(Vec::new())) != *root;
         }
         if repeat_outside_a_process {
@@ -2313,8 +2314,12 @@ impl CardDefinition {
                 // cannot rez non-ice cards"), asked of the install by
                 // `continuous::cannot_install`.
                 (ContinuousKind::Cannot(crate::dsl::Prohibition::Rez), Scope::CorpInstalled(_)) => {}
+                // A card that can be advanced saying when it cannot
+                // (Tyrant's "You can advance this ice if it is rezzed"),
+                // asked of the install by `engine::may_be_advanced`.
+                (ContinuousKind::Cannot(crate::dsl::Prohibition::Advance), Scope::This) if self.advancement_requirement.is_some() => {}
                 (ContinuousKind::Cannot(_), _) => {
-                    return misfit("Cannot", "a prohibition is about the player it binds (`Player`), an agenda's about its own score (`This`), a card's about the agenda being scored (`Scoring`), or a rez about the Corp's installs (`CorpInstalled`)");
+                    return misfit("Cannot", "a prohibition is about the player it binds (`Player`), an agenda's about its own score (`This`), an advanceable card's about its own advancing (`This`), a card's about the agenda being scored (`Scoring`), or a rez about the Corp's installs (`CorpInstalled`)");
                 }
             }
         }

@@ -73,9 +73,12 @@ pub(crate) fn submit_runner_bid(
     if runner_total >= corp_total {
         events.push(GameEvent::TraceAvoided { corp_total, runner_total });
         if let Some(on_failure) = &trace.effect_on_failure {
+            // Gemini's "if your trace strength is 5 or greater" is asked
+            // whichever way the trace went (CR 10.8.5).
+            let on_failure = on_failure.clone().filled(&|amount| matches!(amount, crate::dsl::Amount::TraceStrength).then_some(corp_total));
             events.extend(ability::evaluate_effect(
                 state,
-                on_failure,
+                &on_failure,
                 &mut ability::ResolutionContext::for_parked(trace.initiating_install, trace.initiating_card.as_ref()),
                 registry,
             )?);
@@ -88,7 +91,11 @@ pub(crate) fn submit_runner_bid(
         // link strength" (Trojan Horse) is written in as a number, so it
         // rides into whatever the success parks.
         let margin = corp_total - runner_total;
-        let on_success = trace.effect_on_success.clone().filled(&|amount| matches!(amount, crate::dsl::Amount::TraceMargin).then_some(margin));
+        let on_success = trace.effect_on_success.clone().filled(&|amount| match amount {
+            crate::dsl::Amount::TraceMargin => Some(margin),
+            crate::dsl::Amount::TraceStrength => Some(corp_total),
+            _ => None,
+        });
         events.extend(ability::evaluate_effect(
             state,
             &on_success,

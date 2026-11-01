@@ -1276,6 +1276,10 @@ pub(crate) fn rez_install(
         return Err(RulesError::RezRestricted { card: ice_id });
     }
     let card_def = registry.get(&ice_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(ice_id.clone()))?;
+    // Blackmail's "The Corp cannot rez ice during that run".
+    if matches!(card_def.card_type, CardType::Ice(_)) && continuous::cannot(next, registry, Prohibition::RezIce) {
+        return Err(RulesError::RezRestricted { card: ice_id });
+    }
     // Another card's additional cost to rez (Hacktivist Meeting's random
     // trash from HQ), asked ahead of any payment so a rez that cannot be
     // finished takes nothing, and paid before the card turns faceup. A rez
@@ -3218,6 +3222,25 @@ fn advance_card(
     Ok((next, events))
 }
 
+/// Whether the Corp can advance the install `target` as the table stands
+/// — **the one predicate** `advance` and the action list both ask, so the
+/// mask never offers an advance the engine refuses. CR 1.18.3: an agenda,
+/// or a card that says it can be advanced (an `advancement_requirement`,
+/// `0` for "you can advance this ice"), "even while it is unrezzed" —
+/// unless the card's own text narrows that: Tyrant's, Woodcutter's and
+/// Salvage's "You can advance this ice **if it is rezzed**" is a standing
+/// `Cannot(Advance)` the card says about itself while it is not
+/// (`continuous::cannot_install`, read off the copy, as Vulnerability
+/// Audit's "You cannot score this agenda if it was installed this turn"
+/// is). Rejected: a `bool` beside `advancement_requirement`, which is the
+/// standing-effect field the Continuous Effect Rule forbids. The Corp's
+/// own prohibition on advancing anything (The Price of Freedom) is the
+/// basic action's and stays there.
+pub(crate) fn may_be_advanced(state: &GameState, registry: &CardRegistry, target: InstallId) -> bool {
+    state.find_corp_install(target).and_then(|installed| registry.get(&installed.card)).is_some_and(|card| card.advancement_requirement.is_some())
+        && !continuous::cannot_install(state, registry, Prohibition::Advance, target)
+}
+
 /// Advances `target` — CR 1.18.1, "to advance a card is to place an
 /// advancement counter from the bank on it" — **the one place a card is
 /// advanced**, so that `Trigger::OnAdvance` hears every advancement
@@ -3240,25 +3263,21 @@ fn advance_card(
 /// CR 1.18.3: "the Corp can only advance certain installed cards" — an
 /// agenda, or a card whose text says it can be, which a card file says
 /// with an `advancement_requirement` (`0` for "you can advance this
-/// ice"); everything else is `CardNotAdvanceable`. No "was this the first
+/// ice"), and not one whose own text says "not now" (`may_be_advanced`);
+/// everything else is `CardNotAdvanceable`. No "was this the first
 /// advancement?" flag is recorded: the event carries
 /// `advancement_tokens`, and `EffectRequirement::
 /// WasFirstAdvancementThisCard` reads it from the
 /// `ability::ResolutionContext` the dispatch builds.
 pub(crate) fn advance(next: &mut GameState, registry: &CardRegistry, target: InstallId) -> Result<Vec<GameEvent>, RulesError> {
-    let installed = next
-        .corp
-        .installed
-        .iter_mut()
-        .find(|c| c.install_id == target)
-        .ok_or(RulesError::InstallNotFound(target))?;
-    let card_id = installed.card.clone();
-    let card_def = registry
-        .get(&card_id)
-        .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
-    if card_def.advancement_requirement.is_none() {
+    let card_id = next.find_corp_install(target).ok_or(RulesError::InstallNotFound(target))?.card.clone();
+    if registry.get(&card_id).is_none() {
+        return Err(RulesError::CardNotFoundInRegistry(card_id));
+    }
+    if !may_be_advanced(next, registry, target) {
         return Err(RulesError::CardNotAdvanceable { card: card_id });
     }
+    let installed = next.corp.installed.iter_mut().find(|c| c.install_id == target).ok_or(RulesError::InstallNotFound(target))?;
 
     installed.advancement_tokens += 1;
     let advancement_tokens = installed.advancement_tokens;

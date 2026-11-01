@@ -890,7 +890,7 @@ fn advance_score_trash_candidates(state: &GameState, registry: &CardRegistry) ->
     for installed in &state.corp.installed {
         let cannot_score = continuous::cannot_install(state, registry, Prohibition::ScoreAgendas, installed.install_id);
         let Some(card) = registry.get(&installed.card) else { continue };
-        if card.advancement_requirement.is_some() {
+        if crate::rules::engine::may_be_advanced(state, registry, installed.install_id) {
             candidates.push(PlayerAction::AdvanceCard { target: installed.install_id });
         }
         // Luminal Transubstantiation's lockout — the predicate

@@ -6482,7 +6482,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::Fixed(n) => *n,
         // A placeholder `Effect::with_chosen_number` writes over before a
         // `then` resolves; read anywhere else it is nothing.
-        Amount::ChosenNumber | Amount::TraceMargin => 0,
+        Amount::ChosenNumber | Amount::TraceMargin | Amount::TraceStrength => 0,
         Amount::ForfeitedAgendaPoints => match ctx.triggering_event {
             Some(GameEvent::AgendaForfeited { card, .. }) | Some(GameEvent::OperationPlayed { forfeited: Some(card), .. }) => {
                 registry.get(card).and_then(|def| def.agenda_points).unwrap_or(0)
