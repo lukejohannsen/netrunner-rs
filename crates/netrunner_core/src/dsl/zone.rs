@@ -409,7 +409,8 @@ pub enum CardFilter {
     /// Syailendra). Definition-level; the same test `legal_actions` uses
     /// to offer `AdvanceCard`. Syailendra's and Key Performance
     /// Indicators' "place 1 advancement counter on an installed card you
-    /// can advance".
+    /// can advance". The copy's half is `engine::may_be_advanced`'s, so an
+    /// unrezzed Tyrant, which can be advanced only while rezzed, is not one.
     Advanceable,
     /// An installed Corp card in the root of, or a piece of ice
     /// protecting, the server the current run is against — LEO

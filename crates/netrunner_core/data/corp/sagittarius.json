@@ -1,0 +1,89 @@
+{
+  "id": "sagittarius",
+  "title": "Sagittarius",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 5,
+  "strength": 4,
+  "subroutines": [
+    {
+      "text": "Trace[2]. If successful, trash 1 program. If your trace strength is 5 or greater, trash 1 program.",
+      "effect": {
+        "Trace": {
+          "base": 2,
+          "on_success": {
+            "Sequence": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OpponentInstalled",
+                  "filter": {
+                    "CardType": "Program"
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "destination": "OpponentDiscard"
+                }
+              },
+              {
+                "EffectIf": {
+                  "condition": {
+                    "AmountAtLeast": [
+                      "TraceStrength",
+                      5
+                    ]
+                  },
+                  "effect": {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OpponentInstalled",
+                      "filter": {
+                        "CardType": "Program"
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "destination": "OpponentDiscard"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "on_failure": {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "TraceStrength",
+                  5
+                ]
+              },
+              "effect": {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OpponentInstalled",
+                  "filter": {
+                    "CardType": "Program"
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "destination": "OpponentDiscard"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 6082,
+  "is_playable": true
+}

@@ -132,6 +132,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::CoreDamageTaken => "the core damage the Runner has taken this game".to_string(),
         Amount::ChosenNumber => "the number chosen".to_string(),
         Amount::TraceMargin => "the amount the trace succeeded by".to_string(),
+        Amount::TraceStrength => "your trace strength".to_string(),
         Amount::TriggeringAgendaAdvancementRequirement => "that agenda's advancement requirement".to_string(),
         Amount::ForfeitedAgendaPoints => "the forfeited agenda's agenda points".to_string(),
         Amount::ForfeitedAgendaAdvancementRequirement => "the forfeited agenda's advancement requirement".to_string(),
@@ -709,6 +710,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::Install, _) => "the Runner cannot install cards",
                 (Prohibition::Draw, _) => "the Runner cannot draw cards",
                 (Prohibition::RezOutermostIce, _) => "the Corp cannot rez the outermost piece of ice during a run",
+                (Prohibition::RezIce, _) => "the Corp cannot rez ice",
                 (Prohibition::ResolveFirstThreeSubroutines, _) => "the first 3 subroutines of the next encounter do not resolve",
                 (Prohibition::ResolveFirstSubroutine, _) => "the first subroutine to resolve this run does not",
                 (Prohibition::CorpInstall, _) => "the Corp cannot install cards",
@@ -1168,6 +1170,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::Install | Prohibition::CorpInstall => "cannot install cards",
             Prohibition::Draw => "cannot draw cards",
             Prohibition::RezOutermostIce => "cannot rez the outermost piece of ice during a run",
+            Prohibition::RezIce => "cannot rez ice",
             Prohibition::ResolveFirstThreeSubroutines => "cannot resolve the first 3 subroutines of the next encounter",
             Prohibition::ResolveFirstSubroutine => "cannot resolve the first subroutine that would resolve this run",
         }

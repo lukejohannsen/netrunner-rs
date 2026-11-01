@@ -1,0 +1,50 @@
+{
+  "id": "woodcutter",
+  "title": "Woodcutter",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 2,
+  "advancement_requirement": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "Advance"
+      },
+      "applies_to": "This",
+      "while": {
+        "Not": {
+          "ActingCardMatches": "Rezzed"
+        }
+      },
+      "text": "You can advance this ice if it is rezzed."
+    },
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "Do 1 net damage.",
+            "effect": {
+              "DealDamage": [
+                "Net",
+                1
+              ]
+            }
+          },
+          "count": {
+            "per": 1,
+            "of": "HostedAdvancementTokens"
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "It gains \"[subroutine] Do 1 net damage.\" for each hosted advancement counter."
+    }
+  ],
+  "subroutines": [],
+  "triggers": [],
+  "built_from": 2057,
+  "is_playable": true
+}

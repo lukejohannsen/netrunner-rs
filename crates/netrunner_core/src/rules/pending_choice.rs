@@ -613,6 +613,9 @@ fn instance_matches_filter(
         CardFilter::All(filters) => {
             filters.iter().all(|filter| instance_matches_filter(state, registry, chooser, zone, position, filter, source))
         }
+        // "An installed card you can advance": the definition said it can
+        // be, and the copy may still say not now (Tyrant unrezzed).
+        CardFilter::Advanceable => corp_install.is_none_or(|c| crate::rules::engine::may_be_advanced(state, registry, c.install_id)),
         // The definition passed it (`card_matches_filter`), so it is decided
         // here — Stegodon MK IV's "not protecting the attacked server".
         CardFilter::Not(filter) if filter.is_about_the_copy_alone() => !instance_matches_filter(state, registry, chooser, zone, position, filter, source),

@@ -1,0 +1,65 @@
+{
+  "id": "gemini",
+  "title": "Gemini",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 3,
+  "strength": 5,
+  "subroutines": [
+    {
+      "text": "Trace[2]. If successful, do 1 net damage. If your trace strength is 5 or greater, do 1 net damage.",
+      "effect": {
+        "Trace": {
+          "base": 2,
+          "on_success": {
+            "Sequence": [
+              {
+                "DealDamage": [
+                  "Net",
+                  1
+                ]
+              },
+              {
+                "EffectIf": {
+                  "condition": {
+                    "AmountAtLeast": [
+                      "TraceStrength",
+                      5
+                    ]
+                  },
+                  "effect": {
+                    "DealDamage": [
+                      "Net",
+                      1
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "on_failure": {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "TraceStrength",
+                  5
+                ]
+              },
+              "effect": {
+                "DealDamage": [
+                  "Net",
+                  1
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 6084,
+  "is_playable": true
+}
