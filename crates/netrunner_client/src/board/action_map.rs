@@ -657,6 +657,7 @@ impl Prompt {
                 // The install is facedown, so its name is not the title's
                 // to say: the Runner reads this prompt too.
                 WouldHappen::Expose { .. } => "Prevent a card from being exposed?".to_string(),
+                WouldHappen::BadPublicity { .. } => format!("Prevent {left} bad publicity?"),
                 WouldHappen::Trace { base } => format!("Reduce {}'s trace, base strength {base}, to 0?", title_of(prevention.source_card.as_ref(), registry)),
                 // Never asked (no card prevents a draw); only what hears
                 // it, which asks with a prompt of its own.

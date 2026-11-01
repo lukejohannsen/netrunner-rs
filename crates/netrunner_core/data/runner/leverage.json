@@ -1,0 +1,51 @@
+{
+  "id": "leverage",
+  "title": "Leverage",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "play_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesThisTurnWhen": {
+          "trigger": "OnSuccessfulRun",
+          "when": {
+            "Server": [
+              "Hq"
+            ]
+          }
+        }
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "TakeBadPublicity": 2
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": {
+              "Prohibit": {
+                "what": "SufferDamage",
+                "until": "UntilYourNextTurnBegins"
+              }
+            },
+            "text": "The Corp may take 2 bad publicity. If they do not, whenever you would take damage until your next turn begins, prevent all of that damage."
+          }
+        }
+      ],
+      "text": "The Corp may take 2 bad publicity. If they do not, whenever you would take damage until your next turn begins, prevent all of that damage."
+    }
+  ],
+  "built_from": 4064,
+  "is_playable": true
+}

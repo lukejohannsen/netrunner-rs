@@ -1,0 +1,209 @@
+{
+  "id": "monolith",
+  "title": "Monolith",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 18,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 3
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+3[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnGrip",
+                  "filter": {
+                    "All": [
+                      {
+                        "CardType": "Program"
+                      },
+                      {
+                        "InstallableRunnerCardWithDiscount": {
+                          "Credits": 4
+                        }
+                      }
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "Sequence": [
+                      {
+                        "InstallRunnerCardFromGripWithDiscount": {
+                          "Credits": 4
+                        }
+                      },
+                      {
+                        "PresentChoice": {
+                          "chooser": "Runner",
+                          "options": [
+                            {
+                              "PromptChooseCards": {
+                                "side": "Runner",
+                                "source": "OwnGrip",
+                                "filter": {
+                                  "All": [
+                                    {
+                                      "CardType": "Program"
+                                    },
+                                    {
+                                      "InstallableRunnerCardWithDiscount": {
+                                        "Credits": 4
+                                      }
+                                    }
+                                  ]
+                                },
+                                "min": 1,
+                                "max": 1,
+                                "reveal": false,
+                                "shuffle_after": false,
+                                "then": {
+                                  "Sequence": [
+                                    {
+                                      "InstallRunnerCardFromGripWithDiscount": {
+                                        "Credits": 4
+                                      }
+                                    },
+                                    {
+                                      "PresentChoice": {
+                                        "chooser": "Runner",
+                                        "options": [
+                                          {
+                                            "PromptChooseCards": {
+                                              "side": "Runner",
+                                              "source": "OwnGrip",
+                                              "filter": {
+                                                "All": [
+                                                  {
+                                                    "CardType": "Program"
+                                                  },
+                                                  {
+                                                    "InstallableRunnerCardWithDiscount": {
+                                                      "Credits": 4
+                                                    }
+                                                  }
+                                                ]
+                                              },
+                                              "min": 1,
+                                              "max": 1,
+                                              "reveal": false,
+                                              "shuffle_after": false,
+                                              "then": {
+                                                "Sequence": [
+                                                  {
+                                                    "InstallRunnerCardFromGripWithDiscount": {
+                                                      "Credits": 4
+                                                    }
+                                                  }
+                                                ]
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "Sequence": []
+                                          }
+                                        ],
+                                        "texts": [
+                                          "install up to 3 programs from your grip, paying 4[credit] less for each",
+                                          ""
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "Sequence": []
+                            }
+                          ],
+                          "texts": [
+                            "install up to 3 programs from your grip, paying 4[credit] less for each",
+                            ""
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "install up to 3 programs from your grip, paying 4[credit] less for each",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When you install this hardware, install up to 3 programs from your grip, paying 4[credit] less for each."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Trash": {
+          "from": "OwnGrip",
+          "filter": {
+            "CardType": "Program"
+          },
+          "count": 1
+        }
+      },
+      "effect": {
+        "Prevent": {
+          "Damage": {
+            "kind": "Brain",
+            "up_to": 1
+          }
+        }
+      },
+      "text": "[interrupt] → Trash 1 program from your grip: Prevent 1 core damage or 1 net damage. — core"
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Trash": {
+          "from": "OwnGrip",
+          "filter": {
+            "CardType": "Program"
+          },
+          "count": 1
+        }
+      },
+      "effect": {
+        "Prevent": {
+          "Damage": {
+            "kind": "Net",
+            "up_to": 1
+          }
+        }
+      },
+      "text": "[interrupt] → Trash 1 program from your grip: Prevent 1 core damage or 1 net damage. — net"
+    }
+  ],
+  "built_from": 3036,
+  "is_playable": true
+}

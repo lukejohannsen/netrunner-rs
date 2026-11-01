@@ -470,6 +470,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnDamageAboutToResolve
         | Trigger::OnDrawAboutToResolve
         | Trigger::OnExposeAboutToResolve
+        | Trigger::OnBadPublicityAboutToResolve
         | Trigger::OnDamageSuffered
         | Trigger::OnCreditsSpentFromInstalledCard
         | Trigger::OnIdentityFlipped
@@ -681,6 +682,9 @@ impl Occurrences {
                 return Err(format!("only a run's end says whether the run was successful, not a {trigger:?}"));
             }
             Some(EventFilter::Damage(kind)) => Some(bit(Class::Damage(*kind))),
+            Some(EventFilter::DamageFrom(_)) => {
+                return Err(format!("the turn counts a {trigger:?} without which card did it"));
+            }
             // By owner: a card counted `Unseen` is always a Corp card —
             // installed facedown, advanced, accessed, trashed out of HQ or
             // R&D — so the Corp's are those and every Corp type, and the

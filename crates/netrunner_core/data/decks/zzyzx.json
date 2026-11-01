@@ -3,7 +3,7 @@
   "name": "Zzyzx",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Valencia Estevez: The Angel of Cayambe, Order and Chaos's Anarch identity, who gives the Corp 1 bad publicity before either player draws. Zealotry's list, its identity swapped, with a Hippo for a Net-Ready Eyes, a strength a run for 2 meat damage installing it, which Zealotry keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. Eater, Gravedigger, MemStrips, Data Folding and Vigil in for Yog.0, Djinn and Knobkierie (SanSan Stage 7). Game Day and Study Guide in for Valentina Ferreira Carvalho (SanSan Stage 9). FFG F7 Stage 27: I've Had Worse for one Deja Vu Engine words Stage 6 takes one Demolition Run for Scrubbed, a current that lowers the first ice encountered each turn.",
+  "description": "Not a published list: built so the sweeps reach Valencia Estevez: The Angel of Cayambe, Order and Chaos's Anarch identity, who gives the Corp 1 bad publicity before either player draws. Zealotry's list, its identity swapped, with a Hippo for a Net-Ready Eyes, a strength a run for 2 meat damage installing it, which Zealotry keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. Eater, Gravedigger, MemStrips, Data Folding and Vigil in for Yog.0, Djinn and Knobkierie (SanSan Stage 7). Game Day and Study Guide in for Valentina Ferreira Carvalho (SanSan Stage 9). FFG F7 Stage 27: I've Had Worse for one Deja Vu Engine words Stage 6 takes one Demolition Run for Scrubbed, a current that lowers the first ice encountered each turn. Chrome Parlor, Progenitor and Hunting Grounds came in for a Demolition Run, a Déjà Vu and a Glut Cipher, so a sweep prevents a cybernetic's install damage, keeps a hosted virus's counter through a purge, and prevents a “when encountered” ability.",
   "style": [
     "rig",
     "dismantle"
@@ -27,20 +27,12 @@
       "count": 1
     },
     {
-      "card": "demolition_run",
-      "count": 1
-    },
-    {
-      "card": "deja_vu",
-      "count": 1
-    },
-    {
       "card": "district_99",
       "count": 2
     },
     {
       "card": "glut_cipher",
-      "count": 2
+      "count": 1
     },
     {
       "card": "crypt",
@@ -148,6 +140,18 @@
     },
     {
       "card": "scrubbed",
+      "count": 1
+    },
+    {
+      "card": "chrome_parlor",
+      "count": 1
+    },
+    {
+      "card": "progenitor",
+      "count": 1
+    },
+    {
+      "card": "hunting_grounds",
       "count": 1
     }
   ]

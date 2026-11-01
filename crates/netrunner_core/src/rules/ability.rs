@@ -678,12 +678,10 @@ pub fn evaluate_effect(
             if amount == 0 {
                 return Ok(Vec::new());
             }
-            state.corp.bad_publicity = state.corp.bad_publicity.saturating_add(amount);
-            // Dispatched here, as `RemoveTags` dispatches its removal:
-            // Editorial Division hears the Corp take it.
-            let mut events = Vec::new();
-            dispatcher::emit(state, registry, &mut events, GameEvent::BadPublicityGiven { amount })?;
-            Ok(events)
+            // About to be taken, so Broadcast Square may prevent it
+            // (`prevention::would`, which takes what is left and announces
+            // it for Editorial Division).
+            crate::rules::prevention::would(state, registry, crate::rules::WouldHappen::BadPublicity { amount }, ctx)
         }
 
         Effect::RemoveBadPublicity(amount) => {
@@ -1401,6 +1399,13 @@ pub fn evaluate_effect(
                 until: Until::EndOfRun,
                 source,
             });
+            Ok(Vec::new())
+        }
+
+        Effect::PreventTheFirst { what, until } => {
+            let source = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.acting_install)?;
+            state.lingering.push(LingeringEffect { what: Lingering::Prevent(what.clone()), on: On::Player(controller(ctx, state, registry)), until, source });
             Ok(Vec::new())
         }
 
@@ -7270,7 +7275,9 @@ mod tests {
         let events = evaluate_effect(&mut state, &Effect::GiveBadPublicity(Amount::Fixed(2)), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.corp.bad_publicity, 2);
-        assert_eq!(events, vec![GameEvent::BadPublicityGiven { amount: 2 }]);
+        // Announced as about to be taken first (Broadcast Square hears that),
+        // then taken.
+        assert_eq!(events, vec![GameEvent::AboutToResolve { what: crate::rules::WouldHappen::BadPublicity { amount: 2 } }, GameEvent::BadPublicityGiven { amount: 2 }]);
     }
 
     #[test]

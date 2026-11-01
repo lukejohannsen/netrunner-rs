@@ -437,6 +437,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::Prevent(Preventable::EncounterAbility) => "prevent a \"when encountered\" ability on a piece of ice".to_string(),
         Effect::Prevent(Preventable::RunEnding) => "prevent a Corp card ability from ending the run".to_string(),
         Effect::Prevent(Preventable::Expose) => "prevent 1 card from being exposed".to_string(),
+        Effect::Prevent(Preventable::BadPublicity(Preventable::ALL)) => "prevent all of that bad publicity".to_string(),
+        Effect::Prevent(Preventable::BadPublicity(n)) => format!("prevent {n} bad publicity"),
         Effect::Prevent(Preventable::TraceBaseStrength) => "reduce the base trace strength of a trace to 0".to_string(),
         Effect::Prevent(Preventable::Trash(filter)) => format!("prevent 1 installed card from being trashed ({})", humanize(format!("{filter:?}")).to_lowercase()),
         Effect::IncreaseAboutToResolve { by, then } => {
@@ -589,6 +591,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             }
         }
         Effect::ArmRunEndPrevention(_) => "the run cannot be ended by the next end-the-run effect".to_string(),
+        Effect::PreventTheFirst { what, .. } => format!("the first time it would happen, prevent {}", humanize(format!("{what:?}"))),
         Effect::Sabotage(n) => format!("sabotage {n}"),
         Effect::Mill { deck, amount, then } => {
             let pile = match deck {
@@ -856,6 +859,7 @@ fn describe_when(filter: &EventFilter) -> String {
         EventFilter::Card(filter) => format!("of {}", humanize(format!("{filter:?}"))),
         EventFilter::InstalledCard(filter) => format!("of an installed card ({})", humanize(format!("{filter:?}"))),
         EventFilter::Damage(kind) => format!("of {} damage", format!("{kind:?}").to_lowercase()),
+        EventFilter::DamageFrom(filter) => format!("from {}", humanize(format!("{filter:?}"))),
         EventFilter::AtLeast(least) => format!("{least} or more"),
         EventFilter::Whose(side) => format!("the {side:?}'s"),
         EventFilter::Anyone => "anyone's".to_string(),
@@ -1095,6 +1099,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::MemoryCost(number) => format!("costs {} memory", signed(number)),
         ContinuousKind::MemoryOnlyFor { amount, only } => format!("gets {} memory for {} only", signed(amount), humanize(format!("{only:?}")).to_lowercase()),
         ContinuousKind::HandSize(number) => format!("gets {} maximum hand size", signed(number)),
+        ContinuousKind::KeptThroughPurge(number) => format!("keeps {} virus counter(s) through a purge", signed(number).trim_start_matches('+')),
         ContinuousKind::HostsMemory(number) => format!("hosts up to {} memory of programs, outside the memory limit", signed(number).trim_start_matches('+')),
         ContinuousKind::AgendaPointsToWin(number) => format!("needs {} agenda points to win", signed(number)),
         ContinuousKind::AllottedClicks(number) => format!("gets {} allotted [click] each turn", signed(number)),

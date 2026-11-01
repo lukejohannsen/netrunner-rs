@@ -227,7 +227,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("prey", "Prey"),
     ("endless_hunger", "Endless Hunger"),
     ("harbinger", "Harbinger"),
-    ("hunting_grounds", "Hunting Grounds"),
     ("adam_compulsive_hacker", "Adam: Compulsive Hacker"),
     ("independent_thinking", "Independent Thinking"),
     ("always_be_running", "Always Be Running"),
@@ -250,7 +249,6 @@ pub(crate) const BB_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Chrome City* (`chrome_city`): tranche F7 of the FFG plan.
 pub(crate) const CC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("immolation_script", "Immolation Script"),
-    ("chrome_parlor", "Chrome Parlor"),
     ("titanium_ribs", "Titanium Ribs"),
 ];
 
@@ -283,9 +281,7 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("showing_off", "Showing Off"),
     ("wanton_destruction", "Wanton Destruction"),
     ("hivemind", "Hivemind"),
-    ("progenitor", "Progenitor"),
     ("archives_interface", "Archives Interface"),
-    ("qianju_pt", "Qianju PT"),
 ];
 
 /// *Upstalk* (`upstalk`): tranche F8 of the FFG plan.
@@ -363,7 +359,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("inazuma", "Inazuma"),
     ("shiro", "Shiro"),
     ("susanoo_no_mikoto", "Susanoo-no-Mikoto"),
-    ("tori_hanzo", "Tori Hanzō"),
     ("plan_b", "Plan B"),
     ("diversified_portfolio", "Diversified Portfolio"),
     ("feint", "Feint"),
@@ -388,7 +383,6 @@ pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("exile_streethawk", "Exile: Streethawk"),
     ("escher", "Escher"),
     ("scavenge", "Scavenge"),
-    ("monolith", "Monolith"),
     ("cyber_cypher", "Cyber-Cypher"),
 ];
 
@@ -421,7 +415,6 @@ pub(crate) const MT_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *True Colors* (`true_colors`): tranche F10 of the FFG plan.
 pub(crate) const TC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("leverage", "Leverage"),
     ("capstone", "Capstone"),
     ("starlight_crusade_funding", "Starlight Crusade Funding"),
     ("curtain_wall", "Curtain Wall"),
@@ -438,7 +431,6 @@ pub(crate) const FAL_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const DT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
     ("paintbrush", "Paintbrush"),
-    ("broadcast_square", "Broadcast Square"),
 ];
 
 /// *What Lies Ahead* (`what_lies_ahead`): tranche F11 of the FFG plan.

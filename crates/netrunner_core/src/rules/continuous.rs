@@ -1007,6 +1007,16 @@ pub(crate) fn may_install_onto(state: &GameState, registry: &CardRegistry, card:
     }
 }
 
+/// How many of the rig card `install`'s virus counters a purge leaves on
+/// it (`ContinuousKind::KeptThroughPurge`, Progenitor's hosted program).
+pub(crate) fn kept_through_purge(state: &GameState, registry: &CardRegistry, card: &CardDefinition, install: InstallId) -> u32 {
+    sum(state, registry, Target::Rig { card, install }, |kind| match kind {
+        ContinuousKind::KeptThroughPurge(number) => Some(number),
+        _ => None,
+    })
+    .max(0) as u32
+}
+
 /// How many [mu] of programs the rig card `host` hosts outside the memory
 /// limit (`ContinuousKind::HostsMemory`, Djinn), if it says it does.
 pub(crate) fn hosts_memory(state: &GameState, registry: &CardRegistry, host: InstallId) -> Option<u32> {

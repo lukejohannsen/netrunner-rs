@@ -1,0 +1,46 @@
+{
+  "id": "qianju_pt",
+  "title": "Qianju PT",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "LoseClicks": 1
+                  },
+                  {
+                    "PreventTheFirst": {
+                      "what": {
+                        "Tags": 1
+                      },
+                      "until": "UntilYourNextTurnBegins"
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may lose [click]. If you do, the first time you would take tags from now until your next turn begins, prevent 1 tag",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may lose [click]. If you do, the first time you would take tags from now until your next turn begins, prevent 1 tag."
+    }
+  ],
+  "built_from": 7054,
+  "is_playable": true
+}

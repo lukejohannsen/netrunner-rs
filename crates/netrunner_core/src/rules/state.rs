@@ -1181,6 +1181,11 @@ pub enum WouldHappen {
     /// exposed"). Named by its handle and nothing else, as a trash is: the
     /// card is facedown, and a handle says nothing about it.
     Expose { install: InstallId },
+    /// The Corp would take `amount` bad publicity by a card's text
+    /// (`Effect::GiveBadPublicity`), announced for a card to hear
+    /// (`Trigger::OnBadPublicityAboutToResolve`, Broadcast Square). Public,
+    /// as the bad publicity is.
+    BadPublicity { amount: u32 },
 }
 
 impl WouldHappen {
@@ -1188,7 +1193,7 @@ impl WouldHappen {
     /// card.
     pub fn amount(&self) -> u32 {
         match self {
-            WouldHappen::Damage { amount, .. } | WouldHappen::Tags { amount } | WouldHappen::Draw { amount, .. } => *amount,
+            WouldHappen::Damage { amount, .. } | WouldHappen::Tags { amount } | WouldHappen::Draw { amount, .. } | WouldHappen::BadPublicity { amount } => *amount,
             WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } | WouldHappen::Expose { .. } => 1,
         }
     }
@@ -1204,7 +1209,7 @@ impl WouldHappen {
             WouldHappen::Trash { owner, .. } => *owner,
             WouldHappen::Draw { side, .. } => *side,
             // The card is the Corp's, and so is the one card that prevents it.
-            WouldHappen::Expose { .. } => Side::Corp,
+            WouldHappen::Expose { .. } | WouldHappen::BadPublicity { .. } => Side::Corp,
         }
     }
 }

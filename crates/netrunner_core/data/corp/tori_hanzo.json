@@ -1,0 +1,58 @@
+{
+  "id": "tori_hanzo",
+  "title": "Tori Hanzō",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 3,
+  "trash_cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnDamageAboutToResolve",
+      "when": {
+        "Damage": "Net"
+      },
+      "requirement": {
+        "And": [
+          "RunAgainstThisServer",
+          "OncePerRun"
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Credits": 2
+            },
+            "if_paid": {
+              "Sequence": [
+                {
+                  "Prevent": {
+                    "Damage": {
+                      "kind": "Net",
+                      "up_to": 4294967295
+                    }
+                  }
+                },
+                {
+                  "DealDamage": [
+                    "Brain",
+                    1
+                  ]
+                }
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "instead you may pay 2[credit] to do 1 core damage"
+          }
+        }
+      ],
+      "text": "[interrupt] → The first time you would do 1 or more net damage during each run against this server, instead you may pay 2[credit] to do 1 core damage."
+    }
+  ],
+  "built_from": 5022,
+  "is_playable": true
+}
