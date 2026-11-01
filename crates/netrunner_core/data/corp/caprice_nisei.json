@@ -1,0 +1,38 @@
+{
+  "id": "caprice_nisei",
+  "title": "Caprice Nisei",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Ice": {
+              "innermost": true
+            }
+          },
+          "ProtectingThisServer"
+        ]
+      },
+      "effects": [
+        {
+          "PsiGame": {
+            "on_match": {
+              "Sequence": []
+            },
+            "on_differ": "EndTheRun"
+          }
+        }
+      ],
+      "text": "Whenever the Runner passes all of the ice protecting this server, you and the Runner secretly spend 0[credit], 1[credit], or 2[credit]. Reveal spent credits. If you and the Runner spent a different number of credits, end the run."
+    }
+  ],
+  "built_from": 4114,
+  "is_playable": true
+}

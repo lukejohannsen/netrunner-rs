@@ -1,0 +1,34 @@
+{
+  "id": "ashigaru",
+  "title": "Ashigaru",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 9,
+  "strength": 4,
+  "triggers": [],
+  "subroutines": [],
+  "continuous": [
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "End the run.",
+            "effect": "EndTheRun"
+          },
+          "count": {
+            "per": 1,
+            "of": {
+              "CardsInHand": "Corp"
+            }
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "This ice gains \"[subroutine] End the run.\" for each card in HQ."
+    }
+  ],
+  "built_from": 6064,
+  "is_playable": true
+}

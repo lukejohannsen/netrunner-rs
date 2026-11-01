@@ -1,0 +1,54 @@
+{
+  "id": "geothermal_fracking",
+  "title": "Geothermal Fracking",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "When you score this agenda, place 2 agenda counters on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 1
+          }
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Corp",
+              7
+            ]
+          },
+          {
+            "GiveBadPublicity": {
+              "Fixed": 1
+            }
+          }
+        ]
+      },
+      "text": "[click], hosted agenda counter: Gain 7[credit] and take 1 bad publicity."
+    }
+  ],
+  "built_from": 4017,
+  "is_playable": true
+}

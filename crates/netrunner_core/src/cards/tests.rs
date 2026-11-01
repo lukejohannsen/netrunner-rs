@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "aumakua", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "god_of_war", "gorman_drip_v1", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "virus_breeding_ground", "yusuf"],
+            vec!["audrey_v2", "aumakua", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "god_of_war", "gorman_drip_v1", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "nerve_agent", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "virus_breeding_ground", "yusuf"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -52517,5 +52517,155 @@ mod odd_zones_stage_1 {
         assert_eq!(done.runner.rig.len(), 2);
         assert_eq!(done.runner.grip.len(), 1);
         assert!(use_it(&done).is_err(), "once each turn");
+    }
+}
+
+/// Composable leftovers, Stage 3: cards the existing words already say.
+mod composable_leftovers_stage_3 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice(card: &str, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    /// An installed breaker at its printed strength, as an install sets it.
+    fn rig(card: &str, registry: &CardRegistry) -> crate::rules::InstalledRunnerCard {
+        let base_strength = registry.get(&id(card)).and_then(|definition| definition.strength).unwrap_or(0);
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), base_strength, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    /// Runs `server` and stops at the first encounter.
+    fn encounter(state: &GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let (mut run, _) = apply_action(state, registry, PlayerAction::InitiateRun { server }).expect("run");
+        for _ in 0..12 {
+            if run.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) {
+                return run;
+            }
+            let action = match &run.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            run = apply_action(&run, registry, action).expect("onward").0;
+        }
+        panic!("never encountered the ice");
+    }
+
+    fn use_ability(state: &GameState, registry: &CardRegistry, card: &str, ability_index: usize) -> Result<GameState, crate::rules::RulesError> {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: fixture_install_id(card), ability_index }).map(|(state, _)| state)
+    }
+
+    #[test]
+    fn ashigaru_gains_an_end_the_run_for_each_card_in_hq() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("ashigaru", ServerId::Hq)];
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        let run = encounter(&state, &registry, ServerId::Hq);
+        let encounter = run.active_run.as_ref().expect("encountering");
+        assert_eq!(encounter.ice[encounter.position].subroutines.len(), 3, "three cards in HQ");
+    }
+
+    #[test]
+    fn passport_cannot_interface_with_ice_protecting_a_remote_server() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("passport", &registry)];
+        state.corp.installed = vec![ice("enigma", ServerId::Hq)];
+        let at_hq = encounter(&state, &registry, ServerId::Hq);
+        use_ability(&at_hq, &registry, "passport", 0).expect("a central's code gate");
+
+        state.corp.installed = vec![ice("enigma", ServerId::Remote(0)), crate::rules::InstalledCard { install_id: fixture_install_id("pad_campaign"), card: id("pad_campaign"), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() }];
+        let at_remote = encounter(&state, &registry, ServerId::Remote(0));
+        assert!(use_ability(&at_remote, &registry, "passport", 0).is_err(), "a remote's code gate");
+        assert!(use_ability(&at_remote, &registry, "passport", 1).is_ok(), "the strength is not an interface");
+    }
+
+    #[test]
+    fn gingerbread_interfaces_with_a_tracer_and_nothing_else() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("gingerbread", &registry)];
+        state.corp.installed = vec![ice("enigma", ServerId::Hq)];
+        let at_enigma = encounter(&state, &registry, ServerId::Hq);
+        assert!(use_ability(&at_enigma, &registry, "gingerbread", 0).is_err(), "Enigma is no tracer");
+
+        state.corp.installed = vec![ice("hunter", ServerId::Hq)];
+        let at_hunter = encounter(&state, &registry, ServerId::Hq);
+        let pumped = use_ability(&at_hunter, &registry, "gingerbread", 1).expect("+3 strength");
+        let (pumped, _) = apply_action(&pumped, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the Corp passes back");
+        let broken = use_ability(&pumped, &registry, "gingerbread", 0).expect("break the trace");
+        assert_eq!(broken.active_run.as_ref().unwrap().ice[0].subroutines[0].status, crate::rules::SubroutineStatus::Broken);
+    }
+
+    #[test]
+    fn successful_demonstration_needs_an_unsuccessful_run_last_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("successful_demonstration")];
+        let play = PlayerAction::PlayOperation { card_id: id("successful_demonstration") };
+        crate::rules::test_support::a_run_succeeded_last_turn(&mut state);
+        assert!(apply_action(&state, &registry, play.clone()).is_err(), "the only run last turn succeeded");
+
+        let mut state = base_state();
+        state.corp.hq = vec![id("successful_demonstration")];
+        crate::rules::turn_log::record(&mut state, &CardRegistry::default(), &crate::rules::GameEvent::RunEndedByEffect { server: ServerId::Hq });
+        crate::rules::turn_log::rotate(&mut state);
+        let (played, _) = close_all_windows(apply_action(&state, &registry, play).expect("an unsuccessful run last turn").0, &registry);
+        assert_eq!(played.corp.resources.credits, Credits(15), "10 - 2 + 7");
+    }
+
+    #[test]
+    fn rex_campaign_runs_dry_and_gains_five_or_sheds_bad_publicity() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("rex_campaign"), card: id("rex_campaign"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, counters: 1, ..Default::default() }];
+        state.corp.bad_publicity = 1;
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Corp);
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(state.corp.installed.is_empty(), "trashed when empty");
+        let credits = state.corp.resources.credits;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("gain 5[credit]");
+        assert_eq!(state.corp.resources.credits, Credits(credits.0 + 5));
+        assert_eq!(state.corp.bad_publicity, 1);
+    }
+
+    #[test]
+    fn geothermal_fracking_spends_a_counter_for_seven_credits_and_a_bad_publicity() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.scored_agendas =
+            vec![crate::rules::ScoredAgenda { card: id("geothermal_fracking"), install_id: InstallId(95), agenda_counters: 2, scored_on_turn: 0, installed_on_scoring_turn: false, advanced_on_scoring_turn: false, as_agenda: None }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(95), ability_index: 0 }).expect("[click], hosted agenda counter");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.corp.resources.credits, Credits(17));
+        assert_eq!(state.corp.bad_publicity, 1);
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 1);
+    }
+
+    #[test]
+    fn early_bird_is_a_first_click_run_that_gives_the_click_back() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("early_bird")];
+        let play = PlayerAction::PlayEvent { card_id: id("early_bird") };
+        let (played, _) = apply_action(&state, &registry, play.clone()).expect("first click");
+        assert_eq!(played.runner.resources.clicks, Clicks(4), "spent one, gained one");
+        assert!(matches!(played.pending_decision, Some(crate::rules::PendingDecision::ChooseServer { .. })), "{:?}", played.pending_decision);
+
+        let mut later = runner_turn();
+        later.runner.grip = vec![id("early_bird")];
+        let (later, _) = apply_action(&later, &registry, PlayerAction::GainCreditClick { side: Side::Runner }).expect("a click on something else");
+        let (later, _) = close_all_windows(later, &registry);
+        assert!(apply_action(&later, &registry, play).is_err(), "not the first click");
     }
 }

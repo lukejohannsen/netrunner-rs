@@ -1,0 +1,37 @@
+{
+  "id": "ireress",
+  "title": "Ireress",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 0,
+  "strength": 2,
+  "triggers": [],
+  "subroutines": [],
+  "continuous": [
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "The Runner loses 1[credit].",
+            "effect": {
+              "LoseCredits": [
+                "Runner",
+                1
+              ]
+            }
+          },
+          "count": {
+            "per": 1,
+            "of": "BadPublicity"
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "This ice gains \"[subroutine] The Runner loses 1[credit].\" for each bad publicity you have."
+    }
+  ],
+  "built_from": 4057,
+  "is_playable": true
+}

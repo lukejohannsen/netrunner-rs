@@ -1,0 +1,68 @@
+{
+  "id": "rex_campaign",
+  "title": "Rex Campaign",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 3,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ],
+      "text": "When you rez this asset, load 3 power counters onto it."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RemoveCounters": {
+            "Fixed": 1
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "Sequence": [
+                {
+                  "TrashCard": "ThisCard"
+                },
+                {
+                  "PresentChoice": {
+                    "chooser": "Corp",
+                    "options": [
+                      {
+                        "RemoveBadPublicity": 1
+                      },
+                      {
+                        "GainCredits": [
+                          "Corp",
+                          5
+                        ]
+                      }
+                    ],
+                    "texts": [
+                      "remove 1 bad publicity",
+                      "gain 5[credit]"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, remove 1 hosted power counter."
+    }
+  ],
+  "built_from": 4070,
+  "is_playable": true
+}

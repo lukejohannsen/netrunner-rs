@@ -3,7 +3,7 @@
   "name": "Zymosis",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Nero Severn: Information Broker, Democracy and Dogma's Criminal identity, who may jack out once a turn as a sentry is encountered. Zero-Day Heist's list, its identity swapped, with two Political Operative (installed only after a successful run on HQ, then trashed with X[credit] to trash a rezzed card whose trash cost is X) for its two Jackpot, which Zero-Day Heist keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Mumbad is in neither pool. FFG F6 Stage 4. Mumbad Stage 14 swapped in a Windfall for a Build Script, which Zero-Day Heist still carries. Mumbad Stage 15 swapped in the three GS breakers for a Femme Fatale, a Shibboleth and an Aurora, which other decks carry. Mumbad Stage 16: Tech Trader for a Corporate Defector. Mumbad Stage 17: The Black File for a Mad Dash. Mumbad Stage 22 swapped a Spot the Prey for Security Nexus. SanSan Stage 16",
+  "description": "Not a published list: built so the sweeps reach Nero Severn: Information Broker, Democracy and Dogma's Criminal identity, who may jack out once a turn as a sentry is encountered. Zero-Day Heist's list, its identity swapped, with two Political Operative (installed only after a successful run on HQ, then trashed with X[credit] to trash a rezzed card whose trash cost is X) for its two Jackpot, which Zero-Day Heist keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Mumbad is in neither pool. FFG F6 Stage 4. Mumbad Stage 14 swapped in a Windfall for a Build Script, which Zero-Day Heist still carries. Mumbad Stage 15 swapped in the three GS breakers for a Femme Fatale, a Shibboleth and an Aurora, which other decks carry. Mumbad Stage 16: Tech Trader for a Corporate Defector. Mumbad Stage 17: The Black File for a Mad Dash. Mumbad Stage 22 swapped a Spot the Prey for Security Nexus. SanSan Stage 16 Two Breach take Afterimage's place. Two Gingerbread take a Femme Fatale's and an Aurora's place. Two Executive Wiretaps take a Spot the Prey's and a Mad Dash's place.",
   "style": [
     "pressure"
   ],
@@ -18,23 +18,11 @@
       "count": 1
     },
     {
-      "card": "femme_fatale",
-      "count": 1
-    },
-    {
       "card": "mu_safecracker",
       "count": 1
     },
     {
-      "card": "afterimage",
-      "count": 2
-    },
-    {
       "card": "doppelganger",
-      "count": 1
-    },
-    {
-      "card": "aurora",
       "count": 1
     },
     {
@@ -58,10 +46,6 @@
       "count": 1
     },
     {
-      "card": "spot_the_prey",
-      "count": 1
-    },
-    {
       "card": "mobius",
       "count": 2
     },
@@ -71,10 +55,6 @@
     },
     {
       "card": "build_script",
-      "count": 1
-    },
-    {
-      "card": "mad_dash",
       "count": 1
     },
     {
@@ -151,6 +131,18 @@
     },
     {
       "card": "gang_sign",
+      "count": 2
+    },
+    {
+      "card": "breach",
+      "count": 2
+    },
+    {
+      "card": "gingerbread",
+      "count": 2
+    },
+    {
+      "card": "executive_wiretaps",
       "count": 2
     }
   ]
