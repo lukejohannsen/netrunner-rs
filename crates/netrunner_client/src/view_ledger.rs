@@ -152,6 +152,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
             seen_by_runner: _,     // drawn: facts::seen_face_down — "seen" on the Corp's tile, a line on its sheet, the terminal's server line
             this_turn: _,          // engine's: what a copy's "this turn" reads (Gatekeeper's strength, which the tile draws); the rez and the advances are in the log
             ice_types: _,          // drawn: board::facts ice_kind (the tile's colour) and install_facts ("A sentry now; it prints barrier"); the terminal's server line
+            host: _,               // drawn: board::facts install_facts ("Hosted on Worlds Plaza in the root of Server 1"), on the card's sheet; the terminal's server line ("[on Worlds Plaza]")
         } in ice.into_iter().chain(root)
         {}
     }

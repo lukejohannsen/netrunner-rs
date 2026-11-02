@@ -264,7 +264,6 @@ pub(crate) const OH_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *The Universe of Tomorrow* (`the_universe_of_tomorrow`): tranche F7 of the FFG plan.
 pub(crate) const UOT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("chronos_protocol_selective_mind_mapping", "Chronos Protocol: Selective Mind-mapping"),
-    ("worlds_plaza", "Worlds Plaza"),
 ];
 
 /// *Order and Chaos* (`order_and_chaos`): tranche F7 of the FFG plan.
@@ -273,8 +272,6 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("glenn_station", "Glenn Station"),
     ("mark_yale", "Mark Yale"),
     ("satellite_grid", "Satellite Grid"),
-    ("showing_off", "Showing Off"),
-    ("wanton_destruction", "Wanton Destruction"),
     ("hivemind", "Hivemind"),
     ("archives_interface", "Archives Interface"),
 ];
@@ -331,7 +328,6 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("it_department", "IT Department"),
     ("self_destruct", "Self-destruct"),
     ("incubator", "Incubator"),
-    ("code_siphon", "Code Siphon"),
     ("bribery", "Bribery"),
 ];
 
@@ -369,7 +365,6 @@ pub(crate) const ST_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Mala Tempora* (`mala_tempora`): tranche F10 of the FFG plan.
 pub(crate) const MT_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("raymond_flint", "Raymond Flint"),
     ("sundew", "Sundew"),
     ("snoop", "Snoop"),
     ("power_shutdown", "Power Shutdown"),

@@ -383,6 +383,15 @@ pub enum Effect {
     /// `additional_rd_access` exist, for the two servers whose access is
     /// naturally capped at one card.
     AddAdditionalAccess { server: ServerId, count: u32 },
+    /// This run's breach of R&D accesses cards from the bottom of R&D
+    /// instead of the top — Showing Off's "If successful, when you breach
+    /// R&D, access cards from the bottom of R&D instead of the top"
+    /// (CR 7.4.7b; `RunState::rd_from_bottom`, read by `access::begin_breach`). It is
+    /// still a breach: the root, an additional access and the access
+    /// limit all apply. Requires an active run. Composition didn't work:
+    /// every breach of R&D took its cards from the top, and replacing the
+    /// breach with an `Access` would have been no breach at all.
+    AccessFromBottomOfRnD,
     /// After this run's breach, the Runner breaches each of `servers` in
     /// turn — Divide and Conquer's "Run Archives. If successful, after
     /// breaching Archives, breach HQ, then breach R&D" (`RunState::
@@ -1099,6 +1108,15 @@ pub enum Effect {
         /// discount of everything, so the rez's alternatives are still met.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         ignore_credit_costs: bool,
+        /// Install it hosted on the acting install, in that install's
+        /// server — Worlds Plaza's "Install an asset from HQ **on Worlds
+        /// Plaza**" (`InstalledCard::host`, CR 1.13.6b: only through this
+        /// ability). Offers only that server, and the card lands beside
+        /// the root rather than in it, so it trashes nothing there. A field
+        /// for the reason `this_server` is one: where an install may land
+        /// is the install's.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        onto_this: bool,
         /// "You cannot install that card **in the root of this server**" —
         /// Vaporframe Fabricator's, heard as it is trashed. A card that is
         /// not ice is not offered that root while the server still exists;
@@ -4483,8 +4501,9 @@ impl Effect {
         let boxed = |effect: Box<Effect>| Box::new(effect.with_this_server(server));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_this_server(server)).collect();
         match self {
-            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, this_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, any_position, innermost, only_server } => {
+            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, this_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, any_position, innermost, only_server, onto_this } => {
                 Effect::PromptInstallCorpCard {
+                    onto_this,
                     not_in_root_of: Some(ThisServer::Server(server)),
                     origin_zone,
                     ignore_costs,
@@ -4683,6 +4702,7 @@ impl Effect {
             | Effect::MoveThisIceToOutermostOf(_)
             | Effect::BoostsLastTheRun
             | Effect::AccessFewer { .. }
+            | Effect::AccessFromBottomOfRnD
             | Effect::ForceEncounter
             | Effect::MoveThisIceInnermostAndEncounter
             | Effect::PlayOperation { .. }

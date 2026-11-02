@@ -1,0 +1,56 @@
+{
+  "id": "wanton_destruction",
+  "title": "Wanton Destruction",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Hq"
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "Hq",
+            "optional": true,
+            "effect": {
+              "ChooseNumber": {
+                "chooser": "Runner",
+                "max": "ClicksRemaining",
+                "then": {
+                  "Sequence": [
+                    {
+                      "Repeat": {
+                        "times": "ChosenNumber",
+                        "effect": {
+                          "LoseClicks": 1
+                        }
+                      }
+                    },
+                    {
+                      "Repeat": {
+                        "times": "ChosenNumber",
+                        "effect": {
+                          "TrashCard": {
+                            "RandomFromHand": "Corp"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "text": "spend any number of [click] to force the Corp to trash that many cards from HQ at random"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run HQ. If successful, instead of breaching HQ, you may spend any number of [click] to force the Corp to trash that many cards from HQ at random."
+    }
+  ],
+  "built_from": 7035,
+  "is_playable": true
+}

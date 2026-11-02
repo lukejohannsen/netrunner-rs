@@ -322,7 +322,11 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
                     };
                     lines.push(format!("Ice protecting {name} — {order}"));
                 }
-                InstallSlot::Root => lines.push(format!("In the root of {name}")),
+                // Worlds Plaza's assets: on their host, beside the root.
+                InstallSlot::Root => match card.host {
+                    Some(host) => lines.push(format!("Hosted on {} in the root of {name}", tile_title(view, host, registry))),
+                    None => lines.push(format!("In the root of {name}")),
+                },
             }
             let is_agenda = def.is_some_and(|d| d.card_type == CardType::Agenda);
             match (card.rezzed, def, is_agenda) {

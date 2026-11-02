@@ -674,6 +674,11 @@ pub struct RunState {
     pub additional_rd_access: u32,
     /// Extra HQ cards, mirroring `additional_rd_access`.
     pub additional_hq_access: u32,
+    /// A breach of R&D this run accesses from the bottom of R&D, working
+    /// up, instead of from the top (`Effect::AccessFromBottomOfRnD`,
+    /// Showing Off). Read by `access::begin_breach`; gone with the run.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rd_from_bottom: bool,
     /// A pending "replace this server's normal access with `Effect`
     /// instead" grant (`Effect::SetAccessReplacement`), e.g. Account
     /// Siphon's "gain 8 credits instead of accessing HQ". Consumed the
@@ -1013,6 +1018,7 @@ impl Default for RunState {
             access_state: None,
             jack_out_permitted: false,
             declared_successful: false,
+            rd_from_bottom: false,
             breach_only: false,
             forced_encounter: false,
             suspended: Vec::new(),

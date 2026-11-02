@@ -1578,6 +1578,11 @@ fn format_server(server: &ServerView, view: &ClientView, registry: &CardRegistry
         // (`board::rig::hosted_on`); the rig's line calls it a ghost.
         let hosted: Vec<String> = netrunner_client::board::rig::hosted_on(view, card.install_id).into_iter().map(|trojan| card_title(&trojan.card, registry)).collect();
         let hosts = if hosted.is_empty() { String::new() } else { format!(" [hosts {}]", hosted.join(", ")) };
+        // A Corp card hosted on another (Worlds Plaza's assets).
+        let hosts = match card.host {
+            Some(host) => format!("{hosts} [on {}]", netrunner_client::board::facts::tile_title(view, host, registry)),
+            None => hosts,
+        };
         // The Corp's own face-down card the Runner has already seen.
         let rez = if netrunner_client::board::facts::seen_face_down(view, card) { format!("{rez}, seen by the Runner") } else { rez.to_string() };
         // An agenda's counters against its requirement as the table
@@ -1890,7 +1895,7 @@ mod tests {
             view.corp.servers.push(ServerView { server: ServerId::Hq, ice: Vec::new(), root: Vec::new() });
         }
         let hq = view.corp.servers.iter_mut().find(|s| s.server == ServerId::Hq).unwrap();
-        hq.ice.push(PublicInstalledCard { install_id: ice, position: 0, server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, card: Some(CardId("ice_wall".into())), advancement_tokens: 0, counters: Some(0), advancement_requirement: None, seen_by_runner: true, this_turn: Default::default(), ice_types: Vec::new() });
+        hq.ice.push(PublicInstalledCard { host: None, install_id: ice, position: 0, server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, card: Some(CardId("ice_wall".into())), advancement_tokens: 0, counters: Some(0), advancement_requirement: None, seen_by_runner: true, this_turn: Default::default(), ice_types: Vec::new() });
         view.runner.rig.push(PublicInstalledRunnerCard { card: CardId("botulus".into()), install_id: InstallId(9101), current_strength: 0, hosted_on_ice: Some(ice), hosted_on_rig_card: None, hosted_cards: Vec::new(), hosted_facedown: false, hosted_unseen: 0, turned_facedown: 0, hosted_cards_playable: false, counters: 1, credits: 0, virus_counters: 0 });
 
         let mut ui = LocalUiState::new(registry, Side::Runner);

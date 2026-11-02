@@ -3,7 +3,7 @@
   "name": "Zeitgeist",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Omar Keung: Conspiracy Theorist, Escalation's Anarch identity, who once per turn runs Archives and, if that run would be declared successful, moves it to HQ or R&D. On Free Spirit's list, its identity swapped, at twelve influence of twelve. FFG F5 Stage 38. Engine words Stage 12 brought two Frame Jobs in for the Katorga Breakouts, so the sweep forfeits a stolen agenda for bad publicity.",
+  "description": "Not a published list: built so the sweeps reach Omar Keung: Conspiracy Theorist, Escalation's Anarch identity, who once per turn runs Archives and, if that run would be declared successful, moves it to HQ or R&D. On Free Spirit's list, its identity swapped, at twelve influence of twelve. FFG F5 Stage 38. Engine words Stage 12 brought two Frame Jobs in for the Katorga Breakouts, so the sweep forfeits a stolen agenda for bad publicity. Raymond Flint came in for a Marrow in Engine words Stage 14, so the bad publicity Take a Dive gives breaches HQ.",
   "style": [
     "rig",
     "dismantle"
@@ -67,10 +67,6 @@
       "count": 2
     },
     {
-      "card": "marrow",
-      "count": 1
-    },
-    {
       "card": "utae",
       "count": 2
     },
@@ -113,6 +109,10 @@
     {
       "card": "frame_job",
       "count": 2
+    },
+    {
+      "card": "raymond_flint",
+      "count": 1
     }
   ]
 }

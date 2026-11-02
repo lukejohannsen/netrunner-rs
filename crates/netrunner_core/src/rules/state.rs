@@ -201,6 +201,19 @@ pub struct InstalledCard {
     /// `installed_this_turn`.
     #[serde(default)]
     pub this_turn: crate::rules::turn_log::CopyTurn,
+    /// The Corp install this card is hosted on (CR 1.13), if it is —
+    /// Worlds Plaza's "Install an asset from HQ on Worlds Plaza". A hosted
+    /// card is installed in its host's server and slot, so a breach of
+    /// that server accesses it with the root and "this server" means the
+    /// host's (CR 4.6.6k); it is no card *in* the root for the one asset
+    /// or agenda a remote's root holds (CR 3.3.1, `install_trash`), and it
+    /// is trashed at the checkpoint after its host leaves (CR 10.3.1g,
+    /// `checkpoint::trash_unhosted_corp_cards`). Public: which card a card
+    /// sits on is on the table. The Runner's hosted cards have one field
+    /// per kind of host (`InstalledRunnerCard::hosted_on_rig_card`); the
+    /// Corp's have only Corp cards to sit on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<InstallId>,
 }
 
 impl InstalledCard {
@@ -239,6 +252,7 @@ impl Default for InstalledCard {
             installed_this_turn: false,
             seen_by_runner: false,
             this_turn: Default::default(),
+            host: None,
         }
     }
 }
@@ -1363,6 +1377,10 @@ pub struct PendingInstallFromZone {
     /// (`PendingDecision::ChooseNumber::install`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub any_position: bool,
+    /// `Effect::PromptInstallCorpCard::onto_this`: the install the card
+    /// lands hosted on (`InstalledCard::host`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<InstallId>,
     /// `Effect::PromptInstallCorpCard::innermost`: the card lands inward
     /// of every piece of ice the chosen server has, and nobody is asked.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

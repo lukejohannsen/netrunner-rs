@@ -1077,6 +1077,7 @@ pub fn evaluate_effect(
                 installed_this_turn: true,
                 seen_by_runner: false,
                 this_turn: Default::default(),
+                host: None,
             };
             match insert_after {
                 Some(host) => {
@@ -2572,6 +2573,11 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::AdditionalAccessGranted { server: *server, count: *count }])
         }
 
+        Effect::AccessFromBottomOfRnD => {
+            state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?.rd_from_bottom = true;
+            Ok(Vec::new())
+        }
+
         Effect::BreachAfter(servers) => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
             run.breaches_after.extend(servers.iter().copied());
@@ -3227,7 +3233,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, this_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, innermost, only_server } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, this_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, innermost, only_server, onto_this } => {
             // "Ignoring credit costs": a discount of every credit, which a
             // price never goes below 0 for.
             let discount = &if *ignore_credit_costs { u32::MAX } else { *discount };
@@ -3277,6 +3283,19 @@ pub fn evaluate_effect(
                 let own = acting_corp_position(state, ctx).map(|position| state.corp.installed[position].server);
                 allowed.retain(|server| Some(*server) == own);
             }
+            // Onto the acting install: its server, whatever else is in the
+            // root, since the card will not be in it.
+            let host = if *onto_this {
+                let Some(host) = acting_corp_position(state, ctx).map(|position| &state.corp.installed[position]) else { return Ok(Vec::new()) };
+                let (own, install) = (host.server, host.install_id);
+                if !card_def.may_be_installed_in(own) || !matches!(card_def.card_type, crate::dsl::CardType::Asset | crate::dsl::CardType::Agenda | crate::dsl::CardType::Upgrade) {
+                    return Ok(Vec::new());
+                }
+                allowed = vec![own];
+                Some(install)
+            } else {
+                None
+            };
             // Not in that root, while it is a server: a remote nothing is
             // left in has ceased to exist (CR 4.6.8e) and its number may be
             // the new remote's. Ice is never in a root.
@@ -3323,6 +3342,7 @@ pub fn evaluate_effect(
                     if_installed: if_installed.clone(),
                     any_position: *any_position,
                     innermost: *innermost,
+                    host,
                 }),
                 // Deliberately NOT the chosen card: `source_card` passes
                 // through the masked view, and the pick out of HQ is
@@ -3666,6 +3686,7 @@ pub fn evaluate_effect(
                 false,
                 false,
                 0,
+                None,
             )?);
             Ok(events)
         }
@@ -6748,7 +6769,13 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
                 let installed = state.runner.rig.iter().filter(|card| card.hosted_on_rig_card == Some(host.install_id)).count();
                 (host.hosted_cards.len() + installed) as u32
             }
-            None => crate::rules::pending_choice::hosted_cards_of(state, ctx.acting_install).map_or(0, |cards| cards.len() as u32),
+            // A Corp card's hosted cards are installs on it (Worlds Plaza's
+            // "up to 3 assets", `InstalledCard::host`) beside whatever
+            // cards it hosts uninstalled.
+            None => {
+                let installed = state.corp.installed.iter().filter(|card| card.host.is_some() && card.host == ctx.acting_install).count() as u32;
+                installed + crate::rules::pending_choice::hosted_cards_of(state, ctx.acting_install).map_or(0, |cards| cards.len() as u32)
+            }
         },
         Amount::InstalledIcebreakerCount => installed_icebreaker_count(state, registry),
         Amount::FacedownCardsInArchives => state.corp.archives.iter().filter(|a| a.facedown).count() as u32,

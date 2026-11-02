@@ -55564,3 +55564,150 @@ mod engine_words_stage_13 {
         assert!(!second_rez(true), "one with it");
     }
 }
+
+mod engine_words_stage_14 {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.corp.resources.credits = Credits(10);
+        state.next_install_id = 200;
+        state
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn root(card: &str, server: ServerId, install: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Root, rezzed: true, ..Default::default() }
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> (GameState, Vec<GameEvent>) {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}"))
+    }
+
+    /// Plays a run event on a server with no ice and commits to its breach.
+    fn to_the_breach(state: &GameState, registry: &CardRegistry, event: &str) -> (GameState, Vec<GameEvent>) {
+        let (state, _) = act(state, registry, PlayerAction::PlayEvent { card_id: id(event) });
+        let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("no ice");
+        let (state, mut events) = act(&state, registry, PlayerAction::CompleteRun);
+        let (state, more) = pass_until_settled(state, registry);
+        events.extend(more);
+        (state, events)
+    }
+
+    fn accessed(events: &[GameEvent]) -> Vec<CardId> {
+        events.iter().filter_map(|event| match event {
+            GameEvent::CardAccessed { card, .. } => Some(card.clone()),
+            _ => None,
+        }).collect()
+    }
+
+    /// "Access cards from the bottom of R&D instead of the top" (CR
+    /// 7.4.7b).
+    #[test]
+    fn showing_off_accesses_the_bottom_of_rnd() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        state.runner.grip = vec![id("showing_off")];
+        let (_, events) = to_the_breach(&state, &registry, "showing_off");
+        assert_eq!(accessed(&events), vec![id("hedge_fund")], "the bottom card, not Enigma on top");
+    }
+
+    /// "Spend any number of [click] to force the Corp to trash that many
+    /// cards from HQ at random", instead of breaching HQ.
+    #[test]
+    fn wanton_destruction_trashes_a_card_from_hq_for_each_click() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        state.runner.grip = vec![id("wanton_destruction")];
+        let (asked, events) = to_the_breach(&state, &registry, "wanton_destruction");
+        assert!(accessed(&events).is_empty());
+        assert_eq!(asked.runner.resources.clicks, Clicks(3));
+        let (chose, _) = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        assert!(apply_action(&chose, &registry, PlayerAction::ChooseNumber { amount: 4 }).is_err(), "no more than the clicks left");
+        let (done, _) = act(&chose, &registry, PlayerAction::ChooseNumber { amount: 2 });
+        assert_eq!(done.runner.resources.clicks, Clicks(1), "two clicks spent");
+        assert_eq!(done.corp.hq.len(), 1, "two cards trashed");
+        assert_eq!(done.corp.archives.len(), 2);
+        assert!(done.active_run.is_none(), "no breach");
+    }
+
+    /// "Search your stack for 1 program. Install it, paying 3[credit] less
+    /// for each piece of ice protecting R&D, and then take 1 tag."
+    #[test]
+    fn code_siphon_installs_a_program_from_the_stack_cheaper_for_each_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.stack = vec![id("sure_gamble"), id("gordian_blade")];
+        state.runner.grip = vec![id("code_siphon")];
+        let (asked, _) = to_the_breach(&state, &registry, "code_siphon");
+        let (searching, _) = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        let position = searching.runner.stack.iter().position(|card| *card == id("gordian_blade")).expect("in the stack");
+        let (picked, _) = act(&searching, &registry, PlayerAction::ToggleCardSelection { position });
+        let (done, _) = act(&picked, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(done.runner.rig.iter().any(|card| card.card == id("gordian_blade")), "installed");
+        assert_eq!(done.runner.resources.credits, Credits(6), "Gordian Blade's 4, no ice to lower it");
+        assert_eq!(done.runner.tags, 1, "and then take 1 tag");
+    }
+
+    /// "Whenever the Corp takes bad publicity, breach HQ."
+    #[test]
+    fn raymond_flint_breaches_hq_when_the_corp_takes_bad_publicity() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(10);
+        state.corp.hq = vec![id("hedge_fund")];
+        state.runner.rig = vec![rig("raymond_flint", 900)];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 2, rezzed: false, ..root("hostile_takeover", ServerId::Remote(0), 60) }];
+        let (scored, events) = act(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(60) });
+        let (_, more) = pass_until_settled(scored, &registry);
+        let all: Vec<GameEvent> = events.into_iter().chain(more).collect();
+        assert_eq!(accessed(&all), vec![id("hedge_fund")], "breach HQ");
+    }
+
+    /// Worlds Plaza installs an asset from HQ on itself and rezzes it 2
+    /// cheaper; the asset is trashed when Worlds Plaza goes (CR 10.3.1g).
+    #[test]
+    fn worlds_plaza_hosts_rezzed_assets_that_go_with_it() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        state.next_install_id = 200;
+        state.corp.installed = vec![root("worlds_plaza", ServerId::Remote(0), 101)];
+        state.corp.hq = vec![id("pad_campaign"), id("pad_campaign")];
+        let (asked, _) = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(101), ability_index: 0 });
+        let (picked, _) = act(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 });
+        let (chosen, _) = act(&picked, &registry, PlayerAction::ConfirmCardSelection);
+        let (hosted, _) = act(&chosen, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) });
+        let pad = hosted.corp.installed.iter().find(|card| card.card == id("pad_campaign")).expect("installed");
+        assert_eq!(pad.host, Some(InstallId(101)), "on Worlds Plaza");
+        assert!(pad.rezzed, "and rezzed");
+        assert_eq!(hosted.corp.resources.credits, Credits(5), "PAD Campaign's 2, lowered by 2");
+        assert!(hosted.corp.installed.iter().any(|card| card.install_id == InstallId(101)), "Worlds Plaza stays");
+
+        let mut full = hosted.clone();
+        for install in 300..302 {
+            full.corp.installed.push(crate::rules::InstalledCard { host: Some(InstallId(101)), ..root("pad_campaign", ServerId::Remote(0), install) });
+        }
+        assert!(apply_action(&full, &registry, PlayerAction::ActivateAbility { target: InstallId(101), ability_index: 0 }).is_err(), "up to 3 assets");
+
+        let (over, _) = act(&hosted, &registry, PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false });
+        let left: Vec<&crate::rules::InstalledCard> = over.corp.installed.iter().filter(|card| card.server == ServerId::Remote(0)).collect();
+        assert_eq!(left.len(), 1, "Worlds Plaza trashed under the new asset, and its asset with it");
+        assert_eq!(left[0].host, None);
+        assert_eq!(over.corp.archives.len(), 2);
+    }
+}

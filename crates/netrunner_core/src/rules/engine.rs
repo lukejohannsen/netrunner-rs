@@ -898,7 +898,7 @@ fn install_card(
     next.corp.hq.remove(position);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(place_corp_card(&mut next, registry, card_id, zone, slot, true, 0, trash_first, true, 0)?);
+    events.extend(place_corp_card(&mut next, registry, card_id, zone, slot, true, 0, trash_first, true, 0, None)?);
     Ok((next, events))
 }
 
@@ -924,6 +924,7 @@ pub(crate) fn place_corp_card(
     trash_first: bool,
     from_hq: bool,
     inward: u32,
+    host: Option<InstallId>,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Corp;
     // The registry lookup stays even though the printed cost is not paid
@@ -973,7 +974,12 @@ pub(crate) fn place_corp_card(
     // a remote leaves a remote of one card, and that server was not
     // created (CR 8.5.16e).
     let creates = creates_server(next, zone);
-    let mut events = crate::rules::install_trash::before_corp_install(next, registry, &card_id, card_def, zone, slot, trash_first)?;
+    // A card hosted on another (Worlds Plaza's) is not in the root for
+    // the one asset or agenda a remote holds, so it trashes nothing.
+    let mut events = match host {
+        Some(_) => Vec::new(),
+        None => crate::rules::install_trash::before_corp_install(next, registry, &card_id, card_def, zone, slot, trash_first)?,
+    };
     // Installing costs the Corp nothing for an agenda, asset or upgrade,
     // and 1[c] per piece of ICE already protecting the server for ICE —
     // the printed `cost` is the *rez* cost and is paid by `rez_ice`. This
@@ -1002,6 +1008,7 @@ pub(crate) fn place_corp_card(
         installed_this_turn: true,
         seen_by_runner: false,
         this_turn: Default::default(),
+        host,
     };
     // New ICE is installed in the **outermost** position (Null Signal
     // Games' install rule): `corp.installed`'s vec order per server is

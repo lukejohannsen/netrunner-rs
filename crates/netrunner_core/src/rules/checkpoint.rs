@@ -62,8 +62,35 @@ pub(crate) fn state_based(state: &mut GameState, registry: &CardRegistry, event:
     if !state.is_over() {
         events.extend(enforce_unique(state, registry, event));
         events.extend(enforce_consoles(state, registry));
+        events.extend(trash_unhosted_corp_cards(state));
     }
     events
+}
+
+/// "Any objects that were hosted on an installed card that was uninstalled
+/// are trashed … This step is repeated until no more cards or counters are
+/// trashed" (CR 10.3.1g, 1.13.13): a Corp card whose host
+/// (`InstalledCard::host`, Worlds Plaza) has left the table, however it
+/// left, is trashed — faceup if it was rezzed, facedown if not. A standing
+/// condition rather than a step of each door a host leaves by, as DJ
+/// Fenris's hosted identity is; and it cannot be prevented (1.13.13), so
+/// it goes through no prevention window.
+fn trash_unhosted_corp_cards(state: &mut GameState) -> Vec<GameEvent> {
+    let mut events = Vec::new();
+    loop {
+        let orphan = state
+            .corp
+            .installed
+            .iter()
+            .find(|installed| installed.host.is_some_and(|host| state.find_corp_install(host).is_none()))
+            .map(|installed| installed.install_id);
+        let Some(install) = orphan else { return events };
+        let Some(trashed) = uninstall::corp_install_at_checkpoint(state, install) else { return events };
+        let archived = if trashed.rezzed { ArchivedCard::faceup(trashed.card.clone()) } else { ArchivedCard::facedown(trashed.card.clone()) };
+        crate::rules::turn_log::file_in_archives(state, archived);
+        let how = Some(crate::rules::event::TrashedInstall::of(&trashed, false));
+        events.push(GameEvent::CardTrashed { side: Side::Corp, card: trashed.card, from: crate::dsl::TrashedFrom::Installed, by: None, install: how, damage: None });
+    }
 }
 
 /// Marks pending every conditional ability with a static condition that is

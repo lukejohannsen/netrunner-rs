@@ -2141,8 +2141,9 @@ fn substitute_chosen_server(effect: Effect, server: crate::rules::run::ServerId)
 pub(crate) fn substitute_install_server(effect: Effect, server: crate::rules::run::ServerId) -> Effect {
     let boxed = |effect: Box<Effect>| Box::new(substitute_install_server(*effect, server));
     match effect {
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, this_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, innermost, only_server } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, this_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, innermost, only_server, onto_this } => {
             Effect::PromptInstallCorpCard {
+                onto_this,
                 origin_zone,
                 ignore_costs,
                 discount,
@@ -2243,6 +2244,7 @@ fn install_parked(
         false,
         matches!(pending_install.origin, crate::dsl::CardZoneRef::OwnHq),
         inward,
+        pending_install.host,
     )?;
     let landed = placed.iter().find_map(|event| match event {
         GameEvent::CardInstalled { install, card: Some(card), .. } if *card == card_id => Some(*install),
