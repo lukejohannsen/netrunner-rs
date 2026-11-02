@@ -389,6 +389,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 SubroutineBreakCount::ChosenNumber => "X subroutines".to_string(),
                 SubroutineBreakCount::Last => "the last subroutine".to_string(),
                 SubroutineBreakCount::AllButOne => "all but 1 subroutine".to_string(),
+                SubroutineBreakCount::EndTheRun(n) => format!("{} \"End the run.\" {}", n, if *n == 1 { "subroutine" } else { "subroutines" }),
             };
             match restrict_to {
                 Some(kind) => format!("break {which} on a {kind:?}"),
@@ -401,6 +402,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             SubroutineBreakCount::ChosenNumber => "break X subroutines".to_string(),
             SubroutineBreakCount::Last => "break the last subroutine on the encountered ice".to_string(),
             SubroutineBreakCount::AllButOne => "break all but 1 subroutine on the encountered ice".to_string(),
+            SubroutineBreakCount::EndTheRun(n) => format!("break {n} \"End the run.\" {}", if *n == 1 { "subroutine" } else { "subroutines" }),
         },
         Effect::Trace { base, on_success, on_failure } => match (describe_amount(base), on_failure) {
             (base, None) => format!("trace {base}: if successful, {}", describe_effect(on_success, registry)),
@@ -650,6 +652,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::AddToScoreAreaAsAgenda(as_agenda) if as_agenda.to_the_runner => format!("add this card to the Runner's score area as {}", as_an_agenda(as_agenda)),
         Effect::AddToScoreAreaAsAgenda(as_agenda) => format!("add this card to your score area as {}", as_an_agenda(as_agenda)),
+        Effect::CopyEachSubroutine => "the encountered ice gains a second copy of each of its subroutines, after the original, for the encounter".to_string(),
         Effect::GainSubroutine { subroutine, after, duration, count, encountered } => {
             let which = if *encountered { "the ice being encountered" } else { "the ice" };
             let order = if *after { "after" } else { "before" };
@@ -743,6 +746,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::RezOutermostIce, _) => "the Corp cannot rez the outermost piece of ice during a run",
                 (Prohibition::RezIce, _) => "the Corp cannot rez ice",
                 (Prohibition::PlayCurrents, _) => "the Runner cannot play current events",
+                (Prohibition::SpendClickButToRun, _) => "the Runner spends [click] only to run or to play a run event",
                 (Prohibition::InstallIce, _) => "the Corp cannot install ice",
                 (Prohibition::ResolveFirstThreeSubroutines, _) => "the first 3 subroutines of the next encounter do not resolve",
                 (Prohibition::ResolveFirstSubroutine, _) => "the first subroutine to resolve this run does not",
@@ -799,6 +803,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::Expose => "expose it".to_string(),
         Effect::Remember { what: netrunner_core::dsl::Remembered::SelectedCard, until } => format!("remember the chosen card {}", duration(until)),
         Effect::Remember { what: netrunner_core::dsl::Remembered::ApproachedIce, until } => format!("remember the ice being approached {}", duration(until)),
+        Effect::Remember { what: netrunner_core::dsl::Remembered::EncounteredIce, until } => format!("remember the ice being encountered {}", duration(until)),
         Effect::Remember { what: netrunner_core::dsl::Remembered::CardType(card_type), until } => {
             format!("the chosen card type is {} {}", humanize(format!("{card_type:?}")).to_lowercase(), duration(until))
         }
@@ -1233,6 +1238,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::RezOutermostIce => "cannot rez the outermost piece of ice during a run",
             Prohibition::RezIce => "cannot rez ice",
             Prohibition::PlayCurrents => "cannot play current events",
+            Prohibition::SpendClickButToRun => "spends [click] only to run or to play a run event",
             Prohibition::InstallIce => "cannot install more ice this turn",
             Prohibition::ResolveFirstThreeSubroutines => "cannot resolve the first 3 subroutines of the next encounter",
             Prohibition::ResolveFirstSubroutine => "cannot resolve the first subroutine that would resolve this run",

@@ -55845,3 +55845,220 @@ mod engine_words_stage_15 {
         assert!(!back.corp.identity_flipped, "and flips back");
     }
 }
+
+mod engine_words_stage_16 {
+    use super::*;
+    use crate::rules::RunPhase;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.corp.resources.credits = Credits(10);
+        state.next_install_id = 200;
+        state
+    }
+
+    fn ice(card: &str, server: ServerId, install: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    fn rig(card: &str, install: u32, strength: i32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), base_strength: strength, ..Default::default() }
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn use_ability(state: &GameState, registry: &CardRegistry, install: u32, index: usize) -> Result<GameState, RulesError> {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: InstallId(install), ability_index: index }).map(|(state, _)| state)
+    }
+
+    fn phase(state: &GameState) -> Option<RunPhase> {
+        state.active_run.as_ref().map(|run| run.phase)
+    }
+
+    /// Passes and continues until `done`, never answering anything parked.
+    fn pass_until(mut state: GameState, registry: &CardRegistry, done: impl Fn(&GameState) -> bool) -> GameState {
+        for _ in 0..64 {
+            if done(&state) {
+                return state;
+            }
+            let parked = state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.pending_payment.is_some();
+            assert!(!parked, "parked before it was done: {:?} {:?}", state.pending_decision, state.pending_paid_choice);
+            let action = match (&state.paid_ability_window, phase(&state)) {
+                (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+                (None, Some(RunPhase::Initiation | RunPhase::Movement | RunPhase::EncounterIce)) => PlayerAction::ContinueRun,
+                (None, Some(RunPhase::Success)) => PlayerAction::CompleteRun,
+                other => panic!("stuck at {other:?}"),
+            };
+            state = act(&state, registry, action);
+        }
+        panic!("never done");
+    }
+
+    fn encountering(state: &GameState, at: usize) -> bool {
+        let run = state.active_run.as_ref();
+        phase(state) == Some(RunPhase::EncounterIce)
+            && run.is_some_and(|run| run.position == at)
+            && state.paid_ability_window.as_ref().is_some_and(|window| window.active_priority == Side::Runner)
+    }
+
+    fn statuses(state: &GameState) -> Vec<crate::rules::SubroutineStatus> {
+        let run = state.active_run.as_ref().expect("a run");
+        run.ice[run.position].subroutines.iter().map(|sub| sub.status).collect()
+    }
+
+    /// "The next time the Runner encounters a piece of ice during this run,
+    /// that ice gains a second copy of each of its subroutines (after the
+    /// original subroutine) for the remainder of that encounter."
+    #[test]
+    fn tl_dr_doubles_the_subroutines_of_the_next_ice_encountered() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("tl_dr", ServerId::Hq, 101), ice("enigma", ServerId::Hq, 102)];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let gated = pass_until(started, &registry, |state| encountering(state, 1));
+        let run = gated.active_run.as_ref().expect("a run");
+        let texts: Vec<(&str, bool)> = run.ice[1].subroutines.iter().map(|sub| (sub.definition.text.as_str(), sub.gained)).collect();
+        let enigma = registry.get(&id("enigma")).expect("enigma");
+        let (first, second) = (enigma.subroutines[0].text.as_str(), enigma.subroutines[1].text.as_str());
+        assert_eq!(texts, vec![(first, false), (first, true), (second, false), (second, true)], "each copy after its original");
+        assert!(run.ice[1].subroutines.iter().enumerate().all(|(at, sub)| sub.id == at), "renumbered");
+    }
+
+    /// "Trash 1 installed card: Break 1 "[subroutine] End the run."
+    /// subroutine." — the End the run, never Enigma's first subroutine.
+    #[test]
+    fn endless_hunger_breaks_only_an_end_the_run_subroutine() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("enigma", ServerId::Hq, 101)];
+        state.runner.rig = vec![rig("endless_hunger", 900, 11)];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let met = pass_until(started, &registry, |state| encountering(state, 0));
+        let fed = use_ability(&met, &registry, 900, 0).expect("trash itself to break");
+        use crate::rules::SubroutineStatus::{Broken, Pending};
+        assert_eq!(statuses(&fed), vec![Pending, Broken], "the End the run, not the lost click");
+        assert!(fed.runner.rig.is_empty(), "the cost trashed the one installed card, itself");
+        assert!(use_ability(&fed, &registry, 900, 0).is_err(), "nothing left to pay with");
+
+        // With the End the run broken already, there is nothing it may break.
+        let mut wall = runner_turn();
+        wall.corp.installed = vec![ice("ice_wall", ServerId::Hq, 101)];
+        wall.runner.rig = vec![rig("endless_hunger", 900, 11), rig("sure_gamble", 901, 0)];
+        let started = act(&wall, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let met = pass_until(started, &registry, |state| encountering(state, 0));
+        let mut gated = met.clone();
+        let run = gated.active_run.as_mut().expect("a run");
+        run.ice[0].subroutines[0].status = Broken;
+        assert!(use_ability(&gated, &registry, 900, 0).is_err(), "no End the run pending");
+    }
+
+    /// "You cannot use this program to break subroutines on more than one
+    /// ice per run." Its strength is still its own to raise.
+    #[test]
+    fn mongoose_breaks_on_one_piece_of_ice_each_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("rototurret", ServerId::Hq, 101), ice("rototurret", ServerId::Hq, 102)];
+        state.runner.rig = vec![rig("mongoose", 900, 1)];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let first = pass_until(started, &registry, |state| encountering(state, 0));
+        let broke = use_ability(&first, &registry, 900, 0).expect("the first ice");
+        use crate::rules::SubroutineStatus::Broken;
+        assert_eq!(statuses(&broke), vec![Broken, Broken], "up to 2");
+        let second = pass_until(broke, &registry, |state| encountering(state, 1));
+        assert!(use_ability(&second, &registry, 900, 0).is_err(), "a second piece of ice this run");
+        assert!(use_ability(&second, &registry, 900, 1).is_ok(), "its pump is no break");
+
+        // The next run is a new run.
+        let mut next = state.clone();
+        next.corp.installed = vec![ice("rototurret", ServerId::Hq, 102)];
+        let started = act(&next, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let met = pass_until(started, &registry, |state| encountering(state, 0));
+        assert!(use_ability(&met, &registry, 900, 0).is_ok());
+    }
+
+    /// "When you install this program, choose a server. Use this program
+    /// only during runs on the chosen server." — kept while it is
+    /// installed (CR 9.10.3c), not until the turn ends.
+    #[test]
+    fn cyber_cypher_is_used_only_on_runs_on_the_server_chosen_as_it_was_installed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("cyber_cypher")];
+        state.corp.installed = vec![ice("enigma", ServerId::Hq, 101), ice("enigma", ServerId::RnD, 102)];
+        let asked = act(&state, &registry, PlayerAction::InstallProgram { card_id: id("cyber_cypher"), trash_first: false, host: None });
+        let mut chosen = act(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq });
+        let install = chosen.runner.rig.iter().find(|card| card.card == id("cyber_cypher")).expect("installed").install_id;
+        chosen.turn += 2;
+        assert_eq!(crate::rules::lingering::chosen_server(&chosen, &id("cyber_cypher"), Some(install)), Some(ServerId::Hq), "the choice outlives the turn");
+
+        let run_on = |server: ServerId| {
+            let started = act(&chosen, &registry, PlayerAction::InitiateRun { server });
+            let met = pass_until(started, &registry, |state| encountering(state, 0));
+            (use_ability(&met, &registry, install.0, 0).is_ok(), use_ability(&met, &registry, install.0, 1).is_ok())
+        };
+        assert_eq!(run_on(ServerId::Hq), (true, true), "the chosen server");
+        assert_eq!(run_on(ServerId::RnD), (false, false), "any other");
+    }
+
+    /// "If you spent a credit from a stealth card to use this ability,
+    /// instead break up to 3 barrier subroutines" — Dyson Fractal
+    /// Generator's credit, for fracters.
+    #[test]
+    fn blackat_breaks_three_with_a_stealth_credit_and_one_without() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("spiderweb", ServerId::Hq, 101)];
+        state.runner.rig = vec![rig("blackat", 900, 3), crate::rules::InstalledRunnerCard { counters: 1, ..rig("dyson_fractal_generator", 901, 0) }];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let met = pass_until(started, &registry, |state| encountering(state, 0));
+        use crate::rules::SubroutineStatus::{Broken, Pending};
+        let stealthy = use_ability(&met, &registry, 900, 1).expect("the stealth credit");
+        assert_eq!(statuses(&stealthy), vec![Broken, Broken, Broken]);
+        assert_eq!(stealthy.runner.resources.credits, Credits(10), "Dyson's credit paid");
+
+        let mut plain = met.clone();
+        plain.runner.rig[1].counters = 0;
+        assert!(use_ability(&plain, &registry, 900, 1).is_err(), "no stealth credit to spend");
+        let once = use_ability(&plain, &registry, 900, 0).expect("the credit pool");
+        assert_eq!(statuses(&once), vec![Broken, Pending, Pending]);
+    }
+
+    /// "The first [click] you spend each turn must be spent to take the
+    /// basic action to play an event or the basic action to run a server
+    /// … except if you play a run event." Then "Once per turn → Lose
+    /// [click][click]: Break 1 subroutine."
+    #[test]
+    fn always_be_running_spends_the_first_click_on_a_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("always_be_running", 900, 0)];
+        state.runner.stack = vec![id("sure_gamble"), id("sure_gamble")];
+        state.runner.grip = vec![id("sure_gamble")];
+        assert!(matches!(apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner }), Err(RulesError::FirstClickNotARun)));
+        assert!(matches!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }), Err(RulesError::FirstClickNotARun)), "not a run event");
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives });
+        let done = pass_until(started, &registry, |state| state.active_run.is_none());
+        assert!(apply_action(&done, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).is_ok(), "the second click is free");
+
+        let mut gated = runner_turn();
+        gated.runner.rig = vec![rig("always_be_running", 900, 0)];
+        gated.corp.installed = vec![ice("enigma", ServerId::Hq, 101)];
+        let started = act(&gated, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let met = pass_until(started, &registry, |state| encountering(state, 0));
+        let broke = use_ability(&met, &registry, 900, 0).expect("lose two clicks");
+        assert_eq!(broke.runner.resources.clicks, Clicks(1), "one for the run, two lost");
+        use crate::rules::SubroutineStatus::{Broken, Pending};
+        assert_eq!(statuses(&broke), vec![Broken, Pending]);
+        assert!(use_ability(&broke, &registry, 900, 0).is_err(), "once per turn");
+    }
+}

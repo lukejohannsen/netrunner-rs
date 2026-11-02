@@ -172,7 +172,6 @@ pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("ramujan_reliant_550_bmi", "Ramujan-reliant 550 BMI"),
     ("street_magic", "Street Magic"),
-    ("mongoose", "Mongoose"),
     ("maya", "Maya"),
     ("panchatantra", "Panchatantra"),
 ];
@@ -214,18 +213,15 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.
 pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("rebranding_team", "Rebranding Team"),
-    ("tl_dr", "TL;DR"),
     ("ad_blitz", "Ad Blitz"),
     ("media_blitz", "Media Blitz"),
     ("surveillance_sweep", "Surveillance Sweep"),
     ("apex_invasive_predator", "Apex: Invasive Predator"),
     ("apocalypse", "Apocalypse"),
     ("prey", "Prey"),
-    ("endless_hunger", "Endless Hunger"),
     ("harbinger", "Harbinger"),
     ("adam_compulsive_hacker", "Adam: Compulsive Hacker"),
     ("independent_thinking", "Independent Thinking"),
-    ("always_be_running", "Always Be Running"),
     ("neutralize_all_threats", "Neutralize All Threats"),
     ("security_chip", "Security Chip"),
 ];
@@ -299,7 +295,6 @@ pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("kitsune", "Kitsune"),
     ("chronos_project", "Chronos Project"),
-    ("blackat", "BlacKat"),
     ("order_of_sol", "Order of Sol"),
     ("hades_shard", "Hades Shard"),
 ];
@@ -348,7 +343,6 @@ pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("awakening_center", "Awakening Center"),
     ("tyrs_hand", "Tyr's Hand"),
     ("scavenge", "Scavenge"),
-    ("cyber_cypher", "Cyber-Cypher"),
 ];
 
 /// *Opening Moves* (`opening_moves`): tranche F10 of the FFG plan.

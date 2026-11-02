@@ -1,0 +1,59 @@
+{
+  "id": "mongoose",
+  "title": "Mongoose",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 1,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break up to 2 sentry subroutines.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "BreakSubroutines": {
+              "count": {
+                "Fixed": 2
+              },
+              "restrict_to": "Sentry"
+            }
+          },
+          {
+            "Remember": {
+              "what": "EncounteredIce",
+              "until": "Run"
+            }
+          }
+        ]
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          "EncounteringChosenIceIfAny"
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +2 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 10005,
+  "is_playable": true
+}

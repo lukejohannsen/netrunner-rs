@@ -433,6 +433,10 @@ pub enum RulesError {
     #[error("an action of that kind was already taken this turn, and the next action must be a different one")]
     ActionRepeated,
 
+    /// `Prohibition::SpendClickButToRun` (Always Be Running).
+    #[error("the first [click] this turn must be spent to run a server or to play a run event")]
+    FirstClickNotARun,
+
     #[error("{card:?} is not a name this pending decision offers")]
     NameNotOffered { card: CardId },
 

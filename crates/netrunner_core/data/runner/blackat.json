@@ -1,0 +1,95 @@
+{
+  "id": "blackat",
+  "title": "BlacKat",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 3,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 barrier subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "If you spent a credit from a stealth card to use this ability, instead break up to 3 barrier subroutines.",
+      "cost": {
+        "CreditsFrom": {
+          "amount": {
+            "Fixed": 1
+          },
+          "from": {
+            "HasSubtype": "Stealth"
+          }
+        }
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 3
+          },
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +1 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "If you spent at least 1 credit from a stealth card to use this ability, instead +2 strength.",
+      "cost": {
+        "AllOf": [
+          {
+            "CreditsFrom": {
+              "amount": {
+                "Fixed": 1
+              },
+              "from": {
+                "HasSubtype": "Stealth"
+              }
+            }
+          },
+          {
+            "Credits": 1
+          }
+        ]
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 6053,
+  "is_playable": true
+}

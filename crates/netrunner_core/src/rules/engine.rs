@@ -347,6 +347,15 @@ fn apply_action_once(
     {
         return Err(RulesError::ActionRepeated);
     }
+    // Always Be Running's first [click]: a run, or a run event played,
+    // while no action has been taken this turn — the `while` of the
+    // prohibition its card declares.
+    if finishes_action.is_some_and(|(side, _)| side == Side::Runner)
+        && !runs_or_plays_a_run_event(registry, &action)
+        && continuous::cannot(state, registry, Prohibition::SpendClickButToRun)
+    {
+        return Err(RulesError::FirstClickNotARun);
+    }
     // The action a run in progress is part of, finished once the run is.
     let run_was_part_of = state.active_run.as_ref().map(|run| run.finishes);
     // A run is itself an action in progress: no basic action may begin until
@@ -646,6 +655,16 @@ fn counts_as_turn_action(state: &GameState, registry: &CardRegistry, action: &Pl
         PlayerAction::ScoreAgenda { .. } => false,
         PlayerAction::InitiateRun { .. } => true,
         other => matches!(classify_action(state, registry, other), ActionKind::Action),
+    }
+}
+
+/// The basic action to run a server, or to play a run event — the two a
+/// first [click] may go to under `Prohibition::SpendClickButToRun`.
+fn runs_or_plays_a_run_event(registry: &CardRegistry, action: &PlayerAction) -> bool {
+    match action {
+        PlayerAction::InitiateRun { .. } => true,
+        PlayerAction::PlayEvent { card_id } => registry.get(card_id).is_some_and(|definition| definition.subtypes.contains(&crate::dsl::CardSubtype::Run)),
+        _ => false,
     }
 }
 

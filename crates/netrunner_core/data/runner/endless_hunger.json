@@ -1,0 +1,33 @@
+{
+  "id": "endless_hunger",
+  "title": "Endless Hunger",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "strength": 11,
+  "memory_cost": 4,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → Trash 1 installed card: Break 1 \"[subroutine] End the run.\" subroutine.",
+      "cost": {
+        "Trash": {
+          "from": "OwnInstalled",
+          "filter": "Any",
+          "count": 1
+        }
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "EndTheRun": 1
+          }
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 9033,
+  "is_playable": true
+}

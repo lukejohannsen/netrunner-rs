@@ -346,6 +346,14 @@ pub enum EffectRequirement {
     /// was declared unless a card has moved it. Unlike `DuringRun`, the
     /// breach counts: nothing here moves the run.
     DuringRunOn(crate::rules::ServerId),
+    /// A run is in progress on the server the acting copy chose
+    /// (`Effect::ChooseServer`, `rules::lingering::chosen_server`) —
+    /// Cyber-Cypher's "Use this program only during runs on the chosen
+    /// server", asked as `DuringRunOn` is. False while it has chosen none.
+    /// Composition didn't work: `DuringRunOn` names its server in the card
+    /// file, and `EventFilter::ChosenServer` is a trigger's condition, not
+    /// a paid ability's.
+    DuringRunOnChosenServer,
     /// The run in progress is breaching `server` (`RunState::breached`,
     /// from the breach's beginning to its end) — Mercury: Chrome
     /// Libertador's "When you breach HQ or R&D **during a run**", whose one
@@ -497,6 +505,14 @@ pub enum EffectRequirement {
     /// Trojan's host and `EncounteringThisIce` about the acting ice, and
     /// the chosen ice is neither.
     EncounteringChosenIce,
+    /// As `EncounteringChosenIce`, but met too while the acting card has
+    /// chosen no ice — Mongoose's "You cannot use this program to break
+    /// subroutines on more than one ice per run": its break remembers the
+    /// encountered ice for the run (`Remembered::EncounteredIce`), and from
+    /// then on is used only on that one. Composition didn't work: there is
+    /// no "or" among requirements, and `EncounteringChosenIce` is false
+    /// before the first break, which is the one that chooses.
+    EncounteringChosenIceIfAny,
     /// The active run is encountering ice of the subtype the acting card
     /// chose (`Effect::Remember`, `rules::lingering::chosen_ice_type`),
     /// printed or gained — Chameleon's "Break 1 subroutine on a piece of

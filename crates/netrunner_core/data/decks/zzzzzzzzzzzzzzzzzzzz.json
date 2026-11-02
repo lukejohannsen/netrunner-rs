@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Spark Agency: Worldswide Reach, whose first advertisement rezzed each turn costs the Runner a credit. Spin Cycle's list, its identity swapped: its Tiered Subscription, Congratulations! and Ubiquitous Vig are the advertisements it rezzes. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words, Stage 4.",
+  "description": "Not a published list: built so the sweeps reach Spark Agency: Worldswide Reach, whose first advertisement rezzed each turn costs the Runner a credit. Spin Cycle's list, its identity swapped: its Tiered Subscription, Congratulations! and Ubiquitous Vig are the advertisements it rezzes. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words, Stage 4. Engine words Stage 16 took its two Lethe for two TL;DR, which doubles the subroutines of the next ice encountered; other decks keep Lethe.",
   "style": [
     "fast-advance"
   ],
@@ -23,10 +23,6 @@
     },
     {
       "card": "magistrate_revontulet",
-      "count": 2
-    },
-    {
-      "card": "lethe",
       "count": 2
     },
     {
@@ -103,6 +99,10 @@
     },
     {
       "card": "backroom_machinations",
+      "count": 2
+    },
+    {
+      "card": "tl_dr",
       "count": 2
     }
   ]

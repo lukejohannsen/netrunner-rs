@@ -1718,6 +1718,20 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         encountered: bool,
     },
+    /// The ice being encountered gains a second copy of each of its
+    /// subroutines, each right after the one it copies, for the remainder
+    /// of the encounter — TL;DR's "The next time the Runner encounters a
+    /// piece of ice during this run, that ice gains a second copy of each
+    /// of its subroutines *(after the original subroutine)* for the
+    /// remainder of that encounter", the `effect` of a `LaterThisTurn` on
+    /// `OnEncounter` for the run, as Marker's grant is. Each copy is
+    /// `EncounteredSubroutine::gained`, so it goes with the encounter, is
+    /// never limited by a `BreakLimit` and is not printed. Nothing for ice
+    /// that cannot gain abilities (Hush's host) or outside an encounter.
+    /// Composition didn't work: `GainSubroutine` writes the subroutine the
+    /// card file names, in one place in the list, and these are read off
+    /// the ice and interleaved with what they copy.
+    CopyEachSubroutine,
     /// The acting install — a piece of ice, as it is rezzed — gains
     /// `subtype` while it remains rezzed: Lycian Multi-Munition's "choose 1
     /// or more subtypes among barrier, code gate, and sentry. This ice
@@ -2622,6 +2636,10 @@ pub enum Remembered {
     /// paid for as it is approached and bypassed when encountered after
     /// it, read back by `EffectRequirement::EncounteringChosenIce`.
     ApproachedIce,
+    /// The piece of ice being encountered — Mongoose's one ice per run,
+    /// remembered by its break and read back by
+    /// `EffectRequirement::EncounteringChosenIceIfAny`.
+    EncounteredIce,
 }
 
 fn is_zero_u32(value: &u32) -> bool {
@@ -3955,12 +3973,26 @@ pub enum Prohibition {
     /// (`corp_install_destinations`), of ice only. Composition didn't work:
     /// `CorpInstall` refuses every card.
     InstallIce,
+    /// The Runner cannot spend [click] on any action but the basic action
+    /// to run a server or the basic action to play a **run** event — Always
+    /// Be Running's "The first [click] you spend each turn must be spent to
+    /// take the basic action to play an event or the basic action to run a
+    /// server. You cannot take the action to play an event this way except
+    /// if you play a run event", a standing effect on its controller
+    /// `while` no action has been taken this turn (an action is how a
+    /// [click] is spent, CR 5.2.1a). Asked by `engine::apply_action` of
+    /// every turn action the Runner takes; with no run and no run event to
+    /// take, the Runner may end the action phase with the clicks unspent,
+    /// as MirrorMorph's Corp may (`turn::forgoes_a_different_action`).
+    /// Composition didn't work: every prohibition was about one kind of
+    /// action, and this one is about every kind but two.
+    SpendClickButToRun,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 35] = [
+    pub const ALL: [Prohibition; 36] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -3996,13 +4028,14 @@ impl Prohibition {
         Prohibition::RezSecondIce,
         Prohibition::PlayCurrents,
         Prohibition::InstallIce,
+        Prohibition::SpendClickButToRun,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::InstallIce => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::PlayCurrents => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::PlayCurrents | Prohibition::SpendClickButToRun => Side::Runner,
         }
     }
 
@@ -4013,7 +4046,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::PlayCurrents | Prohibition::InstallIce => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::PlayCurrents | Prohibition::InstallIce | Prohibition::SpendClickButToRun => None,
         }
     }
 }
@@ -4043,6 +4076,16 @@ pub enum SubroutineBreakCount {
     /// Composition didn't work: `All` leaves none, and a `Fixed` count is
     /// the card file's, never the ice's.
     AllButOne,
+    /// Up to this many of the pending "[subroutine] End the run."
+    /// subroutines — a subroutine whose whole effect is `Effect::EndTheRun`
+    /// — lowest-id first: Endless Hunger's "Break 1 "[subroutine] End the
+    /// run." subroutine". A subroutine that ends the run among other things
+    /// ("End the run unless…", "Do 1 net damage. End the run.") is not one,
+    /// since the card quotes the whole subroutine. Composition didn't
+    /// work: `restrict_to` is a kind of ice, and this is a kind of
+    /// subroutine; a count that narrows which it takes is `Last`'s
+    /// precedent.
+    EndTheRun(u32),
 }
 
 impl Effect {
@@ -4693,6 +4736,7 @@ impl Effect {
             | Effect::WinTheGame
             | Effect::TurnHostedFaceup
             | Effect::GainSubroutine { .. }
+            | Effect::CopyEachSubroutine
             | Effect::CopiedByPromptingIce { .. }
             | Effect::ResolveItsAbility(_)
             | Effect::GainIceSubtype { .. }
