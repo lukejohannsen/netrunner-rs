@@ -751,6 +751,16 @@ pub enum CardFilter {
     /// break but the moment it happened (`Trigger::OnIceFullyBroken`), and
     /// the breach asks after the run has passed every piece.
     FullyBrokenDuringThisRun,
+    /// A Corp install rezzed during the run in progress (`RunState::
+    /// rezzed`) — Nasir Meidan's "a piece of ice after an approach during
+    /// which that ice was rezzed", on the encounter. Instance-level, a
+    /// handle, as `RezzedDuringLastRun` is. A piece of ice is rezzed in a
+    /// run while it is approached (CR 3.4.3a), so "rezzed during this run" is that approach unless
+    /// the run comes back to it, which no card in the pool makes it do with
+    /// the ice rezzed in between. Composition didn't work:
+    /// `RezzedDuringLastRun` is asked of the run once it is over, and
+    /// `RezzedThisTurn` admits a piece rezzed on an earlier run.
+    RezzedDuringThisRun,
     /// The piece of ice the Runner is encountering right now — Ice
     /// Carver's "While you are encountering a piece of ice, **it** gets −1
     /// strength", as the filter of a `Scope::Ice`. Instance-level: a
@@ -986,6 +996,7 @@ impl CardFilter {
                 | CardFilter::RezzedDuringLastRun
                 | CardFilter::UsedDuringLastRun
                 | CardFilter::FullyBrokenDuringThisRun
+                | CardFilter::RezzedDuringThisRun
                 | CardFilter::RezzedThisTurn
                 | CardFilter::InAttackedServer
                 | CardFilter::InLastRunServer
@@ -1224,6 +1235,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::RezzedDuringLastRun => true,
         CardFilter::UsedDuringLastRun => true,
         CardFilter::FullyBrokenDuringThisRun => true,
+        CardFilter::RezzedDuringThisRun => true,
         CardFilter::BeingEncountered => true,
         CardFilter::BeingApproached => true,
         CardFilter::SwappableIntoThis => true,

@@ -2312,6 +2312,11 @@ impl CardDefinition {
                 }
                 (ContinuousKind::BasicTrashCost(_), Scope::This) if self.card_type == CardType::Resource => {}
                 (ContinuousKind::BasicTrashCost(_), Scope::Trashing(_)) => {}
+                (ContinuousKind::BasicActionCredits { action: crate::dsl::BasicAction::RemoveTag, .. }, Scope::Player(Side::Runner)) => {}
+                (ContinuousKind::BasicActionCredits { action: crate::dsl::BasicAction::TrashResource, .. }, Scope::Trashing(_)) => {}
+                (ContinuousKind::BasicActionCredits { .. }, _) => {
+                    return misfit("BasicActionCredits", "a tag removal binds the Runner (`Player(Runner)`); a resource trash is about a resource being `Trashing`");
+                }
                 (ContinuousKind::BasicTrashCost(_), _) => {
                     return misfit("BasicTrashCost", "the basic action trashes a resource: this one's own, or one being `Trashing`");
                 }

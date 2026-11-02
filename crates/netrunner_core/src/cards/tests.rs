@@ -55711,3 +55711,137 @@ mod engine_words_stage_14 {
         assert_eq!(over.corp.archives.len(), 2);
     }
 }
+
+mod engine_words_stage_15 {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> (GameState, Vec<GameEvent>) {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}"))
+    }
+
+    fn corp_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.next_install_id = 200;
+        state
+    }
+
+    /// Plays Targeted Marketing naming `named` and hands the turn to the
+    /// Runner, the current still in play.
+    fn marketed(registry: &CardRegistry, named: &str) -> GameState {
+        let mut state = corp_turn();
+        state.corp.hq = vec![id("targeted_marketing")];
+        let (asked, _) = act(&state, registry, PlayerAction::PlayOperation { card_id: id("targeted_marketing") });
+        let (named, _) = act(&asked, registry, PlayerAction::ChooseCardName { card: id(named) });
+        let (mut state, _) = pass_until_settled(named, registry);
+        assert_eq!(state.corp.play_area.len(), 1, "the current waits in play");
+        state.phase = GamePhase::Action(Side::Runner);
+        state.turn += 1;
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.corp.resources.credits = Credits(0);
+        state
+    }
+
+    /// "Name a card. Gain 10[credit] whenever the Runner plays or installs
+    /// a copy of that card" — on every later turn, for as long as the
+    /// current is in play.
+    #[test]
+    fn targeted_marketing_pays_ten_whenever_the_runner_plays_the_named_card_on_a_later_turn() {
+        let registry = registry();
+        let mut state = marketed(&registry, "sure_gamble");
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble"), id("easy_mark")];
+        let (once, _) = pass_until_settled(act(&state, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }).0, &registry);
+        assert_eq!(once.corp.resources.credits, Credits(10));
+        let (twice, _) = pass_until_settled(act(&once, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }).0, &registry);
+        assert_eq!(twice.corp.resources.credits, Credits(20), "whenever, not once");
+        let (other, _) = pass_until_settled(act(&twice, &registry, PlayerAction::PlayEvent { card_id: id("easy_mark") }).0, &registry);
+        assert_eq!(other.corp.resources.credits, Credits(20), "another card is nothing");
+
+        let mut gone = state.clone();
+        let current = gone.corp.play_area.remove(0);
+        gone.corp.archives = vec![crate::rules::ArchivedCard { card: current.card, facedown: false }];
+        let (after, _) = pass_until_settled(act(&gone, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }).0, &registry);
+        assert_eq!(after.corp.resources.credits, Credits(0), "trashed, it pays nothing");
+        assert!(after.delayed.is_empty(), "and its ability is let go");
+    }
+
+    #[test]
+    fn targeted_marketing_pays_ten_when_the_runner_installs_the_named_card() {
+        let registry = registry();
+        let mut state = marketed(&registry, "gordian_blade");
+        state.runner.grip = vec![id("gordian_blade")];
+        let (installed, _) = pass_until_settled(act(&state, &registry, PlayerAction::InstallProgram { card_id: id("gordian_blade"), trash_first: false, host: None }).0, &registry);
+        assert_eq!(installed.corp.resources.credits, Credits(10));
+    }
+
+    /// "Whenever you encounter a piece of ice after an approach during
+    /// which that ice was rezzed, lose all credits in your credit pool.
+    /// Gain credits equal to the rez cost of that ice."
+    #[test]
+    fn nasir_meidan_trades_his_credits_for_the_rez_cost_of_ice_rezzed_as_he_approached() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.identity = Some(id("nasir_meidan_cyber_explorer"));
+        state.runner.resources.credits = Credits(7);
+        state.corp.resources.credits = Credits(10);
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(11), card: id("enigma"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: false, ..Default::default() }];
+        let (run, _) = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let (approached, _) = crate::rules::test_support::continue_run(&run, &registry).expect("approach Enigma");
+        let (rezzed, _) = act(&approached, &registry, PlayerAction::RezIce { ice: InstallId(11) });
+        let (encountered, events) = close_all_windows(rezzed, &registry);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::IceEncountered { .. })), "encountered");
+        assert_eq!(encountered.runner.resources.credits, Credits(3), "7 lost, Enigma's 3 gained");
+
+        let mut already = state.clone();
+        already.corp.installed[0].rezzed = true;
+        let (run, _) = act(&already, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let (approached, _) = crate::rules::test_support::continue_run(&run, &registry).expect("approach Enigma");
+        let (encountered, _) = close_all_windows(approached, &registry);
+        assert_eq!(encountered.runner.resources.credits, Credits(7), "rezzed before the run, nothing");
+    }
+
+    /// "The Runner pays 1[credit] more when spending a [click] to remove a
+    /// tag"; flipped, "You may pay 2[credit] fewer when spending a [click]
+    /// to trash a resource"; "[click]: Flip this identity" on both sides.
+    #[test]
+    fn sync_taxes_the_tag_removal_and_flipped_discounts_the_resource_trash() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("sync_everything_everywhere"));
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.tags = 2;
+        state.runner.resources.credits = Credits(3);
+        let (removed, _) = act(&state, &registry, PlayerAction::RemoveTag);
+        assert_eq!(removed.runner.resources.credits, Credits(0), "3, not 2");
+        assert!(apply_action(&removed, &registry, PlayerAction::RemoveTag).is_err(), "and none left to pay it");
+
+        let mut corp = state.clone();
+        corp.phase = GamePhase::Action(Side::Corp);
+        corp.corp.resources.credits = Credits(0);
+        corp.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("daily_casts"), install_id: InstallId(30), ..Default::default() }];
+        assert!(apply_action(&corp, &registry, PlayerAction::TrashResource { target: InstallId(30) }).is_err(), "unflipped, 2[credit]");
+        let flip = crate::rules::legal_actions_for(&corp, &registry, Side::Corp)
+            .into_iter()
+            .find(|action| matches!(action, PlayerAction::ActivateAbility { .. }))
+            .expect("[click]: Flip this identity.");
+        let (flipped, _) = close_all_windows(act(&corp, &registry, flip.clone()).0, &registry);
+        assert!(flipped.corp.identity_flipped);
+        let (trashed, _) = act(&flipped, &registry, PlayerAction::TrashResource { target: InstallId(30) });
+        assert!(trashed.runner.rig.is_empty(), "free once flipped");
+        assert_eq!(trashed.runner.heap, vec![id("daily_casts")]);
+
+        let mut tagged = flipped.clone();
+        tagged.phase = GamePhase::Action(Side::Runner);
+        let (removed, _) = act(&tagged, &registry, PlayerAction::RemoveTag);
+        assert_eq!(removed.runner.resources.credits, Credits(1), "the flip side does not tax it");
+        let (back, _) = close_all_windows(act(&flipped, &registry, flip).0, &registry);
+        assert!(!back.corp.identity_flipped, "and flips back");
+    }
+}

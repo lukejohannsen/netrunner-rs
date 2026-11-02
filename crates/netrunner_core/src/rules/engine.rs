@@ -3574,7 +3574,8 @@ fn remove_tag(state: &GameState, registry: &CardRegistry) -> Result<(GameState, 
     spend_click(&mut next, side)?;
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    let paid = ability::pay_cost(&mut next, registry, side, &Cost::Credits(2), Purpose::RemoveTag, None)?;
+    let credits = continuous::remove_tag_credits(state, registry);
+    let paid = ability::pay_cost(&mut next, registry, side, &Cost::Credits(credits), Purpose::RemoveTag, None)?;
     events.extend(paid.iter().cloned());
 
     next.runner.tags -= 1;
@@ -3694,7 +3695,8 @@ fn trash_resource(
     spend_click(&mut next, side)?;
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(2), Purpose::Other, None)?);
+    let credits = continuous::basic_trash_credits(state, registry, target);
+    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(credits), Purpose::Other, None)?);
     // Additional costs to trash it (Sebastião Souza Pessoa, Manuel Lattes
     // de Moura), paid with the click and the credits: all of them or none
     // (CR 1.16.10b), so one the Corp cannot pay refuses the action, which is

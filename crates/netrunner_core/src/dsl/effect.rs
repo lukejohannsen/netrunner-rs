@@ -1926,6 +1926,15 @@ pub enum Effect {
         /// other "when your turn begins" abilities (CR 9.6.13).
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         next_turn: bool,
+        /// For as long as this copy stays in the play area, not the turn —
+        /// Targeted Marketing's "Gain 10[credit] **whenever** the Runner
+        /// plays or installs a copy of that card", a current's: heard on
+        /// every turn while the current is in play
+        /// (`DelayedAbility::while_in_play`, spent as the copy goes).
+        /// Only from a card that waits in a play area, whose handle the
+        /// resolution carries.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        while_in_play: bool,
     },
     /// "After you resolve this operation, your action phase ends" — a
     /// terminal card's line (Active Policing, Bring Them Home): the rest of
@@ -2855,8 +2864,11 @@ pub enum Amount {
     /// The printed cost of the card the triggering trash is about — Ob
     /// Superheavy Logistics' "the trashed card's printed rez cost", read
     /// off `ResolutionContext::triggering_event` (`GameEvent::CardTrashed`)
-    /// as `TimesThisActionThisTurn` is. 0 for any other event or none: a
-    /// trash is the only moment a card in the pool reads it from. Composition didn't
+    /// as `TimesThisActionThisTurn` is — and of the ice the triggering
+    /// encounter is with (`GameEvent::IceEncountered`), Nasir Meidan's
+    /// "gain credits equal to the rez cost of that ice": the printed cost,
+    /// since a rez cost is the printed one and what the table adds is to
+    /// the rez, which is over. 0 for any other event or none. Composition didn't
     /// work: `PrintedCost` reads the acting card, and making the trashed
     /// card the acting one (`acts_on_subject`) would key Ob's "once per
     /// turn" and its prompt on the card in Archives.
@@ -4247,13 +4259,14 @@ impl Effect {
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
-            Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn } => Effect::LaterThisTurn {
+            Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn, while_in_play } => Effect::LaterThisTurn {
                 when,
                 filter: filter.map(|filter| filter.with_chosen_name(card)),
                 every_time,
                 effect: boxed(effect),
                 this_run,
                 next_turn,
+                while_in_play,
             },
             other => other,
         }
@@ -4451,7 +4464,7 @@ impl Effect {
             Effect::AsThisCard(effect) => Effect::AsThisCard(boxed(effect)),
             // RNG Key's "the next card that you access this run": the
             // number named rides into what waits for the access.
-            Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn } => Effect::LaterThisTurn { when, filter, every_time, effect: boxed(effect), this_run, next_turn },
+            Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn, while_in_play } => Effect::LaterThisTurn { when, filter, every_time, effect: boxed(effect), this_run, next_turn, while_in_play },
             Effect::InstallRunnerCardFromZone { from, discount: Discount::Amount(a), if_installed } => {
                 Effect::InstallRunnerCardFromZone { from, discount: Discount::Amount(Box::new(amount(*a))), if_installed }
             }

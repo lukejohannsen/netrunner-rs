@@ -696,7 +696,10 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
 /// Whether the delayed ability `delayed` waits for a moment of `trigger`
 /// now: its moment, on the turn it was made for.
 pub(crate) fn delayed_hears(state: &GameState, delayed: &crate::rules::lingering::DelayedAbility, trigger: Trigger) -> bool {
-    delayed_hears_on(delayed, trigger, state.turn)
+    match delayed.while_in_play {
+        true => delayed.when == trigger && delayed.source_in_play(state),
+        false => delayed_hears_on(delayed, trigger, state.turn),
+    }
 }
 
 pub(crate) fn delayed_hears_on(delayed: &crate::rules::lingering::DelayedAbility, trigger: Trigger, turn: u32) -> bool {
@@ -732,6 +735,9 @@ pub(crate) fn delayed_admits(state: &GameState, registry: &CardRegistry, delayed
 /// Whether the delayed ability `delayed` is done with once `event` has
 /// been heard: one from an earlier turn, or one heard once (CR 9.6.13c).
 pub(crate) fn delayed_spent_by(state: &GameState, registry: &CardRegistry, delayed: &crate::rules::lingering::DelayedAbility, event: &GameEvent) -> bool {
+    if delayed.while_in_play {
+        return !delayed.source_in_play(state);
+    }
     delayed.turn < state.turn
         || (!delayed.every_time
             && moments(state, event).iter().any(|moment| delayed_hears(state, delayed, moment.trigger))

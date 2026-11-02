@@ -1119,13 +1119,13 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
         PlayerAction::ActivateAbility { .. } => "Use one of this card's paid abilities, paying its cost — an icebreaker's abilities boost its strength or break subroutines during an encounter.".to_string(),
         PlayerAction::AdvanceCard { .. } => "Spend 1 click and 1 credit to place an advancement token. An agenda scores once it has as many tokens as its advancement requirement.".to_string(),
         PlayerAction::ScoreAgenda { .. } => "Score this fully advanced agenda: its points go to your score area, and 7 points (6 in the starter game) wins.".to_string(),
-        PlayerAction::RemoveTag => "Spend 1 click and 2 credits to remove a tag. While tagged, the Corp can trash your resources.".to_string(),
+        PlayerAction::RemoveTag => "Spend 1 click and 2 credits to remove a tag (SYNC makes it 3). While tagged, the Corp can trash your resources.".to_string(),
         PlayerAction::PurgeVirusCounters => "Spend all 3 clicks to remove every virus counter in play.".to_string(),
         PlayerAction::ChooseTriggerToResolve { .. } => "Several of your cards want to trigger at once; choose which resolves first.".to_string(),
         // A Runner card may add to the price (`ContinuousKind::BasicTrashCost`):
         // the words say so rather than price it, since what is added is the
         // engine's to know and the payment asks for it as it is paid.
-        PlayerAction::TrashResource { .. } => "Spend 1 click and 2 credits to trash one of the tagged Runner's resources. Some Runner cards add to the price — a card from HQ, which you choose as you pay — and the action is offered only when you can pay it all.".to_string(),
+        PlayerAction::TrashResource { .. } => "Spend 1 click and 2 credits to trash one of the tagged Runner's resources. A flipped SYNC takes 2 off it; some Runner cards add to the price — a card from HQ, which you choose as you pay — and the action is offered only when you can pay it all.".to_string(),
         PlayerAction::SelectCardToAccess { candidate } => match candidate {
             AccessCandidate::Zone => format!(
                 "Access {} — you see it only as you access it, and steal it if it is an agenda.",

@@ -89,6 +89,18 @@ fn is_one(amount: &Amount) -> bool {
 /// about a run are about runs on a server (`RunsOnThisServer`).
 /// Each is a variant here when a card prints it — never a field on
 /// `CardDefinition`.
+/// A basic action whose credit cost a card changes
+/// (`ContinuousKind::BasicActionCredits`): only the two a card in the pool
+/// prices.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BasicAction {
+    /// The Runner's "[click], 2[credit]: remove 1 tag" (CR 5.2.7g).
+    RemoveTag,
+    /// The Corp's "[click], 2[credit]: trash 1 resource" while the Runner
+    /// is tagged (CR 5.2.6g).
+    TrashResource,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ContinuousKind {
     /// Strength of an icebreaker (`continuous::breaker_strength`) or of a
@@ -255,6 +267,19 @@ pub enum ContinuousKind {
     /// action (CR 1.16.10a). Composition didn't work: nothing priced the
     /// basic action, whose cost was written in the handler.
     BasicTrashCost(crate::dsl::Cost),
+    /// Credits more (or, negative, fewer) than the rules' 2[credit] that a
+    /// basic action costs — SYNC: Everything, Everywhere's "The Runner
+    /// pays 1[credit] more when spending a [click] to remove a tag (not
+    /// through a card ability)" (`RemoveTag`, `Scope::Player(Runner)`) and,
+    /// flipped, "You may pay 2[credit] fewer when spending a [click] to
+    /// trash a resource" (`TrashResource`, `Scope::Trashing`). Never below
+    /// nothing; a discount the Corp "may" take is always taken, since
+    /// paying less leaves them no worse off. One word for both, because
+    /// what changes is the same number on two actions (CR 5.2.7g, 5.2.6g).
+    /// Composition didn't work: `BasicTrashCost` is an additional *cost*,
+    /// which can add but never take away, and the tag removal's price was
+    /// written in the handler with nothing to ask.
+    BasicActionCredits { action: BasicAction, by: Number },
     /// Agenda points an agenda is worth where it is — Let Them Dream's
     /// "while this agenda is in the Runner's score area, it is worth 1 less
     /// agenda point". Asked, never stored: the win check totals each score
