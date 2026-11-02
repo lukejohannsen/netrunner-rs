@@ -388,6 +388,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 SubroutineBreakCount::All => "all subroutines".to_string(),
                 SubroutineBreakCount::ChosenNumber => "X subroutines".to_string(),
                 SubroutineBreakCount::Last => "the last subroutine".to_string(),
+                SubroutineBreakCount::AllButOne => "all but 1 subroutine".to_string(),
             };
             match restrict_to {
                 Some(kind) => format!("break {which} on a {kind:?}"),
@@ -399,6 +400,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             SubroutineBreakCount::All => "break all subroutines".to_string(),
             SubroutineBreakCount::ChosenNumber => "break X subroutines".to_string(),
             SubroutineBreakCount::Last => "break the last subroutine on the encountered ice".to_string(),
+            SubroutineBreakCount::AllButOne => "break all but 1 subroutine on the encountered ice".to_string(),
         },
         Effect::Trace { base, on_success, on_failure } => match (describe_amount(base), on_failure) {
             (base, None) => format!("trace {base}: if successful, {}", describe_effect(on_success, registry)),
@@ -692,7 +694,10 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::HostRigCardOnInstall { .. } => "host it on an installed card".to_string(),
         Effect::HostThisAsCondition { .. } => "install this on it as a hosted condition counter".to_string(),
         Effect::HostOtherIdentity { .. } => "host it on this card, which gains its text".to_string(),
-        Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice, attacked_server } => {
+        Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice, attacked_server, of_type } => {
+            if let (Prohibition::BreakSubroutinesOnIce, Some(kind)) = (what, of_type) {
+                return format!("Runner card abilities cannot break subroutines on {} {}", crate::board::facts::ice_type_words(&[*kind]), duration(until));
+            }
             let what = match (what, copies_of_it) {
                 (Prohibition::EndTheRun, _) if *encountered_ice => "subroutines on the ice being encountered cannot end the run",
                 (Prohibition::ScoreAgendas, _) if *this_install => "the Corp cannot score that card",
@@ -737,16 +742,22 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::ResolveFirstThreeSubroutines, _) => "the first 3 subroutines of the next encounter do not resolve",
                 (Prohibition::ResolveFirstSubroutine, _) => "the first subroutine to resolve this run does not",
                 (Prohibition::CorpInstall, _) => "the Corp cannot install cards",
+                (Prohibition::RezSecondIce, _) => "the Corp cannot rez more than 1 piece of ice",
             };
             format!("{what} {}", duration(until))
         }
-        Effect::ImposeAdditionalCost { on, cost, until } => {
+        Effect::ImposeAdditionalCost { on, cost, until, this_install } => {
+            if on.contains(&netrunner_core::dsl::CostedStep::Rez) {
+                let which = if *this_install { "that ice" } else { "each piece of ice" };
+                return format!("the Corp must {} as an additional cost to rez {which} {}", describe_cost(cost), duration(until));
+            }
             let steps: Vec<&str> = on
                 .iter()
                 .map(|step| match step {
                     netrunner_core::dsl::CostedStep::JackOut => "jack out",
                     netrunner_core::dsl::CostedStep::BreakSubroutine => "break a subroutine",
                     netrunner_core::dsl::CostedStep::IcebreakerBreak => "use an icebreaker ability to break subroutines",
+                    netrunner_core::dsl::CostedStep::Rez => "rez ice",
                 })
                 .collect();
             format!("the Runner must {} as an additional cost to {} {}", describe_cost(cost), steps.join(" or "), duration(until))
@@ -1205,6 +1216,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::InstalledCardAbilities => "cannot use paid abilities on installed cards except mid-access abilities and icebreakers",
             Prohibition::UsePrograms => "cannot use programs",
             Prohibition::Install | Prohibition::CorpInstall => "cannot install cards",
+            Prohibition::RezSecondIce => "cannot rez more than 1 piece of ice",
             Prohibition::Draw => "cannot draw cards",
             Prohibition::RezOutermostIce => "cannot rez the outermost piece of ice during a run",
             Prohibition::RezIce => "cannot rez ice",

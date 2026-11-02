@@ -1,0 +1,24 @@
+{
+  "id": "emp_device",
+  "title": "EMP Device",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": "RunInProgress",
+      "effect": {
+        "Prohibit": {
+          "what": "RezSecondIce",
+          "until": "Run"
+        }
+      },
+      "text": "[trash]: The Corp cannot rez more than 1 piece of ice for the remainder of this run."
+    }
+  ],
+  "built_from": 10020,
+  "is_playable": true
+}

@@ -797,6 +797,30 @@ pub(crate) fn runner_cards_may_break(state: &GameState, registry: &CardRegistry,
     })
 }
 
+/// Whether any subroutine on the ice `ice` may be broken now, by anything
+/// — the prohibitions that are about breaking rather than about a breaker:
+/// Inazuma's "During the next encounter this run, the Runner cannot break
+/// subroutines on the encountered ice" (`BreakSubroutinesOnIce` bound on
+/// the Runner, `Until::ThroughEncounter`, and only during the encounter
+/// it names — it is made in the encounter before), and Unorthodox
+/// Predictions' "Subroutines on ice of the chosen type cannot be broken"
+/// (bound on `On::IceOfType`, asked of the table's types).
+pub(crate) fn subroutines_may_be_broken(state: &GameState, registry: &CardRegistry, ice: InstallId) -> bool {
+    let encounters = state.active_run.as_ref().map(|run| run.encounters);
+    !state.lingering.iter().any(|effect| {
+        effect.what == lingering::Lingering::Cannot(Prohibition::BreakSubroutinesOnIce)
+            && effect.holds(state)
+            && match effect.on {
+                lingering::On::Player(Side::Runner) => match effect.until {
+                    lingering::Until::ThroughEncounter(encounter) => encounters == Some(encounter),
+                    _ => true,
+                },
+                lingering::On::IceOfType(kind) => installed_ice_types(state, registry, ice).contains(&kind),
+                _ => false,
+            }
+    })
+}
+
 /// Whether the Corp may still trash an installed Runner card with the text
 /// of `install` (`ContinuousKind::TrashLimit`, Sorocaban Blade's "you
 /// cannot trash more than 1 installed Runner card with this ice during
@@ -1201,6 +1225,14 @@ pub(crate) fn rez_costs(state: &GameState, registry: &CardRegistry, install: Ins
             costs.push((cost.clone(), source.card.clone(), source.install));
         }
     });
+    // …and those made for a duration, paid as the ice itself, so Running
+    // Interference's "X is the rez cost of that ice" reads the ice
+    // (`Amount::PrintedCost`). Only ice: a lingering rez cost is about ice.
+    if let Some(installed) = state.find_corp_install(install).filter(|installed| installed.slot == crate::rules::state::InstallSlot::Ice) {
+        for cost in lingering::rez_costs(state, install) {
+            costs.push((cost, installed.card.clone(), Some(install)));
+        }
+    }
     costs
 }
 

@@ -2319,23 +2319,31 @@ pub fn evaluate_effect(
             crate::rules::engine::install_runner_card_from_grip_paying_cost(state, registry, card_id)
         }
 
-        Effect::ImposeAdditionalCost { on, cost, until } => {
+        Effect::ImposeAdditionalCost { on, cost, until, this_install } => {
             let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             let source = ctx.attributed_card().ok_or(RulesError::UnresolvedCardTarget)?;
             for step in on {
-                state.lingering.push(LingeringEffect { what: Lingering::AdditionalCost { to: *step, cost: cost.clone() }, on: On::Player(Side::Runner), until, source: source.clone() });
+                // A rez is the Corp's, about ice: the one chosen, or each.
+                let about = match (step, this_install) {
+                    (CostedStep::Rez, true) => On::Install(ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?),
+                    (CostedStep::Rez, false) => On::EachIce,
+                    _ => On::Player(Side::Runner),
+                };
+                state.lingering.push(LingeringEffect { what: Lingering::AdditionalCost { to: *step, cost: cost.clone() }, on: about, until, source: source.clone() });
             }
             Ok(Vec::new())
         }
 
-        Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice, attacked_server } => {
+        Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice, attacked_server, of_type } => {
             let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             // The card whose text it is, for whoever shows it; a prohibition
             // with no card behind it has nothing to be shown as. About
             // copies, the acting card is the one revealed, and the text is
             // the card that asked for it.
             let acting = acting_card.cloned().ok_or(RulesError::UnresolvedCardTarget)?;
-            let (on, source) = if *encountered_ice {
+            let (on, source) = if let Some(kind) = of_type {
+                (On::IceOfType(*kind), acting)
+            } else if *encountered_ice {
                 let ice = state
                     .active_run
                     .as_ref()
@@ -6457,6 +6465,11 @@ fn breakable_now(
     if breaker.is_some_and(|definition| definition.side == Side::Runner) && !continuous::runner_cards_may_break(state, registry, ice.install_id) {
         return Vec::new();
     }
+    // "Cannot be broken" by anything: Inazuma's next encounter, Unorthodox
+    // Predictions' chosen type.
+    if !continuous::subroutines_may_be_broken(state, registry, ice.install_id) {
+        return Vec::new();
+    }
     // NEXT Activation Command: a card that is not an icebreaker — either
     // side's, since the Runner uses a bioroid's break too — breaks nothing.
     if breaker.is_some_and(|definition| !card_matches_filter(definition, &CardFilter::Icebreaker))
@@ -6497,6 +6510,7 @@ fn break_pending(
         SubroutineBreakCount::All => pending.len(),
         SubroutineBreakCount::Fixed(n) => (*n as usize).min(pending.len()),
         SubroutineBreakCount::ChosenNumber => 0,
+        SubroutineBreakCount::AllButOne => pending.len().saturating_sub(1),
         SubroutineBreakCount::Last => {
             let last = state.active_run.as_ref().and_then(|run| run.ice.get(run.position)).and_then(|ice| ice.subroutines.last()).map(|subroutine| subroutine.id);
             pending.retain(|(idx, _)| Some(*idx) == last);

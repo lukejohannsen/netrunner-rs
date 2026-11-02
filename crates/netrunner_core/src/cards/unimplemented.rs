@@ -179,7 +179,6 @@ pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Business First* (`business_first`): tranche F6 of the FFG plan.
 pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("emp_device", "EMP Device"),
     ("diwan", "Diwan"),
     ("lakshmi_smartfabrics", "Lakshmi Smartfabrics"),
 ];
@@ -340,13 +339,11 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("medical_breakthrough", "Medical Breakthrough"),
     ("shi_kyu", "Shi.Kyū"),
-    ("inazuma", "Inazuma"),
     ("shiro", "Shiro"),
     ("plan_b", "Plan B"),
     ("unregistered_s_w_35", "Unregistered S&W '35"),
     ("window", "Window"),
     ("bug", "Bug"),
-    ("grappling_hook", "Grappling Hook"),
 ];
 
 /// *Creation and Control* (`creation_and_control`): tranche F9 of the FFG plan.
@@ -372,9 +369,7 @@ pub(crate) const ST_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Mala Tempora* (`mala_tempora`): tranche F10 of the FFG plan.
 pub(crate) const MT_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("running_interference", "Running Interference"),
     ("raymond_flint", "Raymond Flint"),
-    ("unorthodox_predictions", "Unorthodox Predictions"),
     ("sundew", "Sundew"),
     ("snoop", "Snoop"),
     ("power_shutdown", "Power Shutdown"),
@@ -401,7 +396,6 @@ pub(crate) const DT_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *What Lies Ahead* (`what_lies_ahead`): tranche F11 of the FFG plan.
 pub(crate) const WLA_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("cortez_chip", "Cortez Chip"),
 ];
 
 /// *Trace Amount* (`trace_amount`): tranche F11 of the FFG plan.
