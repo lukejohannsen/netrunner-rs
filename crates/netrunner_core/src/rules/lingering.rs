@@ -82,10 +82,26 @@ pub struct DelayedAbility {
     /// this_run`): dropped as the run ends (`run::end_run`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub this_run: bool,
+    /// For as long as the copy that made it stays in the play area, not
+    /// the turn (`Effect::LaterThisTurn::while_in_play`): heard every turn
+    /// while `install`, the copy's handle, is there, and spent as it goes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub while_in_play: bool,
     pub effect: crate::dsl::Effect,
     /// What resolves it, as the card that made it would.
     pub card: CardId,
     pub install: Option<InstallId>,
+}
+
+impl DelayedAbility {
+    /// Whether the copy a `while_in_play` ability belongs to is still in
+    /// a play area — a current, until another is played or an agenda
+    /// moves (`rules::current`).
+    pub(crate) fn source_in_play(&self, state: &crate::rules::state::GameState) -> bool {
+        self.install.is_some_and(|handle| {
+            state.corp.play_area.iter().any(|played| played.handle == handle) || state.runner.in_play.iter().any(|played| played.handle == handle)
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

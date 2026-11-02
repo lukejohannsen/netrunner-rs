@@ -565,7 +565,11 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         // "This card" inside it is the card whose text it is, which is how
         // the words already read.
         Effect::AsThisCard(effect) => describe_effect(effect, registry),
-        Effect::LaterThisTurn { when, filter, every_time, effect, this_run: false, next_turn } => describe_later_this_turn(*when, filter.as_ref(), *every_time, *next_turn, effect, registry),
+        // Targeted Marketing's: as long as the current stays in play.
+        Effect::LaterThisTurn { when, filter, every_time, effect, while_in_play: true, .. } => {
+            describe_later_this_turn(*when, filter.as_ref(), *every_time, false, effect, registry).replace("for the rest of this turn", "while this card is in play").replace("the next time this turn", "the next time while this card is in play")
+        }
+        Effect::LaterThisTurn { when, filter, every_time, effect, this_run: false, next_turn, while_in_play: false } => describe_later_this_turn(*when, filter.as_ref(), *every_time, *next_turn, effect, registry),
         Effect::LaterThisTurn { when, filter, every_time, effect, this_run: true, .. } => {
             describe_later_this_turn(*when, filter.as_ref(), *every_time, false, effect, registry).replace("this turn", "this run")
         }
@@ -1153,6 +1157,13 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::RemoteServerLimit(n) => format!("may have no more than {}", plural(*n, "remote server", "remote servers")),
         ContinuousKind::ScoreCost(cost) => format!("costs \"{}\" to score", describe_cost(cost)),
         ContinuousKind::AdditionalRezCost(cost) => format!("costs \"{}\" to rez", describe_cost(cost)),
+        ContinuousKind::BasicActionCredits { action, by } => {
+            let what = match action {
+                netrunner_core::dsl::BasicAction::RemoveTag => "removing a tag with the basic action",
+                netrunner_core::dsl::BasicAction::TrashResource => "trashing it with the basic action",
+            };
+            format!("costs {} [credit] for {what}", signed(by))
+        }
         ContinuousKind::BasicTrashCost(cost) => format!("costs the Corp \"{}\" to trash with the basic action", describe_cost(cost)),
         ContinuousKind::AgendaPoints(number) => format!("is worth {} agenda points", signed(number)),
         ContinuousKind::AdvancementRequirement(number) => format!("gets {} advancement requirement", signed(number)),

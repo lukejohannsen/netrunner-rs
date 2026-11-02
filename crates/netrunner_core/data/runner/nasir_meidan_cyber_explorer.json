@@ -1,0 +1,37 @@
+{
+  "id": "nasir_meidan_cyber_explorer",
+  "title": "Nasir Meidan: Cyber Explorer",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 1,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "when": {
+        "Card": "RezzedDuringThisRun"
+      },
+      "effects": [
+        {
+          "LoseCreditsAmount": [
+            "Runner",
+            {
+              "Credits": "Runner"
+            }
+          ]
+        },
+        {
+          "GainCreditsAmount": [
+            "Runner",
+            "TriggeringCardPrintedCost"
+          ]
+        }
+      ],
+      "text": "Whenever you encounter a piece of ice after an approach during which that ice was rezzed, lose all credits in your credit pool. Gain credits equal to the rez cost of that ice."
+    }
+  ],
+  "built_from": 6017,
+  "is_playable": true
+}

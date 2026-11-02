@@ -213,7 +213,6 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.
 pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("sync_everything_everywhere", "SYNC: Everything, Everywhere"),
     ("rebranding_team", "Rebranding Team"),
     ("tl_dr", "TL;DR"),
     ("ad_blitz", "Ad Blitz"),
@@ -281,7 +280,6 @@ pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mutate", "Mutate"),
     ("bad_times", "Bad Times"),
     ("cyber_threat", "Cyber Threat"),
-    ("nasir_meidan_cyber_explorer", "Nasir Meidan: Cyber Explorer"),
     ("social_engineering", "Social Engineering"),
     ("eden_shard", "Eden Shard"),
 ];
@@ -291,7 +289,6 @@ pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("the_foundry_refining_the_process", "The Foundry: Refining the Process"),
     ("enhanced_login_protocol", "Enhanced Login Protocol"),
     ("heinlein_grid", "Heinlein Grid"),
-    ("targeted_marketing", "Targeted Marketing"),
     ("sealed_vault", "Sealed Vault"),
     ("eden_fragment", "Eden Fragment"),
     ("will_o_the_wisp", "Will-o'-the-Wisp"),

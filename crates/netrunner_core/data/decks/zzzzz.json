@@ -3,7 +3,7 @@
   "name": "Zzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: SanSan Stage 14's deck for New Angeles Sol: Your News, on Zythum's list, so the sweeps meet a Corp that may play a current from HQ or Archives whenever an agenda is scored or stolen. Eternal-legal only. It trades two Salem's Hospitality, two The All-Seeing I and Interrupt 0, which Zythum keeps, for two Rolling Brownout, two Service Outage and an Enforced Curfew. SanSan Stage 15 Two RSVP take Rolling Brownout's place. Two Information Overload take an IP Block's and a Thoth's place. Engine words Stage 6 takes the Mumbad City Hall for The News Now Hour, which bars the Runner's currents. Engine words Stage 11 brought two 24/7 News Cycles in for the Service Outages, so the sweep forfeits an agenda to resolve another's when-scored ability.",
+  "description": "Not a published list: SanSan Stage 14's deck for New Angeles Sol: Your News, on Zythum's list, so the sweeps meet a Corp that may play a current from HQ or Archives whenever an agenda is scored or stolen. Eternal-legal only. It trades two Salem's Hospitality, two The All-Seeing I and Interrupt 0, which Zythum keeps, for two Rolling Brownout, two Service Outage and an Enforced Curfew. SanSan Stage 15 Two RSVP take Rolling Brownout's place. Two Information Overload take an IP Block's and a Thoth's place. Engine words Stage 6 takes the Mumbad City Hall for The News Now Hour, which bars the Runner's currents. Engine words Stage 11 brought two 24/7 News Cycles in for the Service Outages, so the sweep forfeits an agenda to resolve another's when-scored ability. Engine words Stage 15 traded its Observe and Destroy for a Targeted Marketing, so the sweeps meet a current that names a card and pays the Corp 10[credit] whenever the Runner plays or installs a copy, for as long as it stays in play.",
   "style": [
     "fast-advance"
   ],
@@ -23,10 +23,6 @@
     },
     {
       "card": "cpc_generator",
-      "count": 1
-    },
-    {
-      "card": "observe_and_destroy",
       "count": 1
     },
     {
@@ -160,6 +156,10 @@
     {
       "card": "24_7_news_cycle",
       "count": 2
+    },
+    {
+      "card": "targeted_marketing",
+      "count": 1
     }
   ]
 }

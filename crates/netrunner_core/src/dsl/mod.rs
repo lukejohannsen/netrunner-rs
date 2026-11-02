@@ -11,7 +11,7 @@ pub use card::{
     CardDefinition, CardId, CardSubtype, CardType, CardValidationError, CountedRecurring, CounterKind, DeckRule, FreeInfluence, IceType, PaysFor, RecurringCredits,
     TriggeredEffect, RezAlternative, ServerKind,
 };
-pub use continuous::{ContinuousEffect, ContinuousKind, Number, Scope};
+pub use continuous::{BasicAction, ContinuousEffect, ContinuousKind, Number, Scope};
 pub use cost::Cost;
 pub use effect::{Amount, AsAgenda, CostedStep, EffectDuration, CardTarget, DamageType, DeckEnd, Discount, Effect, EndRunPrevention, HostedCardOrigin, ItsAbility, MovedTo, Preventable, PsiGuess, Prohibition, Remembered, StackZone, StrengthOf, SubroutineBreakCount, ThisServer};
 pub use trigger::{EventFilter, Hears, IceFacts, Subject, TrashedFrom, Trigger, TriggerAbout};

@@ -1198,6 +1198,7 @@ impl EventFilter {
     pub fn with_chosen_name(self, card: &crate::dsl::CardId) -> EventFilter {
         match self {
             EventFilter::Card(filter) => EventFilter::Card(filter.with_chosen_name(card)),
+            EventFilter::All(parts) => EventFilter::All(parts.into_iter().map(|part| part.with_chosen_name(card)).collect()),
             other => other,
         }
     }

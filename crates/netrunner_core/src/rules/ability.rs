@@ -1260,7 +1260,7 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
-        Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn } => {
+        Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn, while_in_play } => {
             let card = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
             let effect = match state.active_run.as_ref() {
                 Some(run) => (**effect).clone().with_attacked_server(run.server),
@@ -1272,6 +1272,7 @@ pub fn evaluate_effect(
                 every_time: *every_time,
                 turn: state.turn + u32::from(*next_turn),
                 this_run: *this_run && state.active_run.is_some(),
+                while_in_play: *while_in_play,
                 effect,
                 card,
                 install: ctx.acting_install,
@@ -6624,6 +6625,8 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::PaidCardPrintedCost => ctx.paid_with.first().and_then(|card| registry.get(card)).map_or(0, |def| def.cost),
         Amount::TriggeringCardPrintedCost => match ctx.triggering_event {
             Some(GameEvent::CardTrashed { card, .. }) => registry.get(card).map_or(0, |def| def.cost),
+            // Nasir Meidan's "the rez cost of that ice", on the encounter.
+            Some(GameEvent::IceEncountered { card_id, .. }) => registry.get(card_id).map_or(0, |def| def.cost),
             _ => 0,
         },
         Amount::PassedIceSubroutinesResolved => match ctx.triggering_event {

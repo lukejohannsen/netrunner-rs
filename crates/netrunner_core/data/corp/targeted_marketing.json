@@ -1,0 +1,82 @@
+{
+  "id": "targeted_marketing",
+  "title": "Targeted Marketing",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseCardName": {
+            "chooser": "Corp",
+            "names": {
+              "CardTypeOneOf": [
+                "Event",
+                "Hardware",
+                "Program",
+                "Resource"
+              ]
+            },
+            "then": {
+              "Sequence": [
+                {
+                  "LaterThisTurn": {
+                    "when": "OnCardPlayed",
+                    "filter": {
+                      "All": [
+                        {
+                          "Whose": "Runner"
+                        },
+                        {
+                          "Card": "ChosenName"
+                        }
+                      ]
+                    },
+                    "every_time": true,
+                    "while_in_play": true,
+                    "effect": {
+                      "GainCredits": [
+                        "Corp",
+                        10
+                      ]
+                    }
+                  }
+                },
+                {
+                  "LaterThisTurn": {
+                    "when": "OnInstall",
+                    "filter": {
+                      "All": [
+                        {
+                          "Whose": "Runner"
+                        },
+                        {
+                          "Card": "ChosenName"
+                        }
+                      ]
+                    },
+                    "every_time": true,
+                    "while_in_play": true,
+                    "effect": {
+                      "GainCredits": [
+                        "Corp",
+                        10
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "text": "Name a card"
+          }
+        }
+      ],
+      "text": "Name a card. Gain 10[credit] whenever the Runner plays or installs a copy of that card."
+    }
+  ],
+  "built_from": 6026,
+  "is_playable": true
+}

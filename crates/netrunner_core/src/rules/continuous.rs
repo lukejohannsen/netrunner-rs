@@ -1266,6 +1266,31 @@ pub(crate) fn basic_trash_costs(state: &GameState, registry: &CardRegistry, inst
     costs
 }
 
+/// What the Runner pays in credits to remove a tag with the basic action:
+/// the rules' 2[credit] and what the table adds (SYNC: Everything,
+/// Everywhere), never below nothing. Bound across both tables, since the
+/// card that prices it is the Corp's.
+pub fn remove_tag_credits(state: &GameState, registry: &CardRegistry) -> u32 {
+    let by = sum(state, registry, Target::Bound(Side::Runner), |kind| match kind {
+        ContinuousKind::BasicActionCredits { action: crate::dsl::BasicAction::RemoveTag, by } => Some(by),
+        _ => None,
+    });
+    (2 + by).max(0) as u32
+}
+
+/// What the Corp pays in credits to trash the rig install `install` with
+/// the basic action: the rules' 2[credit] and what the table adds (SYNC:
+/// Everything, Everywhere, flipped), never below nothing. The additional
+/// costs beside it are [`basic_trash_costs`].
+pub fn basic_trash_credits(state: &GameState, registry: &CardRegistry, install: InstallId) -> u32 {
+    let Some(card) = state.find_rig_install(install).and_then(|installed| registry.get(&installed.card)) else { return 2 };
+    let by = sum(state, registry, Target::Trashing { card, install }, |kind| match kind {
+        ContinuousKind::BasicActionCredits { action: crate::dsl::BasicAction::TrashResource, by } => Some(by),
+        _ => None,
+    });
+    (2 + by).max(0) as u32
+}
+
 /// The agenda points the agenda `card` is worth in `side`'s score area:
 /// what it prints and what its own text changes there (Let Them Dream),
 /// never below 0. `install` is the copy, whose own counters a `while` may
