@@ -1695,7 +1695,10 @@ pub fn evaluate_effect(
             let may_gain = crate::rules::active::may_have_granted(state, registry, copier);
             let types: Vec<crate::dsl::IceType> = [crate::dsl::IceType::Barrier, crate::dsl::IceType::CodeGate, crate::dsl::IceType::Sentry]
                 .into_iter()
-                .filter(|subtype| definition.card_type == crate::dsl::CardType::Ice(*subtype) || crate::rules::continuous::ice_gains_subtype(state, registry, chosen, *subtype))
+                .filter(|subtype| match definition.card_type {
+                    crate::dsl::CardType::Ice(printed) => crate::rules::continuous::ice_is(state, registry, chosen, printed, *subtype),
+                    _ => false,
+                })
                 .collect();
             let subroutines = definition.subroutines.clone();
             let source = ctx.prompting_card.or(acting_card).cloned().ok_or(RulesError::MissingActingCardContext)?;
@@ -2418,8 +2421,7 @@ pub fn evaluate_effect(
             let (ice_card_id, ice_strength, ice_type, ice_install) =
                 (ice.card_id.clone(), continuous::ice_strength(state, registry, ice), ice.ice_type, ice.install_id);
             if let Some(expected) = restrict_to
-                && *expected != ice_type
-                && !continuous::ice_gains_subtype(state, registry, ice_install, *expected)
+                && !continuous::ice_is(state, registry, ice_install, ice_type, *expected)
             {
                 return Err(RulesError::InvalidBreakerSubtype {
                     breaker: acting.clone(),
@@ -2788,21 +2790,30 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingChoicePresented { chooser: *chooser, option_count }])
         }
 
-        Effect::PsiGame { on_match, on_differ } => {
+        Effect::PsiGame { on_match, on_differ, guess } => {
             // What each could spend on a bid (CR 10.14.3), fixed as the
             // game begins; a player who could bid only 0 is not asked.
-            let most = |side| {
+            let most = |side, cap| {
                 crate::rules::payment::available(state, registry, side, crate::rules::payment::Purpose::Other)
-                    .min(crate::rules::pending_choice::PSI_MAX_BID)
+                    .min(cap)
                     .min(crate::rules::continuous::bid_limit(state, registry, side).unwrap_or(u32::MAX))
             };
-            let (corp_max, runner_max) = (most(Side::Corp), most(Side::Runner));
+            // A guess is bounded by what it guesses at, not by the Corp's
+            // credits: how much of 0 to 2, or even (0) and odd (1). Push
+            // Your Luck's "any number of credits" is the most the Runner
+            // could spend.
+            let (corp_max, runner_max) = match guess {
+                None => (most(Side::Corp, crate::rules::pending_choice::PSI_MAX_BID), most(Side::Runner, crate::rules::pending_choice::PSI_MAX_BID)),
+                Some(crate::dsl::PsiGuess::Amount) => (crate::rules::pending_choice::PSI_MAX_BID, most(Side::Runner, crate::rules::pending_choice::PSI_MAX_BID)),
+                Some(crate::dsl::PsiGuess::Parity) => (1, most(Side::Runner, crate::rules::action_mask::MAX_CHOSEN_NUMBER)),
+            };
             state.pending_decision = Some(PendingDecision::PsiGame {
                 corp_bid: if corp_max == 0 { crate::rules::state::PsiBid::Bid(0) } else { crate::rules::state::PsiBid::Awaiting },
                 corp_max,
                 runner_max,
                 on_match: on_match.clone(),
                 on_differ: on_differ.clone(),
+                guess: *guess,
                 source_card: acting_card.cloned(),
                 prompting_card: ctx.attributed_card(),
                 source_install: ctx.acting_install,
@@ -4892,7 +4903,14 @@ pub(crate) fn cost_is_affordable(
         Cost::ClicksAmount(amount) => state.resources(side).clicks.0 >= resolve_amount(amount, ctx, state, registry),
         Cost::LoseAllClicks => state.resources(side).clicks.0 >= 1,
         // A run the Runner is in, and one they may leave (Whirlpool).
-        Cost::JackOut => side == Side::Runner && state.active_run.is_some() && !continuous::cannot(state, registry, crate::dsl::Prohibition::JackOut),
+        // A jack-out a card offers is a jack-out: Mind Game's and Armored
+        // Servers' "as an additional cost to jack out" is owed on it too.
+        Cost::JackOut => {
+            side == Side::Runner
+                && state.active_run.is_some()
+                && !continuous::cannot(state, registry, crate::dsl::Prohibition::JackOut)
+                && additional_costs_affordable(state, registry, crate::dsl::CostedStep::JackOut)
+        }
         Cost::RemoveCounters(amount) => counters_of(state, ctx).is_some_and(|counters| counters >= *amount),
         // The same scan the payment picks from.
         Cost::VirusCounters(amount) => {
@@ -4918,7 +4936,7 @@ pub(crate) fn cost_is_affordable(
         Cost::Trash { from, filter, count, .. } => {
             *count == Cost::ALL || crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install, ctx.acting_card).len() >= *count as usize
         }
-        Cost::AddInstalledToHand { filter, count } | Cost::ShuffleInstalledIntoDeck { filter, count } | Cost::RemoveInstalledFromGame { filter, count } => {
+        Cost::AddInstalledToHand { filter, count } | Cost::ShuffleInstalledIntoDeck { filter, count } | Cost::AddInstalledToBottomOfDeck { filter, count } | Cost::RemoveInstalledFromGame { filter, count } => {
             let zone = crate::dsl::CardZoneRef::OwnInstalled;
             crate::rules::pending_choice::eligible_positions(state, registry, side, &zone, filter, ctx.acting_install, ctx.acting_card).len() >= *count as usize
         }
@@ -5063,10 +5081,15 @@ pub(crate) fn pay_cost_ctx(
         // The run ends as a jack-out, which the payer dispatches with the
         // rest of its cost's events (`dispatch_cost_events`): "when a run
         // ends" hears it.
+        // The additional costs first, as the basic jack-out pays them
+        // (`engine::jack_out`): Cell Portal's and Mind Game's "may jack
+        // out" was a way round Armored Servers' price before it was.
         Cost::JackOut => {
+            let mut events = pay_additional_costs(state, registry, crate::dsl::CostedStep::JackOut)?;
             let encounter = state.active_run.as_ref().and_then(run::encounter_ends);
             let run = run::end_run(state).ok_or(RulesError::NoActiveRun)?;
-            Ok(encounter.into_iter().chain([GameEvent::RunJackedOut { server: run.server }]).collect())
+            events.extend(encounter.into_iter().chain([GameEvent::RunJackedOut { server: run.server }]));
+            Ok(events)
         }
 
         // The payer trashes it, and dispatches that with the rest of its
@@ -5259,8 +5282,10 @@ pub(crate) fn pay_cost_ctx(
         }
 
         // Into the deck, picked as `AddInstalledToHand` picks, and the deck
-        // shuffled once the last is in.
-        Cost::ShuffleInstalledIntoDeck { filter, count } => {
+        // shuffled once the last is in — or, for Mind Game's price, each to
+        // the bottom (the front of the list) and no shuffle.
+        Cost::ShuffleInstalledIntoDeck { filter, count } | Cost::AddInstalledToBottomOfDeck { filter, count } => {
+            let bottom = matches!(cost, Cost::AddInstalledToBottomOfDeck { .. });
             let zone = crate::dsl::CardZoneRef::OwnInstalled;
             let eligible = crate::rules::pending_choice::eligible_positions(state, registry, side, &zone, filter, ctx.acting_install, ctx.acting_card);
             if eligible.len() < *count as usize {
@@ -5273,18 +5298,21 @@ pub(crate) fn pay_cost_ctx(
             for install in handles {
                 let Some(removed) = crate::rules::pending_choice::remove_installed_card(state, registry, side, &zone, install)? else { continue };
                 events.extend(removed.announced);
-                match side {
-                    Side::Corp => state.corp.r_and_d.push(removed.card.clone()),
-                    Side::Runner => state.runner.stack.push(removed.card.clone()),
-                }
-                events.push(GameEvent::CardAddedToDeck { side, card: removed.card, top: true, revealed: removed.was_public });
+                let deck = match side {
+                    Side::Corp => &mut state.corp.r_and_d,
+                    Side::Runner => &mut state.runner.stack,
+                };
+                if bottom { deck.insert(0, removed.card.clone()) } else { deck.push(removed.card.clone()) }
+                events.push(GameEvent::CardAddedToDeck { side, card: removed.card, top: !bottom, revealed: removed.was_public });
                 events.extend(removed.cascade);
             }
-            let deck = match side {
-                Side::Corp => crate::dsl::CardZoneRef::OwnRAndD,
-                Side::Runner => crate::dsl::CardZoneRef::OwnStack,
-            };
-            crate::rules::pending_choice::shuffle_decks(state, side, &deck, None);
+            if !bottom {
+                let deck = match side {
+                    Side::Corp => crate::dsl::CardZoneRef::OwnRAndD,
+                    Side::Runner => crate::dsl::CardZoneRef::OwnStack,
+                };
+                crate::rules::pending_choice::shuffle_decks(state, side, &deck, None);
+            }
             Ok(events)
         }
 
@@ -5936,6 +5964,10 @@ pub fn check_requirement(
             }
             Ok(())
         }
+        EffectRequirement::OddAdvancementTokens => {
+            let odd = acting_corp_install(state, ctx).is_some_and(|install| install.advancement_tokens % 2 == 1);
+            if odd { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::ThisCardCountersAtLeast(amount) => {
             let current = counters_of(state, ctx).unwrap_or(0);
             if current < *amount {
@@ -5984,7 +6016,7 @@ pub fn check_requirement(
             let chosen = ctx.acting_install.and_then(|this| crate::rules::lingering::chosen_ice_type(state, this));
             let encountering = chosen.is_some_and(|chosen| {
                 state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position)).is_some_and(|ice| {
-                    ice.ice_type == chosen || continuous::ice_gains_subtype(state, registry, ice.install_id, chosen)
+                    continuous::ice_is(state, registry, ice.install_id, ice.ice_type, chosen)
                 })
             });
             if encountering { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -6018,7 +6050,7 @@ pub fn check_requirement(
         }
         EffectRequirement::Encountering(ice_type) => {
             let encountering = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position)).is_some_and(|ice| {
-                ice.ice_type == *ice_type || continuous::ice_gains_subtype(state, registry, ice.install_id, *ice_type)
+                continuous::ice_is(state, registry, ice.install_id, ice.ice_type, *ice_type)
             });
             if encountering { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
@@ -6026,7 +6058,7 @@ pub fn check_requirement(
             let ice = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position));
             let breaker = acting_rig_card(state, ctx);
             let can = ice.zip(breaker).is_some_and(|(ice, breaker)| {
-                (ice.ice_type == *ice_type || continuous::ice_gains_subtype(state, registry, ice.install_id, *ice_type))
+                continuous::ice_is(state, registry, ice.install_id, ice.ice_type, *ice_type)
                     && continuous::breaker_strength(state, registry, breaker) >= continuous::ice_strength(state, registry, ice)
             });
             if can { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -6498,7 +6530,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             _ => 0,
         },
         Amount::RevealedBid(side) => match ctx.triggering_event {
-            Some(GameEvent::PsiBidsRevealed { corp, runner }) => match side {
+            Some(GameEvent::PsiBidsRevealed { corp, runner, .. }) => match side {
                 Side::Corp => *corp,
                 Side::Runner => *runner,
             },
@@ -6899,6 +6931,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::EncounteredIceHosts(_)
         | EffectRequirement::EncounteredIce(_)
         | EffectRequirement::ThisCardCountersAtMost(_)
+        | EffectRequirement::OddAdvancementTokens
         | EffectRequirement::ThisCardCountersAtLeast(_)
         | EffectRequirement::EncounteringHostIce
         | EffectRequirement::EncounteringThisIce

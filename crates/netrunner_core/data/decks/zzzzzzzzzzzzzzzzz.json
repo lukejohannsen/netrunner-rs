@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach GRNDL: Power Unleashed, which starts the game with 10[credit] and 1 bad publicity. Yield Curve's list, its identity swapped. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 4.",
+  "description": "Not a published list: built so the sweeps reach GRNDL: Power Unleashed, which starts the game with 10[credit] and 1 bad publicity. Yield Curve's list, its identity swapped. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 4. Wendigo and Changeling, two each for the Hortums and Hadrian's Walls, change type while they hold an odd number of advancement tokens.",
   "style": [
     "traps"
   ],
@@ -46,10 +46,6 @@
       "count": 2
     },
     {
-      "card": "hortum",
-      "count": 2
-    },
-    {
       "card": "elizabeth_mills",
       "count": 1
     },
@@ -67,10 +63,6 @@
     },
     {
       "card": "shipment_from_kaguya",
-      "count": 2
-    },
-    {
-      "card": "hadrians_wall",
       "count": 2
     },
     {
@@ -111,6 +103,14 @@
     },
     {
       "card": "corporate_sales_team",
+      "count": 2
+    },
+    {
+      "card": "wendigo",
+      "count": 2
+    },
+    {
+      "card": "changeling",
       "count": 2
     }
   ]

@@ -602,6 +602,27 @@ impl Prompt {
                 },
                 // Who is bidding, and what the viewer may know of the other
                 // bid: the Corp's is shown to the Runner only as made.
+                // A guess (Push Your Luck, Mind Game's kin): the Corp's
+                // number is a guess, never a bid, and costs nothing.
+                PendingDecision::PsiGame { corp_bid, corp_max, runner_max, source_card, prompting_card, guess: Some(guess), .. } => {
+                    let card = asked_by(prompting_card, source_card);
+                    let corp_guessing = *corp_bid == netrunner_core::rules::PsiBid::Awaiting;
+                    match (view.viewer.side(), corp_guessing) {
+                        (Some(Side::Corp), true) => Prompt {
+                            title: format!("{card} asks: guess the Runner's secret credits"),
+                            detail: match guess {
+                                netrunner_core::dsl::PsiGuess::Parity => "0 for even, 1 for odd".to_string(),
+                                netrunner_core::dsl::PsiGuess::Amount => format!("0 to {corp_max}"),
+                            },
+                        },
+                        (Some(Side::Runner), false) => Prompt {
+                            title: format!("{card} asks: spend credits in secret"),
+                            detail: format!("0 to {runner_max} credits"),
+                        },
+                        (_, true) => Prompt { title: format!("{card} asks: the Corp is guessing"), detail: String::new() },
+                        (_, false) => Prompt { title: format!("{card} asks: the Runner is spending credits in secret"), detail: String::new() },
+                    }
+                }
                 PendingDecision::PsiGame { corp_bid, corp_max, runner_max, source_card, prompting_card, .. } => {
                     let card = asked_by(prompting_card, source_card);
                     let corp_bidding = *corp_bid == netrunner_core::rules::PsiBid::Awaiting;

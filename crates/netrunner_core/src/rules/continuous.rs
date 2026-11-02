@@ -917,13 +917,42 @@ pub fn ice_gains_subtype(state: &GameState, registry: &CardRegistry, install: In
     any(state, registry, target, |kind| *kind == ContinuousKind::GainSubtype(subtype))
 }
 
-/// Every type the run's ice `ice` has now: what it prints, unless that is
-/// none of the three, and each of the three it has gained. The one list a
-/// pass is recorded with (`GameEvent::IcePassed::rezzed_as`).
+/// Whether the ice `install` has lost `subtype` (`ContinuousKind::
+/// LoseSubtype`, Changeling's), as the table stands.
+pub fn ice_loses_subtype(state: &GameState, registry: &CardRegistry, install: InstallId, subtype: IceType) -> bool {
+    Target::corp_install(state, registry, install).is_some_and(|target| any(state, registry, target, |kind| *kind == ContinuousKind::LoseSubtype(subtype)))
+}
+
+/// **The one question of a piece of ice's type**: whether the ice
+/// `install`, which prints `printed` (`CardType::Ice`, or a run's
+/// `RunIce::ice_type`), is a `subtype` now — printed or gained
+/// (`ice_gains_subtype`), and not lost (`ice_loses_subtype`). A breaker's
+/// type restriction, "while encountering a barrier", a card filter's
+/// `IceOfType` over the table and the types a pass is recorded with
+/// (the turn log's) all ask it, so a morph ice is one type to all of them.
+/// It was "what it prints, or a type it gained" written out at each, which
+/// had no way to say "loses".
+pub fn ice_is(state: &GameState, registry: &CardRegistry, install: InstallId, printed: IceType, subtype: IceType) -> bool {
+    (printed == subtype || ice_gains_subtype(state, registry, install, subtype)) && !ice_loses_subtype(state, registry, install, subtype)
+}
+
+/// The types an installed piece of ice has now (`ice_is`), in the order
+/// the rules list them; empty for anything that is not installed ice.
+pub fn installed_ice_types(state: &GameState, registry: &CardRegistry, install: InstallId) -> Vec<IceType> {
+    let printed = state.find_corp_install(install).and_then(|installed| registry.get(&installed.card)).and_then(|card| match card.card_type {
+        crate::dsl::CardType::Ice(printed) => Some(printed),
+        _ => None,
+    });
+    let Some(printed) = printed else { return Vec::new() };
+    [IceType::Barrier, IceType::CodeGate, IceType::Sentry].into_iter().filter(|subtype| ice_is(state, registry, install, printed, *subtype)).collect()
+}
+
+/// Every type the run's ice `ice` has now (`ice_is`). The one list a pass
+/// is recorded with (`GameEvent::IcePassed::rezzed_as`).
 pub fn ice_types(state: &GameState, registry: &CardRegistry, ice: &crate::rules::run::RunIce) -> Vec<IceType> {
     [IceType::Barrier, IceType::CodeGate, IceType::Sentry]
         .into_iter()
-        .filter(|subtype| ice.ice_type == *subtype || ice_gains_subtype(state, registry, ice.install_id, *subtype))
+        .filter(|subtype| ice_is(state, registry, ice.install_id, ice.ice_type, *subtype))
         .collect()
 }
 

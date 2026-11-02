@@ -3,7 +3,7 @@
   "name": "Zone Defense",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Mti Mwekundu: Life Improved, Kitara's Jinteki identity, which once per turn when the Runner approaches a server may install a piece of ice from HQ innermost protecting it, ignoring all costs, and send the Runner to approach it. On A Thousand Cuts' list, a Jinteki deck with ice to spare. Eternal-legal only. Kitara Stage 14b. Kitara Stage 23 takes two Bacterial Programming and a second Anansi for two Flower Sermon and Braintrust, six points for six. Red Sand Stage 1: two Kakugo for two Neural Katana. Red Sand Stage 2b: two Synth DNA Modification for two Prana Condenser, beside the deck's AP ice. Red Sand Stage 3: two Shipment from Tennin for two Genotyping. Red Sand Stage 11 Bloom (Red Sand Stage 14) Metamorph (Red Sand Stage 29) Rover Algorithm (Red Sand Stage 34) FFG F6 Stage 5: two Upayoga and two Chetana, Mumbad's psi ice, for two Otoroshi and two Mlinzi, each kept by other decks. Two Salvage take Whirlpool's place. One Anansi became a Chrysalis, ice the Runner encounters when they access it in HQ or R&D (Engine words, Stage 5). Midori, Susanoo-no-Mikoto and The Twins came in for two Project Junebugs, an Aimor and both La Costa Grids, to put a swap on every approach, a move to Archives in a subroutine and a second encounter in front of the sweeps (Engine words Stage 9).",
+  "description": "Not a published list: built so the sweeps reach Mti Mwekundu: Life Improved, Kitara's Jinteki identity, which once per turn when the Runner approaches a server may install a piece of ice from HQ innermost protecting it, ignoring all costs, and send the Runner to approach it. On A Thousand Cuts' list, a Jinteki deck with ice to spare. Eternal-legal only. Kitara Stage 14b. Kitara Stage 23 takes two Bacterial Programming and a second Anansi for two Flower Sermon and Braintrust, six points for six. Red Sand Stage 1: two Kakugo for two Neural Katana. Red Sand Stage 2b: two Synth DNA Modification for two Prana Condenser, beside the deck's AP ice. Red Sand Stage 3: two Shipment from Tennin for two Genotyping. Red Sand Stage 11 Bloom (Red Sand Stage 14) Metamorph (Red Sand Stage 29) Rover Algorithm (Red Sand Stage 34) FFG F6 Stage 5: two Upayoga and two Chetana, Mumbad's psi ice, for two Otoroshi and two Mlinzi, each kept by other decks. Two Salvage take Whirlpool's place. One Anansi became a Chrysalis, ice the Runner encounters when they access it in HQ or R&D (Engine words, Stage 5). Midori, Susanoo-no-Mikoto and The Twins came in for two Project Junebugs, an Aimor and both La Costa Grids, to put a swap on every approach, a move to Archives in a subroutine and a second encounter in front of the sweeps (Engine words Stage 9). The Future Perfect, three points for Fujii Asset Retrieval's three, plays a psi game when it is accessed out of a central.",
   "style": [
     "traps"
   ],
@@ -12,10 +12,6 @@
     {
       "card": "cyberdex_sandbox",
       "count": 2
-    },
-    {
-      "card": "fujii_asset_retrieval",
-      "count": 1
     },
     {
       "card": "sting",
@@ -108,6 +104,10 @@
     {
       "card": "the_twins",
       "count": 2
+    },
+    {
+      "card": "the_future_perfect",
+      "count": 1
     }
   ]
 }

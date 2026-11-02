@@ -3041,11 +3041,14 @@ fn activate_ability(
         return Err(RulesError::AbilityProhibited { card: card_id });
     }
     // Vikram 1.0's and Jak Sinclair's "cannot use programs": every paid
-    // ability a program prints, a breaker's too.
+    // ability a program prints, a breaker's too. Wendigo's "the Runner
+    // cannot use the chosen program" is the same word bound to one install
+    // (`Effect::Prohibit::this_install` under the selection's `then`).
     if side == Side::Runner
         && card_def.side == Side::Runner
         && card_def.card_type == CardType::Program
-        && continuous::cannot(state, registry, crate::dsl::Prohibition::UsePrograms)
+        && (continuous::cannot(state, registry, crate::dsl::Prohibition::UsePrograms)
+            || crate::rules::lingering::prohibits_install(state, crate::dsl::Prohibition::UsePrograms, target))
     {
         return Err(RulesError::AbilityProhibited { card: card_id });
     }

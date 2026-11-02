@@ -1,0 +1,88 @@
+{
+  "id": "mother_goddess",
+  "title": "Mother Goddess",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 4,
+  "strength": 4,
+  "unique": true,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "GainSubtype": "Barrier"
+      },
+      "applies_to": "This",
+      "while": {
+        "ZoneHasAtLeast": {
+          "zone": "OwnInstalled",
+          "filter": {
+            "All": [
+              {
+                "IceOfType": "Barrier"
+              },
+              "Rezzed",
+              "NotSourceCard"
+            ]
+          },
+          "count": 1
+        }
+      },
+      "text": "Mother Goddess gains the subtypes of all other rezzed ice."
+    },
+    {
+      "kind": {
+        "GainSubtype": "CodeGate"
+      },
+      "applies_to": "This",
+      "while": {
+        "ZoneHasAtLeast": {
+          "zone": "OwnInstalled",
+          "filter": {
+            "All": [
+              {
+                "IceOfType": "CodeGate"
+              },
+              "Rezzed",
+              "NotSourceCard"
+            ]
+          },
+          "count": 1
+        }
+      },
+      "text": "Mother Goddess gains the subtypes of all other rezzed ice."
+    },
+    {
+      "kind": {
+        "GainSubtype": "Sentry"
+      },
+      "applies_to": "This",
+      "while": {
+        "ZoneHasAtLeast": {
+          "zone": "OwnInstalled",
+          "filter": {
+            "All": [
+              {
+                "IceOfType": "Sentry"
+              },
+              "Rezzed",
+              "NotSourceCard"
+            ]
+          },
+          "count": 1
+        }
+      },
+      "text": "Mother Goddess gains the subtypes of all other rezzed ice."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 6010,
+  "is_playable": true
+}

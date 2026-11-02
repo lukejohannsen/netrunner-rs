@@ -2254,6 +2254,11 @@ impl CardDefinition {
                 }
                 (ContinuousKind::GainSubtype(_), Scope::This | Scope::Host | Scope::Ice(_)) => {}
                 (ContinuousKind::GainSubtype(_), _) => return misfit("GainSubtype", "an ice subtype is gained by ice: this card, its host, or each piece"),
+                (ContinuousKind::LoseSubtype(IceType::Other), _) => {
+                    return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a card losing it"));
+                }
+                (ContinuousKind::LoseSubtype(_), Scope::This) => {}
+                (ContinuousKind::LoseSubtype(_), _) => return misfit("LoseSubtype", "an ice subtype is lost by the ice that says so"),
                 (ContinuousKind::PlayCost(_) | ContinuousKind::PlayClicks(_), Scope::This) if !played => {
                     return misfit("PlayCost", "only an event or an operation is played");
                 }

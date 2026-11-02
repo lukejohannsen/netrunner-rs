@@ -705,7 +705,13 @@ pub fn narrate_event(
         GameEvent::NumberChosen { amount, secret: false, .. } => format!("chose {amount}"),
         GameEvent::CardNameChosen { card, .. } => format!("named {}", title(card)),
         GameEvent::NumberChosen { amount, secret: true, .. } => format!("chose {amount}, in secret"),
-        GameEvent::PsiBidsRevealed { corp, runner } => format!(
+        // A guess is not a psi game's bid: the Runner's number is spent,
+        // the Corp's is a guess and costs nothing (Mind Game's kin, Push
+        // Your Luck), so the line says which it was rather than "match".
+        GameEvent::PsiBidsRevealed { corp, runner, guessed: true } => format!(
+            "revealed the secret credits: the Corp guessed {corp}, the Runner spent {runner}[credit]"
+        ),
+        GameEvent::PsiBidsRevealed { corp, runner, guessed: false } => format!(
             "revealed the psi game's bids: the Corp {corp}[credit], the Runner {runner}[credit] — the bids {}",
             if corp == runner { "match" } else { "differ" }
         ),

@@ -1586,6 +1586,10 @@ pub enum PendingDecision {
         runner_max: u32,
         on_match: Box<Effect>,
         on_differ: Box<Effect>,
+        /// `Effect::PsiGame::guess`: the Corp's number is a guess, never
+        /// spent, and only the Runner's bid is a bid.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        guess: Option<crate::dsl::PsiGuess>,
         source_card: Option<CardId>,
         /// See `ChooseCards::prompting_card`.
         prompting_card: Option<CardId>,

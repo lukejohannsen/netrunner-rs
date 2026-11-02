@@ -334,6 +334,16 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
                     if !gained.is_empty() {
                         lines.push(format!("A {} while it remains rezzed", ice_type_words(&gained)));
                     }
+                    // A type the table gives or takes beyond the choice
+                    // above: Changeling's, Mother Goddess's.
+                    let printed = def.map(|d| [IceType::Barrier, IceType::CodeGate, IceType::Sentry].into_iter().filter(|kind| d.is_ice_of_type(*kind)).collect::<Vec<_>>()).unwrap_or_default();
+                    let mut expected = printed.clone();
+                    expected.extend(gained.iter().copied().filter(|kind| !printed.contains(kind)));
+                    expected.sort_by_key(|kind| [IceType::Barrier, IceType::CodeGate, IceType::Sentry].iter().position(|k| k == kind));
+                    if card.slot == InstallSlot::Ice && card.card.is_some() && card.ice_types != expected {
+                        let now = if card.ice_types.is_empty() { "none of barrier, code gate and sentry".to_string() } else { format!("a {}", ice_type_words(&card.ice_types)) };
+                        lines.push(format!("Now {now}, as the table stands"));
+                    }
                 }
                 (false, Some(def), _) => lines.push(format!("Unrezzed — rez cost {}", def.cost)),
                 (false, None, _) if card.slot == InstallSlot::Ice => lines.push("Unrezzed — the Corp may rez it as it is approached".to_string()),
@@ -498,7 +508,15 @@ pub fn ice_kind(view: &ClientView, id: InstallId, registry: &CardRegistry) -> Op
         CardType::Ice(kind) => Some(kind),
         _ => None,
     })?;
+    // The types the table says it has (`PublicInstalledCard::ice_types`):
+    // the printed one while it keeps it, else the first it has now.
+    let now = match find(view, id) {
+        Some(Found::Corp { card, .. }) => card.ice_types.clone(),
+        _ => Vec::new(),
+    };
     match printed {
+        kind if now.contains(&kind) => Some(kind),
+        _ if !now.is_empty() => now.first().copied(),
         IceType::Other => Some(gained_ice_types(view, id).first().copied().unwrap_or(IceType::Other)),
         kind => Some(kind),
     }

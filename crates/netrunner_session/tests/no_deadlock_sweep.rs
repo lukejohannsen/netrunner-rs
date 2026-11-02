@@ -802,6 +802,24 @@ fn visible_card_ids(view: &netrunner_core::view::ClientView) -> std::collections
     if let Some(netrunner_core::rules::PendingDecision::ChooseCardName { names, .. }) = &view.pending_decision {
         visible.extend(names.iter().map(|c| c.0.as_str()));
     }
+    // The card the Runner just passed on, written into their own "may"
+    // (`CardTarget::Accessed`, Aeneas Informant's "you may reveal it"): the
+    // Runner accessed it, and a chooser's options are theirs alone
+    // (`masking::mask_pending_decision`). The trigger can park after the
+    // run has ended, with the card facedown again, so the access state is
+    // not there to say so — found at Engine words Stage 10, seed 59.
+    if let Some(netrunner_core::rules::PendingDecision::ChooseEffect { options, .. }) = &view.pending_decision {
+        fn accessed<'e>(effect: &'e netrunner_core::dsl::Effect, into: &mut std::collections::HashSet<&'e str>) {
+            match effect {
+                netrunner_core::dsl::Effect::Reveal(netrunner_core::dsl::CardTarget::Accessed(card)) => {
+                    into.insert(card.0.as_str());
+                }
+                netrunner_core::dsl::Effect::Sequence(effects) => effects.iter().for_each(|effect| accessed(effect, into)),
+                _ => {}
+            }
+        }
+        options.iter().for_each(|option| accessed(option, &mut visible));
+    }
     if let Some(cards) = &view.corp.hq_cards {
         visible.extend(cards.iter().map(|c| c.0.as_str()));
     }

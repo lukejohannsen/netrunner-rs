@@ -103,6 +103,15 @@ pub struct PublicInstalledCard {
     /// its printed 0 against the 6 the view showed.
     #[serde(default)]
     pub this_turn: crate::rules::turn_log::CopyTurn,
+    /// The types a piece of ice has as the table stands
+    /// (`continuous::installed_ice_types`): what it prints, what it gained
+    /// — Lycian Multi-Munition's choice, a declared gain — and not what it
+    /// lost (Changeling with an odd number of advancement tokens). Masked
+    /// with `card`, and empty for anything else. Carried because a client
+    /// cannot ask the continuous layer, and the type on the card is not
+    /// what a breaker meets.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ice_types: Vec<crate::dsl::IceType>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1616,6 +1625,7 @@ fn mask_installed_card(state: &GameState, registry: &CardRegistry, installed: &I
             .flatten(),
         seen_by_runner: installed.seen_by_runner,
         this_turn: installed.this_turn,
+        ice_types: if identity_visible { crate::rules::continuous::installed_ice_types(state, registry, installed.install_id) } else { Vec::new() },
     }
 }
 

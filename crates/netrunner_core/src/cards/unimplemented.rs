@@ -152,7 +152,6 @@ pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const ML_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("on_the_lam", "On the Lam"),
     ("baba_yaga", "Baba Yaga"),
-    ("mind_game", "Mind Game"),
 ];
 
 /// *Quorum* (`quorum`): tranche F5 of the FFG plan.
@@ -286,7 +285,6 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("domestic_sleepers", "Domestic Sleepers"),
     ("mutate", "Mutate"),
-    ("mother_goddess", "Mother Goddess"),
     ("galahad", "Galahad"),
     ("bad_times", "Bad Times"),
     ("cyber_threat", "Cyber Threat"),
@@ -310,7 +308,6 @@ pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *First Contact* (`first_contact`): tranche F8 of the FFG plan.
 pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("kitsune", "Kitsune"),
-    ("wendigo", "Wendigo"),
     ("chronos_project", "Chronos Project"),
     ("lancelot", "Lancelot"),
     ("blackat", "BlacKat"),
@@ -323,7 +320,6 @@ pub(crate) const UAO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("architect", "Architect"),
     ("labyrinthine_servers", "Labyrinthine Servers"),
     ("blue_sun_powering_the_future", "Blue Sun: Powering the Future"),
-    ("changeling", "Changeling"),
     ("inject", "Inject"),
     ("autoscripter", "Autoscripter"),
     ("trade_in", "Trade-In"),
@@ -333,7 +329,6 @@ pub(crate) const UAO_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *All That Remains* (`all_that_remains`): tranche F8 of the FFG plan.
 pub(crate) const ATR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("bifrost_array", "Bifrost Array"),
-    ("lycan", "Lycan"),
     ("merlin", "Merlin"),
     ("utopia_shard", "Utopia Shard"),
 ];
@@ -352,7 +347,6 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("harmony_medtech_biomedical_pioneer", "Harmony Medtech: Biomedical Pioneer"),
     ("medical_breakthrough", "Medical Breakthrough"),
-    ("the_future_perfect", "The Future Perfect"),
     ("shi_kyu", "Shi.Kyū"),
     ("inazuma", "Inazuma"),
     ("shiro", "Shiro"),
@@ -363,7 +357,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("window", "Window"),
     ("bug", "Bug"),
     ("grappling_hook", "Grappling Hook"),
-    ("push_your_luck", "Push Your Luck"),
 ];
 
 /// *Creation and Control* (`creation_and_control`): tranche F9 of the FFG plan.
@@ -443,12 +436,10 @@ pub(crate) const TA_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const CE_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("snitch", "Snitch"),
     ("personal_workshop", "Personal Workshop"),
-    ("chimera", "Chimera"),
 ];
 
 /// *A Study in Static* (`a_study_in_static`): tranche F11 of the FFG plan.
 pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("bullfrog", "Bullfrog"),
     ("net_police", "Net Police"),
     ("oversight_ai", "Oversight AI"),
 ];

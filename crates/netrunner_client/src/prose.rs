@@ -237,6 +237,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::DerezSelf => "derez this card".to_string(),
         Cost::AddInstalledToHand { filter, count } => format!("add {} installed {} to your hand", count, humanize(format!("{filter:?}")).to_lowercase()),
         Cost::ShuffleInstalledIntoDeck { filter, count } => format!("shuffle {} installed {} into your deck", count, humanize(format!("{filter:?}")).to_lowercase()),
+        Cost::AddInstalledToBottomOfDeck { filter, count } => format!("add {} installed {} to the bottom of your deck", count, humanize(format!("{filter:?}")).to_lowercase()),
         Cost::RemoveInstalledFromGame { filter, count } => format!("remove {} installed {} from the game", count, humanize(format!("{filter:?}")).to_lowercase()),
         Cost::AddSelfToHq => "add this card to HQ".to_string(),
         Cost::AddSelfToGrip => "add this card to your grip".to_string(),
@@ -323,8 +324,17 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::LoseCredits(side, n) => format!("{} loses {}", who(*side), plural(*n, "credit", "credits")),
         Effect::LoseCreditsAmount(side, amount) => format!("{} loses credits equal to {}", who(*side), describe_amount(amount)),
         Effect::DealDamage(kind, n) => format!("do {} {} damage", n, damage_word(kind)),
-        Effect::PsiGame { on_match, on_differ } => format!(
+        Effect::PsiGame { on_match, on_differ, guess: None } => format!(
             "play a Psi Game: if the bids match, {}; if they differ, {}",
+            describe_effect(on_match, registry),
+            describe_effect(on_differ, registry)
+        ),
+        Effect::PsiGame { on_match, on_differ, guess: Some(guess) } => format!(
+            "the Runner spends credits in secret and the Corp guesses {}: if the guess is right, {}; if it is wrong, {}",
+            match guess {
+                netrunner_core::dsl::PsiGuess::Amount => "how many",
+                netrunner_core::dsl::PsiGuess::Parity => "even or odd",
+            },
             describe_effect(on_match, registry),
             describe_effect(on_differ, registry)
         ),
@@ -1130,6 +1140,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::AgendaPoints(number) => format!("is worth {} agenda points", signed(number)),
         ContinuousKind::AdvancementRequirement(number) => format!("gets {} advancement requirement", signed(number)),
         ContinuousKind::GainSubtype(subtype) => format!("gains {}", lower(format!("{subtype:?}"))),
+        ContinuousKind::LoseSubtype(subtype) => format!("loses {}", lower(format!("{subtype:?}"))),
         ContinuousKind::BoostsLast(crate_duration) => format!("keeps its strength boosts for the rest of the {}", if matches!(crate_duration, netrunner_core::dsl::EffectDuration::Turn) { "turn" } else { "run" }),
         ContinuousKind::RevealedWhileAccessed => "is revealed while it is accessed".to_string(),
         ContinuousKind::RezzedAsNonIce => "can be rezzed any time a non-ice card could be".to_string(),
@@ -1381,6 +1392,15 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
         PendingDecision::ChooseNumber { text, min, max, .. } if !text.is_empty() => asks(format!("{text} ({min} to {max})")),
         PendingDecision::ChooseNumber { min, max, .. } => asks(format!("choose a number from {min} to {max}")),
         PendingDecision::ChooseCardName { text, names, .. } => asks(format!("{} ({} names)", if text.is_empty() { "choose a card name" } else { text.as_str() }, names.len())),
+        PendingDecision::PsiGame { corp_bid: netrunner_core::rules::PsiBid::Awaiting, guess: Some(netrunner_core::dsl::PsiGuess::Parity), .. } => {
+            asks("guess whether the Runner spent an even (0) or odd (1) number of credits".to_string())
+        }
+        PendingDecision::PsiGame { corp_bid: netrunner_core::rules::PsiBid::Awaiting, guess: Some(netrunner_core::dsl::PsiGuess::Amount), corp_max, .. } => {
+            asks(format!("guess how many credits the Runner spent, 0 to {corp_max}"))
+        }
+        PendingDecision::PsiGame { guess: Some(_), runner_max, .. } => {
+            asks(format!("spend 0 to {runner_max} credits in secret; the Corp has guessed"))
+        }
         PendingDecision::PsiGame { corp_bid: netrunner_core::rules::PsiBid::Awaiting, corp_max, .. } => {
             asks(format!("play a Psi Game: the Corp bids 0 to {corp_max} credits, in secret"))
         }

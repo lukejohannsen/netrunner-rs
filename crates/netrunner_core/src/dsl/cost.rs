@@ -315,6 +315,14 @@ pub enum Cost {
     /// the hand, and a cost is paid before what it pays for (CR 1.16), so
     /// the shuffle cannot be an effect after it.
     ShuffleInstalledIntoDeck { filter: CardFilter, count: u32 },
+    /// `count` of the payer's own installed cards that `filter` admits go
+    /// to the bottom of their deck, unshuffled — Mind Game's "the Runner
+    /// must add 1 installed Runner card to the bottom of their stack as an
+    /// additional cost to jack out". Picked as `ShuffleInstalledIntoDeck`
+    /// picks. Composition didn't work: that cost shuffles the deck after,
+    /// and a card at the bottom is one the Runner knows they will not draw
+    /// soon, which is the point of the price.
+    AddInstalledToBottomOfDeck { filter: CardFilter, count: u32 },
     /// `count` of the payer's own installed cards that `filter` admits are
     /// removed from the game — Rosetta 2.0's "[click], remove an installed
     /// program from the game: … lowering the install cost by the cost of
@@ -418,7 +426,7 @@ impl Cost {
 
     pub fn may_ask(&self) -> bool {
         match self {
-            Cost::Trash { .. } | Cost::Forfeit(_) | Cost::Derez { .. } | Cost::CreditsX { .. } | Cost::AddInstalledToHand { .. } | Cost::ShuffleInstalledIntoDeck { .. } | Cost::RemoveInstalledFromGame { .. } | Cost::VirusCounters(_) => true,
+            Cost::Trash { .. } | Cost::Forfeit(_) | Cost::Derez { .. } | Cost::CreditsX { .. } | Cost::AddInstalledToHand { .. } | Cost::ShuffleInstalledIntoDeck { .. } | Cost::AddInstalledToBottomOfDeck { .. } | Cost::RemoveInstalledFromGame { .. } | Cost::VirusCounters(_) => true,
             Cost::AnyOf(costs) | Cost::AllOf(costs) => costs.iter().any(Cost::may_ask),
             _ => false,
         }

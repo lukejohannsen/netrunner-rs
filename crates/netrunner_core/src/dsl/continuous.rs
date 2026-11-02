@@ -285,6 +285,15 @@ pub enum ContinuousKind {
     AdvancementRequirement(Number),
     /// The ice gains a subtype it does not print — Chromatophores.
     GainSubtype(IceType),
+    /// The ice loses a subtype it prints — Changeling's "while Changeling
+    /// has an odd number of advancement tokens on it, it gains **sentry**
+    /// and loses **barrier**" (with a `GainSubtype` beside it, under the
+    /// same `condition`), and Lycan's and Wendigo's. Asked with every gain
+    /// by the one question, `continuous::ice_is`, and a loss wins over a
+    /// gain of the same type. Composition didn't work: a type was only ever
+    /// added to what the card prints, and every reader asked "the type it
+    /// prints, or one it gained".
+    LoseSubtype(IceType),
     /// A strength boost that would last a shorter while lasts this long
     /// instead — GAMEDRAGON™ Pro's "abilities that increase its strength
     /// last for the remainder of the run" (`Run`) and Gebrselassie's "for

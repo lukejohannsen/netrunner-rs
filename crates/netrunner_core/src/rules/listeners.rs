@@ -430,6 +430,10 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::CardsLookedAt { .. } => Vec::new(),
         GameEvent::StrengthBoosted { card_id, install, .. } => vec![moment(Trigger::OnStrengthBoosted, &card(card_id, Some(*install)), Some(Side::Runner))],
         // Both players reveal (CR 10.14.6c), so it is nobody's in particular.
+        // A guess at the Runner's lone bid is not both players revealing:
+        // the cards that hear it in the pool are the Corp's, about its own
+        // bid or both (Hyoubu Research Facility, Fumiko Yamamori).
+        GameEvent::PsiBidsRevealed { guessed: true, .. } => Vec::new(),
         GameEvent::PsiBidsRevealed { .. } => vec![moment(Trigger::OnSecretCreditsRevealed, &About::Nothing, None)],
         GameEvent::CardExposed { install, card: exposed } => vec![moment(Trigger::OnCardExposed, &card(exposed, Some(*install)), None)],
         GameEvent::DrewCard { side, card: drawn } => vec![moment(Trigger::OnCardDrawn, &About::Card { card: drawn.clone(), install: None, installed: false }, Some(*side))],
@@ -922,6 +926,18 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
                 &named
             } else {
                 filter
+            };
+            // A piece of ice on the table is the type the table says
+            // (`continuous::ice_is`): Changeling with an odd number of
+            // advancement tokens is no barrier to Berserker.
+            let typed;
+            let filter = match install.filter(|_| filter.mentions_ice_type()).filter(|install| state.find_corp_install(*install).is_some()) {
+                Some(install) => {
+                    let types = crate::rules::continuous::installed_ice_types(state, registry, install);
+                    typed = filter.clone().with_ice_types(&|ice_type| types.contains(&ice_type));
+                    &typed
+                }
+                None => filter,
             };
             registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
                 && crate::rules::pending_choice::copy_matches(state, &placed(state, filter, listener_card, listening, here), *install)

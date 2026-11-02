@@ -961,7 +961,15 @@ pub enum GameEvent {
     /// secretly spent credits" (`Trigger::OnSecretCreditsRevealed`, CR
     /// 10.14.5), dispatched once the bids are paid for and the outcome has
     /// resolved (`pending_choice::finish_psi_game`).
-    PsiBidsRevealed { corp: u32, runner: u32 },
+    PsiBidsRevealed {
+        corp: u32,
+        runner: u32,
+        /// The Corp's number was a guess at the Runner's lone bid
+        /// (`Effect::PsiGame::guess`): unspent, and no occurrence of
+        /// "you and the Runner reveal secretly spent credits".
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        guessed: bool,
+    },
     /// `Effect::OfferPaidChoice` parked a `state::PendingPaidChoice`,
     /// awaiting `PlayerAction::AcceptPendingPaidChoice`/
     /// `DeclinePendingPaidChoice`.

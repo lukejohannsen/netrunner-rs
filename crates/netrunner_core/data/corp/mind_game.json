@@ -1,0 +1,64 @@
+{
+  "id": "mind_game",
+  "title": "Mind Game",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 0,
+  "strength": 4,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "You and the Runner secretly spend 0[credit], 1[credit], or 2[credit]. Reveal spent credits. If you and the Runner spent a different number of credits, choose another server. The Runner moves to the outermost position of that server instead of passing this ice. For the remainder of this run, the Runner must add 1 installed Runner card to the bottom of their stack as an additional cost to jack out. The Runner may jack out.",
+      "effect": {
+        "PsiGame": {
+          "on_match": {
+            "Sequence": []
+          },
+          "on_differ": {
+            "Sequence": [
+              {
+                "ChooseServer": {
+                  "other_than_attacked": true,
+                  "then": {
+                    "MoveRunToOutermost": null
+                  }
+                }
+              },
+              {
+                "ImposeAdditionalCost": {
+                  "on": [
+                    "JackOut"
+                  ],
+                  "cost": {
+                    "AddInstalledToBottomOfDeck": {
+                      "filter": "Any",
+                      "count": 1
+                    }
+                  },
+                  "until": "Run"
+                }
+              },
+              {
+                "OfferPaidChoice": {
+                  "side": "Runner",
+                  "cost": "JackOut",
+                  "if_paid": {
+                    "Sequence": []
+                  },
+                  "if_declined": {
+                    "Sequence": []
+                  },
+                  "text": "The Runner may jack out"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 11092,
+  "is_playable": true
+}
