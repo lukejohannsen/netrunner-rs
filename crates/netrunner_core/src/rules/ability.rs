@@ -821,6 +821,15 @@ pub fn evaluate_effect(
                 crate::dsl::Remembered::SelectedCard => Lingering::ChosenCard(ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?),
                 crate::dsl::Remembered::CardType(card_type) => Lingering::ChosenCardType(card_type.clone()),
                 crate::dsl::Remembered::IceType(ice_type) => Lingering::ChosenIceType(*ice_type),
+                crate::dsl::Remembered::EncounteredIce => Lingering::ChosenCard(
+                    state
+                        .active_run
+                        .as_ref()
+                        .filter(|run| run.phase == crate::rules::run::RunPhase::EncounterIce)
+                        .and_then(|run| run.ice.get(run.position))
+                        .map(|ice| ice.install_id)
+                        .ok_or(RulesError::NotInEncounter)?,
+                ),
                 crate::dsl::Remembered::ApproachedIce => Lingering::ChosenCard(
                     state
                         .active_run
@@ -1793,6 +1802,31 @@ pub fn evaluate_effect(
             for subroutine in &subroutines {
                 events.push(GameEvent::SubroutineGained { card_id: ice.card_id.clone(), text: subroutine.text.clone() });
             }
+            run::renumber_subroutines(ice);
+            Ok(events)
+        }
+
+        // TL;DR: every subroutine of the encountered ice twice, each copy
+        // behind its original.
+        Effect::CopyEachSubroutine => {
+            let Some(install) = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position)).map(|ice| ice.install_id) else {
+                return Ok(Vec::new());
+            };
+            if !crate::rules::active::may_have_granted(state, registry, install) {
+                return Ok(Vec::new());
+            }
+            let run = state.active_run.as_mut().expect("found above");
+            let position = run.position;
+            let ice = &mut run.ice[position];
+            let mut events = Vec::new();
+            let mut list = Vec::with_capacity(ice.subroutines.len() * 2);
+            for subroutine in std::mem::take(&mut ice.subroutines) {
+                let copy = run::EncounteredSubroutine { id: 0, definition: subroutine.definition.clone(), status: SubroutineStatus::Pending, gained: true };
+                events.push(GameEvent::SubroutineGained { card_id: ice.card_id.clone(), text: copy.definition.text.clone() });
+                list.push(subroutine);
+                list.push(copy);
+            }
+            ice.subroutines = list;
             run::renumber_subroutines(ice);
             Ok(events)
         }
@@ -6112,6 +6146,21 @@ pub fn check_requirement(
             });
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::EncounteringChosenIceIfAny => {
+            let chosen = ctx.acting_install.and_then(|this| crate::rules::lingering::chosen_card(state, this));
+            let encountered = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position)).map(|ice| ice.install_id);
+            match (chosen, encountered) {
+                (_, None) => Err(RulesError::RequirementNotMet),
+                (None, Some(_)) => Ok(()),
+                (Some(chosen), Some(encountered)) if chosen == encountered => Ok(()),
+                _ => Err(RulesError::RequirementNotMet),
+            }
+        }
+        EffectRequirement::DuringRunOnChosenServer => {
+            let chosen = ctx.acting_card.and_then(|card| crate::rules::lingering::chosen_server(state, card, ctx.acting_install));
+            let on = chosen.is_some_and(|chosen| state.run_in_progress().is_some_and(|run| run.server == chosen && !matches!(run.phase, RunPhase::Ended)));
+            if on { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::EncounteringChosenIceType => {
             let chosen = ctx.acting_install.and_then(|this| crate::rules::lingering::chosen_ice_type(state, this));
             let encountering = chosen.is_some_and(|chosen| {
@@ -6533,6 +6582,12 @@ fn break_pending(
         SubroutineBreakCount::Fixed(n) => (*n as usize).min(pending.len()),
         SubroutineBreakCount::ChosenNumber => 0,
         SubroutineBreakCount::AllButOne => pending.len().saturating_sub(1),
+        SubroutineBreakCount::EndTheRun(n) => {
+            let ice = state.active_run.as_ref().and_then(|run| run.ice.get(run.position));
+            let ends_the_run = |idx: usize| ice.and_then(|ice| ice.subroutines.get(idx)).is_some_and(|subroutine| subroutine.definition.effect == Effect::EndTheRun);
+            pending.retain(|(idx, _)| ends_the_run(*idx));
+            (*n as usize).min(pending.len())
+        }
         SubroutineBreakCount::Last => {
             let last = state.active_run.as_ref().and_then(|run| run.ice.get(run.position)).and_then(|ice| ice.subroutines.last()).map(|subroutine| subroutine.id);
             pending.retain(|(idx, _)| Some(*idx) == last);
@@ -7053,6 +7108,8 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::EncounteringInnermostIce
         | EffectRequirement::FullyBrokeTheEncounteredIce
         | EffectRequirement::EncounteringChosenIce
+        | EffectRequirement::EncounteringChosenIceIfAny
+        | EffectRequirement::DuringRunOnChosenServer
         | EffectRequirement::EncounteringChosenIceType
         | EffectRequirement::ResolvingThisIcesSubroutines
         | EffectRequirement::DuringEncounter

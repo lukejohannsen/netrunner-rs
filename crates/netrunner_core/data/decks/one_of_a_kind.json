@@ -3,7 +3,7 @@
   "name": "One of a Kind",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Nathaniel “Gnat” Hall: One-of-a-Kind, Reign and Reverie's Anarch identity, a credit each turn the grip holds two cards or fewer. Free Spirit's frame, with two Hijacked Router for its two Chastushka, a credit lost on every server the Corp creates and three for trashing it on Archives, and Algernon, an Adam program at 5 influence, for its Chain Reaction: a click for 2 credits, trashed on a turn with no successful run; 7 of its 15 influence. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 2.",
+  "description": "Not a published list: built so the sweeps reach Nathaniel “Gnat” Hall: One-of-a-Kind, Reign and Reverie's Anarch identity, a credit each turn the grip holds two cards or fewer. Free Spirit's frame, with two Hijacked Router for its two Chastushka, a credit lost on every server the Corp creates and three for trashing it on Archives, and Algernon, an Adam program at 5 influence, for its Chain Reaction: a click for 2 credits, trashed on a turn with no successful run; 7 of its 15 influence. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 2. Engine words Stage 16 took its two Mimic and its Corroder for two Endless Hunger and a BlacKat, which other decks keep.",
   "style": [
     "rig",
     "dismantle"
@@ -21,10 +21,6 @@
     {
       "card": "ice_carver",
       "count": 2
-    },
-    {
-      "card": "corroder",
-      "count": 1
     },
     {
       "card": "hantu",
@@ -91,10 +87,6 @@
       "count": 2
     },
     {
-      "card": "mimic",
-      "count": 2
-    },
-    {
       "card": "liberated_account",
       "count": 2
     },
@@ -109,6 +101,14 @@
     {
       "card": "en_passant",
       "count": 2
+    },
+    {
+      "card": "endless_hunger",
+      "count": 2
+    },
+    {
+      "card": "blackat",
+      "count": 1
     }
   ]
 }

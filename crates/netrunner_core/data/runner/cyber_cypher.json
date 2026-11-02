@@ -1,0 +1,65 @@
+{
+  "id": "cyber_cypher",
+  "title": "Cyber-Cypher",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "strength": 4,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseServer": {}
+        }
+      ],
+      "text": "When you install this program, choose a server."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 code gate subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          "DuringRunOnChosenServer"
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          "DuringRunOnChosenServer"
+        ]
+      }
+    }
+  ],
+  "built_from": 3044,
+  "is_playable": true
+}

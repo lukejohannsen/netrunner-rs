@@ -517,6 +517,9 @@ pub(super) fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &Ru
                     SubroutineBreakCount::Last => 1,
                     // Never clears the ice: one is always left.
                     SubroutineBreakCount::AllButOne => return,
+                    // Clears it only if every pending subroutine is an
+                    // "End the run.", which a count does not say.
+                    SubroutineBreakCount::EndTheRun(_) => return,
                 };
                 if let Some(cost) = spend(activations) {
                     keep_min(&mut cheapest_break, cost);
@@ -531,6 +534,9 @@ pub(super) fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &Ru
                     SubroutineBreakCount::Last => 1,
                     // Never clears the ice: one is always left.
                     SubroutineBreakCount::AllButOne => return,
+                    // Clears it only if every pending subroutine is an
+                    // "End the run.", which a count does not say.
+                    SubroutineBreakCount::EndTheRun(_) => return,
                 };
                 if let Some(cost) = spend(activations) {
                     keep_min(&mut cheapest_outright, cost);
@@ -670,6 +676,7 @@ fn unconditional_reach(requirement: Option<&EffectRequirement>, state: &GameStat
         None | Some(EffectRequirement::DuringEncounter) => true,
         Some(EffectRequirement::EncounteringHostIce) => card.hosted_on_ice == Some(ice.install_id),
         Some(EffectRequirement::EncounteringChosenIce) => netrunner_core::rules::lingering::chosen_card(state, card.install_id) == Some(ice.install_id),
+        Some(EffectRequirement::EncounteringChosenIceIfAny) => netrunner_core::rules::lingering::chosen_card(state, card.install_id).is_none_or(|chosen| chosen == ice.install_id),
         Some(EffectRequirement::Encountering(subtype)) => ice_is(state, ice, *subtype, registry),
         // Poison Vial's "only if you have already broken a subroutine
         // during this encounter", read off the piece (Phase 5 §75):

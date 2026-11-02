@@ -2347,9 +2347,29 @@ pub(crate) fn resolve_choose_server(
     if remember {
         let card = source_card.ok_or(RulesError::UnresolvedCardTarget)?;
         let in_play = source_install.filter(|handle| state.corp.play_area.iter().any(|played| played.handle == *handle));
-        let until = match in_play {
-            Some(handle) => crate::rules::lingering::Until::WhileInPlay(handle),
-            None => crate::rules::lingering::Until::EndOfTurn(state.turn),
+        // 9.10.3b is the "when your turn begins" ability that does nothing
+        // but choose (Tsakhia, Security Testing, Patron, Tracker); any other
+        // choice an installed card makes is kept while that copy is on the
+        // table (9.10.3c) — Plague's and Temüjin Contract's "when you
+        // install", which read "the chosen server" turns later, and
+        // Cyber-Cypher's, which is the only server it may be used on. Read
+        // off the card: a choice made by a turn-beginning trigger. Until
+        // Cyber-Cypher every remembered choice by an install ended with
+        // the turn, and Plague grew only in the turn it was installed.
+        let installed = source_install.filter(|handle| in_play.is_none() && (state.find_rig_install(*handle).is_some() || state.find_corp_install(*handle).is_some()));
+        let chosen_as_a_turn_begins = registry.get(&card).is_some_and(|definition| {
+            definition.triggers.iter().filter(|trigger| trigger.trigger == crate::dsl::Trigger::OnTurnStart).any(|trigger| {
+                let mut chooses = false;
+                for effect in &trigger.effects {
+                    effect.for_each_effect(&mut |inner| chooses |= matches!(inner, Effect::ChooseServer { .. }));
+                }
+                chooses
+            })
+        });
+        let until = match (in_play, installed) {
+            (Some(handle), _) => crate::rules::lingering::Until::WhileInPlay(handle),
+            (None, Some(install)) if !chosen_as_a_turn_begins => crate::rules::lingering::Until::WhileInstalled(install),
+            _ => crate::rules::lingering::Until::EndOfTurn(state.turn),
         };
         // An install's choice is that copy's, so a second copy chooses and
         // spends its own (`lingering::chosen_server`); a lockdown's is the

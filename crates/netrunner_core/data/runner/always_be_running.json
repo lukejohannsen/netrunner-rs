@@ -1,0 +1,50 @@
+{
+  "id": "always_be_running",
+  "title": "Always Be Running",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "SpendClickButToRun"
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "while": {
+        "And": [
+          "DuringYourTurn",
+          "NoActionTakenThisTurn"
+        ]
+      },
+      "text": "The first [click] you spend each turn must be spent to take the basic action to play an event or the basic action to run a server. You cannot take the action to play an event this way except if you play a run event."
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Once per turn → Lose [click][click]: Break 1 subroutine.",
+      "cost": {
+        "LoseClicks": 2
+      },
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          "OncePerTurn"
+        ]
+      }
+    }
+  ],
+  "built_from": 9041,
+  "is_playable": true
+}

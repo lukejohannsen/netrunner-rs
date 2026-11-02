@@ -184,8 +184,12 @@ pub fn end_turn(state: &GameState, registry: &CardRegistry) -> Result<(GameState
 /// before the click is even gained; and lifting the prohibition when it
 /// has nothing left to allow, which would let the click buy a repeat.
 /// Asked only while the prohibition binds, so the probe is rare.
+///
+/// Always Be Running's first [click] is the same case for the Runner
+/// (`Prohibition::SpendClickButToRun`): with no server they may run and no
+/// run event they may play, there is no action the click may be spent on.
 fn forgoes_a_different_action(state: &GameState, registry: &CardRegistry, side: Side) -> bool {
-    continuous::cannot(state, registry, Prohibition::RepeatAnAction)
+    (continuous::cannot(state, registry, Prohibition::RepeatAnAction) || (side == Side::Runner && continuous::cannot(state, registry, Prohibition::SpendClickButToRun)))
         && !crate::rules::legal_actions::has_a_move_but_ending_the_turn(state, registry, side)
 }
 
