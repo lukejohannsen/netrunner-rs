@@ -298,13 +298,22 @@ const INSTALL_PROGRAM_ON_HOST_LEN: usize = MAX_HAND_SIZE * MAX_INSTALLED_PER_SID
 const CHOOSE_CARD_NAME_MORE_START: usize = INSTALL_PROGRAM_ON_HOST_START + INSTALL_PROGRAM_ON_HOST_LEN;
 const CHOOSE_CARD_NAME_MORE_LEN: usize = MAX_NAME_OPTIONS - FIRST_NAME_SLOTS;
 
+/// `InstallCard` onto a Corp card (Full Immersion RecStudio's "can host up
+/// to 2 assets and/or agendas", `PlayerAction::InstallCard::host`) — every
+/// HQ slot crossed with every Corp install slot, laid out as a resource
+/// onto a rig card is. The server and slot are the host's, so neither is
+/// in the index, and a hosted install never trashes first. **Appended**
+/// (Engine words Stage 19), so nothing moved: 6333 → 6845.
+const INSTALL_CARD_ON_HOST_START: usize = CHOOSE_CARD_NAME_MORE_START + CHOOSE_CARD_NAME_MORE_LEN;
+const INSTALL_CARD_ON_HOST_LEN: usize = MAX_HAND_SIZE * MAX_INSTALLED_PER_SIDE;
+
 /// A fixed, categorical index space over `PlayerAction` — see the module
 /// doc comment. A zero-sized marker type; every operation is an associated
 /// function/const, since the encoding itself carries no per-instance state.
 pub struct ActionSpace;
 
 impl ActionSpace {
-    pub const SIZE: usize = CHOOSE_CARD_NAME_MORE_START + CHOOSE_CARD_NAME_MORE_LEN;
+    pub const SIZE: usize = INSTALL_CARD_ON_HOST_START + INSTALL_CARD_ON_HOST_LEN;
 
     /// The flat index `action` occupies given `state` — `None` if `action`
     /// can't be placed (a dynamic field exceeds its cap, or a
@@ -335,7 +344,14 @@ impl ActionSpace {
             PlayerAction::GainCreditClick { side } => Some(GAIN_CREDIT_START + side_index(*side)),
             PlayerAction::PassPriority { side } => Some(PASS_PRIORITY_START + side_index(*side)),
 
-            PlayerAction::InstallCard { card_id, zone, slot, trash_first } => {
+            PlayerAction::InstallCard { card_id, trash_first: false, host: Some(host), .. } => {
+                let hand_slot = bounded_position(&state.corp.hq, card_id, MAX_HAND_SIZE)?;
+                let host_slot = bounded_position_installed(&state.corp.installed, *host, MAX_INSTALLED_PER_SIDE)?;
+                Some(INSTALL_CARD_ON_HOST_START + hand_slot * MAX_INSTALLED_PER_SIDE + host_slot)
+            }
+            // Never offered: a hosted install trashes nothing first.
+            PlayerAction::InstallCard { trash_first: true, host: Some(_), .. } => None,
+            PlayerAction::InstallCard { card_id, zone, slot, trash_first, host: None } => {
                 let hand_slot = bounded_position(&state.corp.hq, card_id, MAX_HAND_SIZE)?;
                 let zone_idx = encode_zone(*zone)?;
                 let slot_idx = encode_install_slot(*slot);
@@ -554,7 +570,7 @@ impl ActionSpace {
                 let zone = decode_zone(rem / 2)?;
                 let slot = decode_install_slot(rem % 2)?;
                 let card_id = state.corp.hq.get(hand_slot)?.clone();
-                return Some(PlayerAction::InstallCard { card_id, zone, slot, trash_first });
+                return Some(PlayerAction::InstallCard { card_id, zone, slot, trash_first, host: None });
             }
         }
         if let Some(local) = in_segment(index, REZ_ICE_START, REZ_ICE_LEN) {
@@ -720,6 +736,11 @@ impl ActionSpace {
         if let Some(local) = in_segment(index, CHOOSE_CARD_NAME_MORE_START, CHOOSE_CARD_NAME_MORE_LEN) {
             let Some(crate::rules::state::PendingDecision::ChooseCardName { names, .. }) = &state.pending_decision else { return None };
             return names.get(FIRST_NAME_SLOTS + local).map(|card| PlayerAction::ChooseCardName { card: card.clone() });
+        }
+        if let Some(local) = in_segment(index, INSTALL_CARD_ON_HOST_START, INSTALL_CARD_ON_HOST_LEN) {
+            let card_id = state.corp.hq.get(local / MAX_INSTALLED_PER_SIDE)?.clone();
+            let host = state.corp.installed.get(local % MAX_INSTALLED_PER_SIDE)?;
+            return Some(PlayerAction::InstallCard { card_id, zone: host.server, slot: InstallSlot::Root, trash_first: false, host: Some(host.install_id) });
         }
         None
     }
@@ -1653,7 +1674,11 @@ mod tests {
         // Stage 11t, Djinn), appended.** Hand slot by rig slot (512).
         // **4797 → 6333: the names past the first 512 a card can choose
         // (Red Sand Stage 1, the Corp's 522), appended.**
-        assert_eq!(ActionSpace::SIZE, 6333);
+        // **6333 → 6845: a Corp card installed onto another (Engine words
+        // Stage 19, Full Immersion RecStudio), appended.** HQ slot by Corp
+        // install slot (512).
+        assert_eq!(ActionSpace::SIZE, 6845);
+        assert_eq!(INSTALL_CARD_ON_HOST_START, 6333, "appended after the names past the first 512");
         assert_eq!(CHOOSE_CARD_NAME_MORE_START, 4797, "appended after a program onto a rig card");
         assert_eq!(INSTALL_PROGRAM_ON_HOST_START, 4285, "appended after hardware onto a rig card");
         assert_eq!(INSTALL_HARDWARE_ON_HOST_START, 3773, "appended after a card name chosen");

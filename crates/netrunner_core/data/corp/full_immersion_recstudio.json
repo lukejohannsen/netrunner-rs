@@ -1,0 +1,47 @@
+{
+  "id": "full_immersion_recstudio",
+  "title": "Full Immersion RecStudio",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 3,
+  "continuous": [
+    {
+      "kind": "MayHost",
+      "applies_to": {
+        "InstallingOntoThis": {
+          "AnyOf": [
+            {
+              "CardType": "Asset"
+            },
+            {
+              "CardType": "Agenda"
+            }
+          ]
+        }
+      },
+      "while": {
+        "Not": {
+          "AmountAtLeast": [
+            "HostedCards",
+            2
+          ]
+        }
+      },
+      "text": "Full Immersion RecStudio can host up to 2 assets and/or agendas."
+    },
+    {
+      "kind": {
+        "TrashCost": {
+          "per": 3,
+          "of": "HostedCards"
+        }
+      },
+      "applies_to": "This",
+      "text": "The trash cost of Full Immersion RecStudio is increased by 3 for each card hosted on it."
+    }
+  ],
+  "triggers": [],
+  "built_from": 10108,
+  "is_playable": true
+}

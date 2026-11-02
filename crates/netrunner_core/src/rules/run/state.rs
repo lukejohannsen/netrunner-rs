@@ -166,6 +166,19 @@ pub struct EncounterTally {
     /// later one. Public, as a reveal is.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub revealed: Vec<crate::dsl::CardId>,
+    /// The order the Runner has declared for this encounter's unbroken
+    /// subroutines, by index, first to resolve first — Street Magic's
+    /// "Unbroken subroutines resolve in the order of your choice"
+    /// (`ContinuousKind::OrdersSubroutines`, CR 9.8.7d). Declared one
+    /// subroutine at a time before any resolves (`Effect::
+    /// DeclareSubroutineNext`), the last undeclared one taking the last
+    /// place, and read by `ability::resolve_unbroken_subroutines`, which
+    /// resolves what is declared first and any subroutine left out of it
+    /// (gained after the declaration) in its printed place after. On the
+    /// tally, so it ends with the encounter; state, because each pick is
+    /// an action. Public: both players saw each pick.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub order: Vec<usize>,
 }
 
 
@@ -941,6 +954,18 @@ pub struct RunState {
     /// `passed` is: a bot's sample of a run takes nothing as broken.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fully_broken_ice: Vec<crate::rules::state::InstallId>,
+    /// The Runner's installs whose abilities broke at least one subroutine
+    /// during this run, each once, in the order they first broke one —
+    /// Will-o'-the-Wisp's "1 installed icebreaker that was used to break at
+    /// least 1 subroutine during this run" (`CardFilter::
+    /// BrokeASubroutineDuringThisRun`). Pushed by `run::break_subroutine`,
+    /// the one place a subroutine is broken, from its `by`; a click is no
+    /// install's. Not `used`: a pump is a use, and the encounter's
+    /// `EncounterTally::breakers` is reset as each encounter begins, so
+    /// neither says it. The engine's, as `used` is: a bot's sample of a run
+    /// takes nothing as broken, and each break is a line of the log.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub broke_with: Vec<crate::rules::state::InstallId>,
     /// The piece of ice encountered last this run, by its handle — set as
     /// each encounter begins and kept into `CompletedRun::last_encountered`
     /// for Always Have a Backup Plan's "the last piece of ice you
@@ -1105,6 +1130,7 @@ impl Default for RunState {
             rezzed: Vec::new(),
             used: Vec::new(),
             fully_broken_ice: Vec::new(),
+            broke_with: Vec::new(),
             last_encountered: None,
             on_success_card: None,
             on_success_install: None,

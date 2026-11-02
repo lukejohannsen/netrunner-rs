@@ -10,7 +10,7 @@ Shared by `diagnose_policy_head.py` and `train_alpha_netrunner.py` so the
 two cannot disagree about which slots are which.
 """
 
-SIZE = 6333
+SIZE = 6845
 
 _H, _I, _REMOTE, _ABIL, _SUBS = 16, 32, 10, 4, 8
 _DECK, _ACCESS, _COST, _PENDING, _TRACE, _NUMBER = 50, 32, 2, 4, 30, 30
@@ -58,6 +58,9 @@ _SEGMENT_LENGTHS = [
     # Appended (Red Sand Stage 1): the names past the first 512, once the
     # Corp's pool outgrew them.
     ("choose card name, past 512", _MORE_NAMES),
+    # Appended (Engine words Stage 19): a Corp card installed onto another
+    # (Full Immersion RecStudio), HQ slot by Corp install slot.
+    ("install card onto a host", _H * _I),
 ]
 
 SEGMENTS = []

@@ -530,6 +530,9 @@ fn instance_matches_filter(
             .and_then(|installs| installs.get(position).copied())
             .is_some_and(|install| owning_side(chooser, zone) == Side::Runner && used_during_last_run(state, install)),
         CardFilter::RezzedDuringThisRun => corp_install.is_some_and(|c| state.active_run.as_ref().is_some_and(|run| run.rezzed.contains(&c.install_id))),
+        CardFilter::BrokeASubroutineDuringThisRun => zone_install_ids(state, chooser, zone)
+            .and_then(|installs| installs.get(position).copied())
+            .is_some_and(|install| owning_side(chooser, zone) == Side::Runner && broke_during_this_run(state, install)),
         CardFilter::FullyBrokenDuringThisRun => corp_install.is_some_and(|c| state.active_run.as_ref().is_some_and(|run| run.fully_broken_ice.contains(&c.install_id))),
         CardFilter::InRootOf(server) => corp_install.is_some_and(|c| c.server == *server && c.slot == InstallSlot::Root),
         CardFilter::InRootOfThisServer => false,
@@ -736,6 +739,12 @@ fn used_during_last_run(state: &GameState, install: InstallId) -> bool {
     state.last_completed_run.as_ref().is_some_and(|run| run.used.contains(&install))
 }
 
+/// Whether `install` broke a subroutine during the run in progress
+/// (`CardFilter::BrokeASubroutineDuringThisRun`).
+fn broke_during_this_run(state: &GameState, install: InstallId) -> bool {
+    state.active_run.as_ref().is_some_and(|run| run.broke_with.contains(&install))
+}
+
 pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, install: Option<InstallId>) -> bool {
     use crate::dsl::CardFilter;
     let Some(install) = install else { return true };
@@ -750,6 +759,9 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
     }
     if let CardFilter::UsedDuringLastRun = filter {
         return used_during_last_run(state, install);
+    }
+    if let CardFilter::BrokeASubroutineDuringThisRun = filter {
+        return broke_during_this_run(state, install);
     }
     if let CardFilter::RezzedDuringThisRun = filter {
         return state.active_run.as_ref().is_some_and(|run| run.rezzed.contains(&install));

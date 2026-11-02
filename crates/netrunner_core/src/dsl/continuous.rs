@@ -397,6 +397,18 @@ pub enum ContinuousKind {
     /// the declaration, and everything that hears it, is withheld
     /// (`engine::complete_run`). About `RunsOnThisServer`.
     CannotBeDeclaredSuccessful,
+    /// Its controller chooses the order the unbroken subroutines of each
+    /// encounter resolve in — Street Magic's "Unbroken subroutines resolve
+    /// in the order of your choice" (`Scope::Controller`). CR 9.8.7d: if it
+    /// is active when step 6.9.3c is first reached in an encounter, the
+    /// Runner declares an order for the unbroken subroutines before any of
+    /// them resolves, and the Corp resolves them in it. Asked by
+    /// `ability::resolve_unbroken_subroutines` through `continuous::
+    /// subroutine_orderer`; the declaration is `EncounterTally::order`.
+    /// Composition didn't work: the order of subroutines was the loop's,
+    /// and nothing a card said could reach it. No payload: the order is
+    /// the Runner's to declare, one subroutine at a time.
+    OrdersSubroutines,
     /// What the Runner pays, as an additional cost, to run a server — Earth
     /// Station: SEA Headquarters' "As an additional cost to run HQ, the
     /// Runner must pay 1[credit]" and its flip side's "…to run a remote

@@ -2249,8 +2249,12 @@ impl CardDefinition {
                 }
                 (ContinuousKind::DamageDone { .. }, Scope::Controller) => {}
                 (ContinuousKind::DamageDone { .. }, _) => return misfit("DamageDone", "the damage a player would do is theirs, so it applies to the card's `Controller`"),
+                // Full Immersion RecStudio's "can host up to 2 assets and/or
+                // agendas": a Corp asset has cards installed onto it by the
+                // install action (`PlayerAction::InstallCard::host`).
+                (ContinuousKind::MayHost, Scope::InstallingOntoThis(_)) if self.side == Side::Corp && self.card_type == CardType::Asset => {}
                 (_, Scope::InstallingOntoThis(_)) if !hosted || self.side != Side::Runner => {
-                    return misfit("InstallingOntoThis", "only a Runner's installed card has cards installed onto it");
+                    return misfit("InstallingOntoThis", "only a Runner's installed card, or a Corp asset that may host, has cards installed onto it");
                 }
                 (ContinuousKind::InstallCost(_), Scope::This | Scope::Installing(_) | Scope::InstallingOntoThis(_) | Scope::OpponentInstalling(_) | Scope::IceNotInnermost) => {}
                 (ContinuousKind::InstallCost(_), _) => return misfit("InstallCost", "an install cost is this card's own or that of a card being `Installing`"),
@@ -2293,6 +2297,8 @@ impl CardDefinition {
                 }
                 (ContinuousKind::StealCost(_), Scope::Stealing(_) | Scope::StealingFromThisServer) => {}
                 (ContinuousKind::RemoteServerLimit(_), Scope::Controller) => {}
+                (ContinuousKind::OrdersSubroutines, Scope::Controller) if self.side == Side::Runner => {}
+                (ContinuousKind::OrdersSubroutines, _) => return misfit("OrdersSubroutines", "the order subroutines resolve in is declared by the Runner who controls the card (`Controller`)"),
                 (ContinuousKind::CannotBeStolen { .. }, Scope::Stealing(_) | Scope::StealingFromThisServer) => {}
                 (ContinuousKind::CannotBeStolen { .. }, _) => return misfit("CannotBeStolen", "an agenda that cannot be stolen is about `Stealing` or `StealingFromThisServer`"),
                 (ContinuousKind::DrawsEachTurnAtMost(_), Scope::Player(Side::Runner)) => {}

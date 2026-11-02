@@ -328,7 +328,7 @@ mod tests {
         assert!(predicate.matches(&PlayerAction::AdvanceCard { target: install }, &view));
         assert!(predicate.matches(&PlayerAction::ScoreAgenda { target: install }, &view));
         assert!(predicate.matches(
-            &PlayerAction::InstallCard { card_id: id("offworld_office"), zone: ServerId::Remote(2), slot: InstallSlot::Root, trash_first: false },
+            &PlayerAction::InstallCard { card_id: id("offworld_office"), zone: ServerId::Remote(2), slot: InstallSlot::Root, trash_first: false, host: None },
             &view
         ));
         assert!(!predicate.matches(&PlayerAction::AdvanceCard { target: InstallId(99) }, &view), "an unknown handle names no card");

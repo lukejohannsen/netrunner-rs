@@ -380,6 +380,19 @@ pub fn remote_server_limit(state: &GameState, registry: &CardRegistry) -> Option
     limit
 }
 
+/// The card whose controller declares the order the encountered ice's
+/// unbroken subroutines resolve in (`ContinuousKind::OrdersSubroutines`,
+/// Street Magic), and which copy: the first the scan meets, since two
+/// copies give the Runner one choice to make. `None` when no active card
+/// says so, and the subroutines resolve in their printed order.
+pub(crate) fn subroutine_orderer(state: &GameState, registry: &CardRegistry) -> Option<(crate::dsl::CardId, Option<InstallId>)> {
+    let mut found = None;
+    for_each_applying(state, registry, Target::Player(Side::Runner), |kind| matches!(kind, ContinuousKind::OrdersSubroutines), |_, source, _| {
+        found.get_or_insert_with(|| (source.card.clone(), source.install));
+    });
+    found
+}
+
 /// The most `side` may bid when secretly spending (Government
 /// Investigations: `ContinuousKind::BidAtMost`), or `None` with no limit
 /// but their credits.

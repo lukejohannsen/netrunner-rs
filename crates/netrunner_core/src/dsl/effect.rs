@@ -2375,6 +2375,19 @@ pub enum Effect {
     /// (Ansel 1.0's install-inward) finds no host and no-ops, since the
     /// encountered ice is Mycoweb.
     ResolveSubroutineOfSelectedIce,
+    /// Puts subroutine `0` (its index on the ice being encountered) next in
+    /// the order the Runner declares for the encounter's unbroken
+    /// subroutines (`EncounterTally::order`) — one pick of Street Magic's
+    /// "Unbroken subroutines resolve in the order of your choice", CR
+    /// 9.8.7d. Built by the engine, never by a card file: each option of
+    /// the `PresentChoice` `ability::resolve_unbroken_subroutines` parks
+    /// for the Runner, beside the subroutine's printed text, while two or
+    /// more are undeclared. Composition didn't work: a choice's options
+    /// are effects, and no effect named a subroutine's place in an order;
+    /// `ResolveSubroutineOfSelectedIce` resolves one, which would resolve
+    /// the first before the order was declared (9.8.7d: "before any
+    /// subroutines are resolved").
+    DeclareSubroutineNext(usize),
     /// The install the resolution acts as loses all its abilities for a
     /// duration (CR 9.1.9a) — Klevetnik's "choose 1 installed resource.
     /// That resource loses all abilities until your next turn ends", the
@@ -4840,6 +4853,7 @@ impl Effect {
             | Effect::MoveThisIceInnermostAndEncounter
             | Effect::PlayOperation { .. }
             | Effect::ResolveSubroutineOfSelectedIce
+            | Effect::DeclareSubroutineNext(_)
             | Effect::LoseAbilities { .. }
             | Effect::LimitBreaks { .. }
             | Effect::ChooseServer { then: None, .. }

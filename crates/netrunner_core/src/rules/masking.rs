@@ -817,8 +817,15 @@ pub enum PublicAction {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConcealedAction {
     /// A Corp install. Where it went and into which slot is public — both
-    /// players watch the card land — only *what* landed is not.
-    InstallCard { zone: TargetZone, slot: InstallSlot },
+    /// players watch the card land — only *what* landed is not. So is the
+    /// card it landed on (`PlayerAction::InstallCard::host`, Full Immersion
+    /// RecStudio): an install handle, never masked.
+    InstallCard {
+        zone: TargetZone,
+        slot: InstallSlot,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        host: Option<crate::rules::InstallId>,
+    },
     /// A Corp discard, which goes facedown to Archives.
     DiscardCard,
     /// The Runner's pass on a card in HQ or R&D, from the Corp's chair:
@@ -890,8 +897,8 @@ pub fn mask_action_for_player(action: &PlayerAction, actor: Side, viewer: impl I
         return PublicAction::Visible(action.clone());
     }
     match action {
-        PlayerAction::InstallCard { zone, slot, .. } => {
-            PublicAction::Concealed(ConcealedAction::InstallCard { zone: *zone, slot: *slot })
+        PlayerAction::InstallCard { zone, slot, host, .. } => {
+            PublicAction::Concealed(ConcealedAction::InstallCard { zone: *zone, slot: *slot, host: *host })
         }
         PlayerAction::DiscardCard { .. } if actor == Side::Corp => PublicAction::Concealed(ConcealedAction::DiscardCard),
         // A Runner discard goes to the heap, which is never masked.
@@ -2673,10 +2680,10 @@ mod tests {
 
     #[test]
     fn a_corp_install_action_is_concealed_from_the_runner_but_not_the_corp() {
-        let action = PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Remote(0), slot: InstallSlot::Ice, trash_first: false };
+        let action = PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Remote(0), slot: InstallSlot::Ice, trash_first: false, host: None };
         assert_eq!(
             mask_action_for_player(&action, Side::Corp, Side::Runner),
-            PublicAction::Concealed(ConcealedAction::InstallCard { zone: ServerId::Remote(0), slot: InstallSlot::Ice })
+            PublicAction::Concealed(ConcealedAction::InstallCard { zone: ServerId::Remote(0), slot: InstallSlot::Ice, host: None })
         );
         assert_eq!(mask_action_for_player(&action, Side::Corp, Side::Corp), PublicAction::Visible(action.clone()));
     }
@@ -3105,7 +3112,7 @@ mod tests {
 
     #[test]
     fn a_spectators_log_conceals_both_sides_card_naming_actions() {
-        let corp_install = PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Remote(0), slot: InstallSlot::Ice, trash_first: false };
+        let corp_install = PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Remote(0), slot: InstallSlot::Ice, trash_first: false, host: None };
         assert_eq!(
             mask_action_for_player(&corp_install, Side::Corp, Viewer::Spectator),
             mask_action_for_player(&corp_install, Side::Corp, Side::Runner)

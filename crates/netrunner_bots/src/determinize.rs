@@ -937,6 +937,9 @@ fn determinize_run(
         // The engine's too (`RunState::fully_broken_ice`): a sample taken
         // mid-run gives The Gauntlet no extra access.
         fully_broken_ice: Vec::new(),
+        // The engine's too (`RunState::broke_with`): a sample taken mid-run
+        // leaves Will-o'-the-Wisp no icebreaker to send back.
+        broke_with: Vec::new(),
         // Not in the view: which action the run is part of. Only its end
         // announces it (`GameEvent::ActionFinished`), and the only card
         // that hears one is the Corp's, about the Corp's own actions.

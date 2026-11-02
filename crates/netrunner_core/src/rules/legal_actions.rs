@@ -577,11 +577,12 @@ fn install_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pl
     // rest (`RulesError::NothingToTrashFirst`).
     let occupied = |zone: ServerId, slot: InstallSlot| state.corp.installed.iter().any(|c| c.server == zone && c.slot == slot);
     let mut push = |card_id: &CardId, zone: ServerId, slot: InstallSlot| {
-        candidates.push(PlayerAction::InstallCard { card_id: card_id.clone(), zone, slot, trash_first: false });
+        candidates.push(PlayerAction::InstallCard { card_id: card_id.clone(), zone, slot, trash_first: false, host: None });
         if occupied(zone, slot) {
-            candidates.push(PlayerAction::InstallCard { card_id: card_id.clone(), zone, slot, trash_first: true });
+            candidates.push(PlayerAction::InstallCard { card_id: card_id.clone(), zone, slot, trash_first: true, host: None });
         }
     };
+    let mut onto = Vec::new();
     for card_id in &state.corp.hq {
         let Some(card) = registry.get(card_id) else { continue };
         match card.card_type {
@@ -595,6 +596,12 @@ fn install_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pl
             CardType::Agenda | CardType::Asset => {
                 for zone in &remote_zones {
                     push(card_id, *zone, InstallSlot::Root);
+                }
+                // Onto a card whose text lets it host this one (CR 1.13.6a,
+                // Full Immersion RecStudio), in that card's server: never
+                // trashing first, since a hosted card is no card in the root.
+                for host in state.corp.installed.iter().filter(|host| host.slot == InstallSlot::Root && crate::rules::continuous::may_install_onto(state, registry, card, host.install_id)) {
+                    onto.push(PlayerAction::InstallCard { card_id: card_id.clone(), zone: host.server, slot: InstallSlot::Root, trash_first: false, host: Some(host.install_id) });
                 }
             }
             // Upgrades protect a server's root the same way an Asset does,
@@ -622,6 +629,7 @@ fn install_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pl
             | CardType::Resource => {}
         }
     }
+    candidates.extend(onto);
     candidates
 }
 
@@ -1122,7 +1130,7 @@ mod tests {
             poor_legal.contains(&PlayerAction::InstallCard {
                 card_id: CardId("ice_wall".to_string()),
                 zone: ServerId::Hq,
-                slot: InstallSlot::Ice, trash_first: false,
+                slot: InstallSlot::Ice, trash_first: false, host: None,
             }),
             "the first ICE on a server is free, whatever it costs to rez"
         );
@@ -1139,7 +1147,7 @@ mod tests {
             !poor_legal.contains(&PlayerAction::InstallCard {
                 card_id: CardId("ice_wall".to_string()),
                 zone: ServerId::Hq,
-                slot: InstallSlot::Ice, trash_first: false,
+                slot: InstallSlot::Ice, trash_first: false, host: None,
             }),
             "a second ICE on HQ costs 1, which a broke Corp cannot pay"
         );
@@ -1147,7 +1155,7 @@ mod tests {
             poor_legal.contains(&PlayerAction::InstallCard {
                 card_id: CardId("ice_wall".to_string()),
                 zone: ServerId::RnD,
-                slot: InstallSlot::Ice, trash_first: false,
+                slot: InstallSlot::Ice, trash_first: false, host: None,
             }),
             "but the first ICE on R&D is still free"
         );
@@ -1178,7 +1186,7 @@ mod tests {
                 legal.contains(&PlayerAction::InstallCard {
                     card_id: CardId("manegarm_skunkworks".to_string()),
                     zone,
-                    slot: InstallSlot::Root, trash_first: false,
+                    slot: InstallSlot::Root, trash_first: false, host: None,
                 }),
                 "expected Upgrade to be installable into {zone:?}"
             );
