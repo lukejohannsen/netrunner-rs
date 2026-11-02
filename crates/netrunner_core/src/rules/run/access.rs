@@ -57,7 +57,12 @@ fn begin_breach(state: &mut GameState, server: ServerId) -> (Vec<AccessCandidate
         ServerId::RnD => {
             let additional = state.active_run.as_ref().map_or(0, |run| run.additional_rd_access);
             let take = (1 + additional as usize).min(state.corp.r_and_d.len());
-            let from_zone = state.corp.r_and_d.iter().rev().take(take).cloned().collect();
+            // Showing Off: from the bottom (the front of the `Vec`), working up.
+            let from_zone = if state.active_run.as_ref().is_some_and(|run| run.rd_from_bottom) {
+                state.corp.r_and_d.iter().take(take).cloned().collect()
+            } else {
+                state.corp.r_and_d.iter().rev().take(take).cloned().collect()
+            };
             (root_installs_on(state, server), from_zone)
         }
         // "When the Runner breaches Archives, all the facedown cards in the

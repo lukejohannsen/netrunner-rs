@@ -564,6 +564,8 @@ fn determinize_installed(
         // What happened to the copy this turn is public (`turn_log::
         // CopyTurn`: an advance, a rez) and the view carries it.
         this_turn: card.this_turn,
+        // Ice is hosted on nothing a Corp card can host.
+        host: None,
     })).collect();
     let root = server_view.root.iter().map(|card| (card.position, InstalledCard {
         card: card.card.clone().unwrap_or_else(|| pools.draw(Slot::CorpRoot)),
@@ -586,6 +588,9 @@ fn determinize_installed(
         // What happened to the copy this turn is public (`turn_log::
         // CopyTurn`: an advance, a rez) and the view carries it.
         this_turn: card.this_turn,
+        // Public, and carried: a hosted asset dropped from its host would
+        // be a second asset in the root.
+        host: card.host,
     }));
     ice.into_iter().chain(root).collect()
 }
@@ -933,6 +938,9 @@ fn determinize_run(
         once_per_run_used: run.once_per_run_used.iter().cloned().collect(),
         additional_rd_access: 0,
         additional_hq_access: 0,
+        // Not in the view, as the additional accesses are not: a sample
+        // taken during Showing Off's run breaches R&D from the top.
+        rd_from_bottom: false,
         access_replacement: None,
         access_replacement_card: None,
         access_replacement_install: None,

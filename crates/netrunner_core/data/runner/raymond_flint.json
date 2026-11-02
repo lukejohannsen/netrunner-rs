@@ -1,0 +1,60 @@
+{
+  "id": "raymond_flint",
+  "title": "Raymond Flint",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnBadPublicityTaken",
+      "when": {
+        "Whose": "Corp"
+      },
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": "RunInProgress"
+            },
+            "effect": {
+              "Sequence": [
+                {
+                  "Prohibit": {
+                    "what": "AccessRootOfHqOrRnD",
+                    "until": "NextBreach"
+                  }
+                },
+                {
+                  "Breach": "Hq"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Whenever the Corp takes bad publicity, breach HQ. You cannot access cards in the root of HQ during this breach."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OpponentInstalled",
+          "filter": "Unrezzed",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": "Expose"
+        }
+      },
+      "text": "[trash]: Expose 1 card."
+    }
+  ],
+  "built_from": 4049,
+  "is_playable": true
+}

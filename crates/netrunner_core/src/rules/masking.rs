@@ -112,6 +112,12 @@ pub struct PublicInstalledCard {
     /// what a breaker meets.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ice_types: Vec<crate::dsl::IceType>,
+    /// Never masked: the Corp install this card is hosted on
+    /// (`InstalledCard::host`, Worlds Plaza's assets). Which card sits on
+    /// which is on the table, and a sample that dropped it would leave
+    /// the hosted card a second asset in a remote's root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<InstallId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1626,6 +1632,7 @@ fn mask_installed_card(state: &GameState, registry: &CardRegistry, installed: &I
         seen_by_runner: installed.seen_by_runner,
         this_turn: installed.this_turn,
         ice_types: if identity_visible { crate::rules::continuous::installed_ice_types(state, registry, installed.install_id) } else { Vec::new() },
+        host: installed.host,
     }
 }
 

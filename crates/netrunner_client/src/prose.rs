@@ -413,6 +413,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::AddAdditionalAccess { server, count } => {
             format!("access {} additional from {}", plural(*count, "card", "cards"), describe_server(*server))
         }
+        Effect::AccessFromBottomOfRnD => "when you breach R&D this run, access cards from the bottom of R&D instead of the top".to_string(),
         Effect::AccessFewer { count } => {
             format!("for the remainder of this run, access {} fewer whenever the Runner breaches a server", plural(*count, "card", "cards"))
         }

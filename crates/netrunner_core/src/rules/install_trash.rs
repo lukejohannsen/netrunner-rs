@@ -119,7 +119,7 @@ fn forced_corp_trashes(state: &GameState, registry: &CardRegistry, card_def: &Ca
         .corp
         .installed
         .iter()
-        .filter(|c| c.server == server && c.slot == InstallSlot::Root)
+        .filter(|c| c.server == server && c.slot == InstallSlot::Root && c.host.is_none())
         .filter(|c| {
             registry.get(&c.card).is_some_and(|d| {
                 (agenda_or_asset && matches!(d.card_type, CardType::Agenda | CardType::Asset)) || (region && d.subtypes.contains(&CardSubtype::Region))
@@ -133,7 +133,7 @@ fn forced_corp_trashes(state: &GameState, registry: &CardRegistry, card_def: &Ca
 /// install (8.5.6a), every piece of ice protecting the server for ice
 /// (8.5.6b).
 fn like_corp_cards(state: &GameState, server: ServerId, slot: InstallSlot) -> Vec<InstallId> {
-    state.corp.installed.iter().filter(|c| c.server == server && c.slot == slot).map(|c| c.install_id).collect()
+    state.corp.installed.iter().filter(|c| c.server == server && c.slot == slot && c.host.is_none()).map(|c| c.install_id).collect()
 }
 
 /// Step 8.5.16c for a program: the programs the memory limit makes the

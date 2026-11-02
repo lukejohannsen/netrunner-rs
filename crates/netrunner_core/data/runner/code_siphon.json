@@ -1,0 +1,90 @@
+{
+  "id": "code_siphon",
+  "title": "Code Siphon",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "RnD"
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "RnD",
+            "optional": true,
+            "effect": {
+              "Sequence": [
+                {
+                  "PromptChooseCards": {
+                    "side": "Runner",
+                    "source": "OwnStack",
+                    "filter": {
+                      "All": [
+                        {
+                          "CardType": "Program"
+                        },
+                        {
+                          "InstallableRunnerCardWithDiscount": {
+                            "Amount": {
+                              "Times": {
+                                "amount": {
+                                  "IceProtecting": "RnD"
+                                },
+                                "times": 3
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "min": 0,
+                    "max": 1,
+                    "reveal": false,
+                    "shuffle_after": true,
+                    "then": {
+                      "EffectIf": {
+                        "condition": {
+                          "AmountAtLeast": [
+                            "CardsSelected",
+                            1
+                          ]
+                        },
+                        "effect": {
+                          "InstallRunnerCardFromZone": {
+                            "from": "OwnStack",
+                            "discount": {
+                              "Amount": {
+                                "Times": {
+                                  "amount": {
+                                    "IceProtecting": "RnD"
+                                  },
+                                  "times": 3
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "GiveTags": {
+                    "Fixed": 1
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Run R&D. If successful, instead of breaching R&D, you may search your stack for 1 program. Install it, paying 3[credit] less for each piece of ice protecting R&D, and then take 1 tag."
+    }
+  ],
+  "built_from": 6115,
+  "is_playable": true
+}
