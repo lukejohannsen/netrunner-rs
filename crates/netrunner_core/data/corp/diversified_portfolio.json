@@ -1,0 +1,25 @@
+{
+  "id": "diversified_portfolio",
+  "title": "Diversified Portfolio",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            {
+              "RemotesWithRootCards": {}
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 5026,
+  "is_playable": true
+}

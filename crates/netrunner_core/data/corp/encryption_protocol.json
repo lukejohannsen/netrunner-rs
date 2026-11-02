@@ -1,0 +1,24 @@
+{
+  "id": "encryption_protocol",
+  "title": "Encryption Protocol",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "TrashCost": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "CorpInstalled": "Any"
+      },
+      "text": "The trash cost of all installed cards is increased by 1."
+    }
+  ],
+  "triggers": [],
+  "built_from": 2029,
+  "is_playable": true
+}

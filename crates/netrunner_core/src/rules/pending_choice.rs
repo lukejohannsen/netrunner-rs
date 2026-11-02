@@ -793,6 +793,11 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
         // Isaac Liberdade's "each advanced piece of ice", asked of the ice
         // whose strength is read (`Scope::IceProtectingThisServer`).
         CardFilter::Advanced => installed.is_some_and(|c| c.advancement_tokens > 0),
+        // Curtain Wall's "If Curtain Wall is the outermost piece of ice
+        // protecting a server", asked of the ice whose strength is read
+        // (`ActingCardMatches(Placed(Outermost))`). A place about a host
+        // asks nothing here: a piece of ice has none.
+        CardFilter::Placed(place) => installed.is_some_and(|c| c.slot == InstallSlot::Ice && ice_is_placed(state, *place, c, None)),
         // Forged Activation Orders' "If they do not [rez that ice], they
         // trash it", asked of the ice the Runner chose after the Corp's
         // answer (`ActingCardMatches(Unrezzed)`).
@@ -2006,8 +2011,13 @@ pub(crate) fn resolve_confirm_card_selection(
             // Initiative on that agenda" hosts after it turns.
             (Effect::Sequence(mut effects), _, [chosen, ..]) if effects.iter().any(|effect| matches!(effect, Effect::HostThisAsCondition { .. })) => source_install.map(|this| {
                 for effect in &mut effects {
-                    if let Effect::HostThisAsCondition { .. } = effect {
-                        *effect = Effect::HostThisAsCondition { condition: this, host: *chosen };
+                    match effect {
+                        Effect::HostThisAsCondition { .. } => *effect = Effect::HostThisAsCondition { condition: this, host: *chosen },
+                        // Oversight AI's "Rez a piece of ice, ignoring all
+                        // costs, and install Oversight AI on that ice": the
+                        // rez is of the same install.
+                        Effect::RezInstalled { install, .. } => *install = *chosen,
+                        _ => {}
                     }
                 }
                 Effect::Sequence(effects)

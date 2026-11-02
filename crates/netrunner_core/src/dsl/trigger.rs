@@ -987,6 +987,14 @@ pub enum EventFilter {
     /// as an intervening if it would sit where the printed sentence does
     /// not put it.
     InstalledFromHq(bool),
+    /// The Runner installed the card out of the heap — Exile: Streethawk's
+    /// "Whenever you install a program **from your heap**", `All` with
+    /// `Card(Program)`. Read off the moment, which the event states
+    /// (`GameEvent::ProgramInstalled::from_heap`), as `InstalledFromHq`
+    /// reads the Corp's. Only on a Runner card's `OnInstall`. Composition
+    /// didn't work: no filter read where a Runner card came from, and no
+    /// Runner install event said.
+    InstalledFromHeap,
     /// The Corp installed the card in the root of or protecting a server
     /// of this kind — A Teia: IP Recovery's "install a card in the root of
     /// or protecting **a remote server**". Read off the moment, which the

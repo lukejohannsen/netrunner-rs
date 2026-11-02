@@ -1,0 +1,41 @@
+{
+  "id": "domestic_sleepers",
+  "title": "Domestic Sleepers",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 2,
+  "agenda_points": 0,
+  "continuous": [
+    {
+      "kind": {
+        "AgendaPoints": {
+          "per": 1
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "AmountAtLeast": [
+          "HostedCounters",
+          1
+        ]
+      },
+      "text": "Domestic Sleepers is worth 1 agenda point while it has at least 1 agenda counter on it."
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 3
+      },
+      "effect": {
+        "AddCounters": 1
+      },
+      "text": "[click],[click],[click]: Place 1 agenda counter on Domestic Sleepers."
+    }
+  ],
+  "built_from": 6001,
+  "is_playable": true
+}

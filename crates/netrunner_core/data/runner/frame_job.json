@@ -1,0 +1,38 @@
+{
+  "id": "frame_job",
+  "title": "Frame Job",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Forfeit": 1
+            },
+            "if_paid": {
+              "GiveBadPublicity": {
+                "Fixed": 1
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "Forfeit 1 agenda. If you do, give the Corp 1 bad publicity."
+          }
+        }
+      ],
+      "text": "Forfeit 1 agenda. If you do, give the Corp 1 bad publicity."
+    }
+  ],
+  "built_from": 4001,
+  "is_playable": true
+}

@@ -1,0 +1,49 @@
+{
+  "id": "feint",
+  "title": "Feint",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Hq"
+        },
+        {
+          "LaterThisTurn": {
+            "when": "OnEncounter",
+            "every_time": true,
+            "this_run": true,
+            "effect": {
+              "EffectIf": {
+                "condition": {
+                  "Not": {
+                    "AmountAtLeast": [
+                      "EncountersThisRun",
+                      3
+                    ]
+                  }
+                },
+                "effect": "BypassEncounteredIce"
+              }
+            }
+          }
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "Hq",
+            "effect": {
+              "Sequence": []
+            }
+          }
+        }
+      ],
+      "text": "Run HQ. The first 2 times this run you encounter a piece of ice, bypass that ice. If successful, you cannot breach HQ."
+    }
+  ],
+  "built_from": 5034,
+  "is_playable": true
+}

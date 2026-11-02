@@ -1,0 +1,43 @@
+{
+  "id": "curtain_wall",
+  "title": "Curtain Wall",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 14,
+  "strength": 6,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 4
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "ActingCardMatches": {
+          "Placed": "Outermost"
+        }
+      },
+      "text": "If Curtain Wall is the outermost piece of ice protecting a server, it has +4 strength."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 4078,
+  "is_playable": true
+}

@@ -2203,9 +2203,9 @@ pub(crate) fn swap_rig_card_with_grip_card(state: &mut GameState, registry: &Car
     state.runner.rig.insert(at, rig_card);
     events.extend(payment::place_recurring(state, registry, Side::Runner, Some(install), incoming)?);
     let installed = match definition.card_type {
-        CardType::Program => GameEvent::ProgramInstalled { side: Side::Runner, card: incoming.clone(), memory_cost: definition.memory_cost.unwrap_or(0) as u8, credits_paid: 0 },
-        CardType::Hardware => GameEvent::HardwareInstalled { side: Side::Runner, card: incoming.clone(), credits_paid: 0 },
-        _ => GameEvent::ResourceInstalled { side: Side::Runner, card: incoming.clone(), credits_paid: 0, x: None },
+        CardType::Program => GameEvent::ProgramInstalled { side: Side::Runner, card: incoming.clone(), memory_cost: definition.memory_cost.unwrap_or(0) as u8, credits_paid: 0, from_heap: false },
+        CardType::Hardware => GameEvent::HardwareInstalled { side: Side::Runner, card: incoming.clone(), credits_paid: 0, from_heap: false },
+        _ => GameEvent::ResourceInstalled { side: Side::Runner, card: incoming.clone(), credits_paid: 0, x: None, from_heap: false },
     };
     dispatcher::emit(state, registry, &mut events, installed)?;
     Ok(events)
@@ -2434,7 +2434,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             paid = ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?;
             events.extend(paid.iter().cloned());
             events.extend(install_into_rig(next, registry, &card_id, None)?);
-            let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
+            let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost, from_heap: source == RunnerCardSource::Heap };
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Hardware => {
@@ -2442,7 +2442,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             paid = ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?;
             events.extend(paid.iter().cloned());
             events.extend(install_into_rig(next, registry, &card_id, None)?);
-            let installed_event = GameEvent::HardwareInstalled { side, card: card_id, credits_paid: cost };
+            let installed_event = GameEvent::HardwareInstalled { side, card: card_id, credits_paid: cost, from_heap: source == RunnerCardSource::Heap };
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Resource => {
@@ -2450,7 +2450,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             paid = ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?;
             events.extend(paid.iter().cloned());
             events.extend(install_into_rig(next, registry, &card_id, None)?);
-            let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost, x: None };
+            let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost, x: None, from_heap: source == RunnerCardSource::Heap };
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         _ => return Err(RulesError::CardTypeMismatch { card: card_id, expected: "a program, hardware or resource" }),
@@ -2526,7 +2526,7 @@ pub(crate) fn install_program_onto(
     if let (ProgramHost::RigCard(rig_host), Some(installed)) = (host, next.runner.rig.last_mut()) {
         installed.hosted_on_rig_card = Some(rig_host);
     }
-    let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
+    let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost, from_heap: source == RunnerCardSource::Heap };
     dispatcher::emit(next, registry, &mut events, installed_event)?;
     events.extend(ability::dispatch_cost_events(next, registry, &paid)?);
     Ok(events)
@@ -2588,7 +2588,7 @@ fn install_hardware(
     // Dispatched like a Program or Resource install — a piece of hardware
     // can react to its own install (GAMEDRAGON™ Pro). Nothing did before,
     // so this used to be a bare push.
-    let installed_event = GameEvent::HardwareInstalled { side, card: card_id, credits_paid: cost };
+    let installed_event = GameEvent::HardwareInstalled { side, card: card_id, credits_paid: cost, from_heap: false };
     dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 
     // Paid off a card, the spend is the Runner's to hear (The Twinning)
@@ -2661,7 +2661,7 @@ fn install_program(
     // what this install actually reserved, read from the registry — it used
     // to be whatever the caller named, which `legal_actions` always set to 0.
     let installed_event =
-        GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
+        GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost, from_heap: false };
     dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 
     // Paid off a card, the spend is the Runner's to hear (The Twinning)
@@ -2725,7 +2725,7 @@ fn install_program_on_ice(
     let paid = ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?;
     events.extend(paid.iter().cloned());
     events.extend(install_into_rig(&mut next, registry, &card_id, Some(host))?);
-    let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
+    let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost, from_heap: false };
     dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 
     // Paid off a card, the spend is the Runner's to hear (The Twinning)
@@ -2788,7 +2788,7 @@ fn install_resource(
         installed.hosted_on_rig_card = Some(host);
     }
     let credits_paid = cost + x.unwrap_or(0);
-    let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid, x };
+    let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid, x, from_heap: false };
     dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 
     // Paid off a card, the spend is the Runner's to hear (The Twinning)
@@ -5880,7 +5880,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 0 },
-                GameEvent::HardwareInstalled { side: Side::Runner, card: card_id, credits_paid: 0 },
+                GameEvent::HardwareInstalled { side: Side::Runner, card: card_id, credits_paid: 0, from_heap: false },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Install },
             ]
         );
@@ -5951,6 +5951,7 @@ mod tests {
                     card: card_id,
                     memory_cost: 3,
                     credits_paid: 0,
+                    from_heap: false,
                 },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Install },
             ]

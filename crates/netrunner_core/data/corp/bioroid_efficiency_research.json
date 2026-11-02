@@ -1,0 +1,68 @@
+{
+  "id": "bioroid_efficiency_research",
+  "title": "Bioroid Efficiency Research",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                "Ice",
+                {
+                  "Not": "Rezzed"
+                },
+                {
+                  "HasSubtype": "Bioroid"
+                }
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "Sequence": [
+                {
+                  "RezInstalled": {
+                    "install": 0
+                  }
+                },
+                {
+                  "HostThisAsCondition": {
+                    "condition": 0,
+                    "host": 0
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Rez a piece of bioroid ice, ignoring all costs, and install Bioroid Efficiency Research on that ice as a hosted condition counter"
+    },
+    {
+      "trigger": "OnIceFullyBroken",
+      "subject": "Any",
+      "when": "Host",
+      "effects": [
+        {
+          "DerezCard": "ConditionHost"
+        },
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "Trash Bioroid Efficiency Research and derez host ice if all of its subroutines are broken during a single encounter."
+    }
+  ],
+  "built_from": 3013,
+  "is_playable": true
+}

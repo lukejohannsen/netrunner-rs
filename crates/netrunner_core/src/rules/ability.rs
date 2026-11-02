@@ -4874,6 +4874,14 @@ pub(crate) fn trash_this_card(state: &mut GameState, registry: &CardRegistry, ct
         events.extend(cascade_trash_hosted_programs(state, install));
         return Ok(events);
     }
+    // A condition counter trashing itself — Bioroid Efficiency Research's
+    // "Trash Bioroid Efficiency Research and derez host ice": faceup into
+    // Archives, as it goes with its host (`trash_conditions_on`).
+    if let Some(position) = ctx.acting_install.and_then(|handle| state.corp.conditions.iter().position(|condition| condition.handle == handle)) {
+        let removed = state.corp.conditions.remove(position);
+        crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(removed.card.clone()));
+        return Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card: removed.card, from: crate::dsl::TrashedFrom::Installed, by, install: None, damage: None }]);
+    }
     if ctx.acting_install.is_some() && acting_rig_position(state, ctx).is_none() {
         // See the matching guard below the rig arm.
         return Ok(Vec::new());
@@ -6775,7 +6783,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::IceProtectingThisServer => acting_corp_install(state, ctx).map_or(0, |installed| {
             state.corp.installed.iter().filter(|other| other.server == installed.server && other.slot == InstallSlot::Ice).count() as u32
         }),
-        Amount::ProtectedRemotesWithRootCards => {
+        Amount::RemotesWithRootCards { protected } => {
             let mut remotes: Vec<ServerId> = state
                 .corp
                 .installed
@@ -6790,7 +6798,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             remotes.dedup();
             remotes
                 .into_iter()
-                .filter(|server| state.corp.installed.iter().any(|c| c.server == *server && c.slot == InstallSlot::Ice))
+                .filter(|server| !protected || state.corp.installed.iter().any(|c| c.server == *server && c.slot == InstallSlot::Ice))
                 .count() as u32
         }
         Amount::IceProtecting(server) => {

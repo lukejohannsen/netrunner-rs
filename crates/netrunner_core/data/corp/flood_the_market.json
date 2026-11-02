@@ -22,7 +22,11 @@
             "reveal": false,
             "shuffle_after": false,
             "then": {
-              "PlaceAdvancementCounters": "ProtectedRemotesWithRootCards"
+              "PlaceAdvancementCounters": {
+                "RemotesWithRootCards": {
+                  "protected": true
+                }
+              }
             }
           }
         }
