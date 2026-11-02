@@ -645,6 +645,11 @@ fn determinize_access_phase(phase: &PublicAccessPhase) -> AccessPhase {
             decider: *decider,
             can_pay: *can_pay,
         },
+        // A card no viewer may see yet is named by `name_the_accessed_card`:
+        // the install the candidate is, or a card of the zone.
+        PublicAccessPhase::Imminent { candidate, card, forgone } => {
+            AccessPhase::Imminent { candidate: candidate.clone(), card_id: card.clone().unwrap_or_else(unnamed), forgone: *forgone }
+        }
         PublicAccessPhase::PendingChoice { card, trash_cost, mandatory_steal, steal_cost, trash_also } => AccessPhase::PendingChoice {
             card_id: card.clone().unwrap_or_else(unnamed),
             trash_cost: *trash_cost,
@@ -668,6 +673,8 @@ fn fits_the_access(phase: &AccessPhase, card: &CardDefinition) -> bool {
             card.agenda_points.is_some() == (*mandatory_steal || steal_cost.is_some()) && card.trash_cost == *trash_cost
         }
         AccessPhase::PendingInteractiveTrigger { cost, .. } => card.interactive_on_access.as_ref().is_some_and(|interactive| interactive.cost == *cost),
+        // Not accessed yet: nothing about it is public.
+        AccessPhase::Imminent { .. } => true,
         AccessPhase::SelectNextCard { .. } => false,
     }
 }
@@ -697,7 +704,7 @@ fn name_the_accessed_card(run: &mut RunState, corp: &CorpState, registry: &CardR
     use rand::seq::IndexedRandom;
     let Some(access) = run.access_state.as_mut() else { return };
     let named = match &access.phase {
-        AccessPhase::PendingChoice { card_id, .. } | AccessPhase::PendingInteractiveTrigger { card_id, .. } => *card_id != unnamed(),
+        AccessPhase::PendingChoice { card_id, .. } | AccessPhase::PendingInteractiveTrigger { card_id, .. } | AccessPhase::Imminent { card_id, .. } => *card_id != unnamed(),
         AccessPhase::SelectNextCard { .. } => true,
     };
     if named {
@@ -719,7 +726,7 @@ fn name_the_accessed_card(run: &mut RunState, corp: &CorpState, registry: &CardR
         anywhere.choose(rng).map(|card| (*card).clone()).unwrap_or_else(|| pools.draw(Slot::CorpAny))
     });
     match &mut access.phase {
-        AccessPhase::PendingChoice { card_id, .. } | AccessPhase::PendingInteractiveTrigger { card_id, .. } => *card_id = card,
+        AccessPhase::PendingChoice { card_id, .. } | AccessPhase::PendingInteractiveTrigger { card_id, .. } | AccessPhase::Imminent { card_id, .. } => *card_id = card,
         AccessPhase::SelectNextCard { .. } => {}
     }
 }

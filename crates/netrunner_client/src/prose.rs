@@ -528,6 +528,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::TakeAllCountersAsCredits(side) => format!("{} takes the counters as credits", who(*side)),
         Effect::TrashCurrentlyAccessedCard => "trash the accessed card".to_string(),
         Effect::RemoveCurrentlyAccessedCardFromGame => "remove the accessed card from the game".to_string(),
+        Effect::ForgoAccess => "do not access the card instead".to_string(),
         Effect::GainCreditsPerCounter { side, credits_per_counter } => {
             format!("{} gains {} per counter", who(*side), plural(*credits_per_counter, "credit", "credits"))
         }

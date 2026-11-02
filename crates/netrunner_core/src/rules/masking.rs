@@ -430,6 +430,16 @@ pub enum PublicAccessPhase {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         trash_also: Option<Cost>,
     },
+    /// `run::AccessPhase::Imminent`: the candidate is public, as every
+    /// candidate is; the card only as public as where it still is — not
+    /// accessed yet, so a card out of HQ or R&D is nobody's and an
+    /// unrezzed root install only the Corp's. `forgone` is public.
+    Imminent {
+        candidate: AccessCandidate,
+        card: Option<CardId>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        forgone: bool,
+    },
 }
 
 /// `run::AccessState` as seen by a particular viewer. In the real game the
@@ -1108,6 +1118,15 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
             (viewer.is(Side::Runner) || *server == ServerId::Archives).then(visible).flatten()
         }
         GameEvent::AccessPassed { .. } => viewer.is(Side::Runner).then(visible).flatten(),
+        // Not accessed yet: a faceup card is everyone's, a root install is
+        // as public as the install, and a card out of HQ or R&D is
+        // nobody's — the access that follows names it to whoever it
+        // should (`CardAccessed`).
+        GameEvent::AccessAboutToResolve { card, candidate, .. } => match candidate {
+            AccessCandidate::Archived(_) | AccessCandidate::SetAside(_) => visible(),
+            AccessCandidate::Root(install) => (!install_concealed(*install, card)).then(visible).flatten(),
+            AccessCandidate::Zone => None,
+        },
         // A face-down Corp card hears its own events (the Listener Rule),
         // so a trap fires unrezzed and its trigger names a card the table
         // cannot see. The Runner may know it only when they are the one
@@ -1477,8 +1496,18 @@ fn mask_run_ice(state: &GameState, registry: &CardRegistry, ice: &RunIce, owner_
     }
 }
 
-fn mask_access_phase(phase: &AccessPhase, card_visible: bool, viewer: Viewer) -> PublicAccessPhase {
+fn mask_access_phase(state: &GameState, phase: &AccessPhase, card_visible: bool, viewer: Viewer) -> PublicAccessPhase {
     match phase {
+        // Before the access the card is as public as where it is, which is
+        // not what the access will make it (`GameEvent::AccessAboutToResolve`).
+        AccessPhase::Imminent { candidate, card_id, forgone } => {
+            let public = match candidate {
+                AccessCandidate::Archived(_) | AccessCandidate::SetAside(_) => true,
+                AccessCandidate::Root(install) => !install_concealed_from(state, *install, card_id, viewer),
+                AccessCandidate::Zone => false,
+            };
+            PublicAccessPhase::Imminent { candidate: candidate.clone(), card: public.then(|| card_id.clone()), forgone: *forgone }
+        }
         AccessPhase::SelectNextCard { selectable_cards } => {
             PublicAccessPhase::SelectNextCard { selectable_cards: selectable_cards.clone() }
         }
@@ -1514,7 +1543,7 @@ fn mask_access_phase(phase: &AccessPhase, card_visible: bool, viewer: Viewer) ->
     }
 }
 
-fn mask_access_state(access: &AccessState, card_visible: bool, revealed: bool, viewer: Viewer) -> PublicAccessState {
+fn mask_access_state(state: &GameState, access: &AccessState, card_visible: bool, revealed: bool, viewer: Viewer) -> PublicAccessState {
     PublicAccessState {
         server: access.server,
         candidates: access.candidates.clone(),
@@ -1524,7 +1553,7 @@ fn mask_access_state(access: &AccessState, card_visible: bool, revealed: bool, v
         outside_breach: access.outside_breach.clone(),
         left: access.left,
         took: access.took,
-        phase: mask_access_phase(&access.phase, card_visible || revealed, viewer),
+        phase: mask_access_phase(state, &access.phase, card_visible || revealed, viewer),
     }
 }
 
@@ -1544,7 +1573,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         phase: run.phase,
         ice: run.ice.iter().map(|ice| mask_run_ice(state, registry, ice, viewer.is(Side::Corp))).collect(),
         position: run.position,
-        access_state: run.access_state.as_ref().map(|access| mask_access_state(access, card_visible, revealed, viewer)),
+        access_state: run.access_state.as_ref().map(|access| mask_access_state(state, access, card_visible, revealed, viewer)),
         jack_out_permitted: run.jack_out_permitted,
         declared_successful: run.declared_successful,
         breach_only: run.breach_only,

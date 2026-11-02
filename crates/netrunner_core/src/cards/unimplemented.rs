@@ -239,7 +239,6 @@ pub(crate) const BB_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Chrome City* (`chrome_city`): tranche F7 of the FFG plan.
 pub(crate) const CC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("immolation_script", "Immolation Script"),
     ("titanium_ribs", "Titanium Ribs"),
 ];
 
@@ -262,19 +261,16 @@ pub(crate) const UOT_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Order and Chaos* (`order_and_chaos`): tranche F7 of the FFG plan.
 pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("gagarin_deep_space_expanding_the_horizon", "Gagarin Deep Space: Expanding the Horizon"),
     ("glenn_station", "Glenn Station"),
     ("mark_yale", "Mark Yale"),
     ("satellite_grid", "Satellite Grid"),
     ("hivemind", "Hivemind"),
-    ("archives_interface", "Archives Interface"),
 ];
 
 /// *Upstalk* (`upstalk`): tranche F8 of the FFG plan.
 pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mutate", "Mutate"),
     ("bad_times", "Bad Times"),
-    ("cyber_threat", "Cyber Threat"),
     ("eden_shard", "Eden Shard"),
 ];
 

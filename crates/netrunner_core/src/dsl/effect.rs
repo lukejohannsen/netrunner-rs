@@ -872,6 +872,17 @@ pub enum Effect {
     /// actually mid-access of a specific card right now. See
     /// `run::access::trash_currently_accessed_card_without_cost`.
     TrashCurrentlyAccessedCard,
+    /// The access about to happen does not happen
+    /// (`run::AccessPhase::Imminent::forgone`) — Immolation Script's "you
+    /// may **instead** trash 1 rezzed copy of that ice", and Gagarin Deep
+    /// Space's additional cost to access declined, which CR 7.4.3's
+    /// example reads as "does not perform the access". The chosen card
+    /// has ceased to be a candidate either way, is not accessed and is
+    /// not counted as accessed (CR 7.3.6). Nothing outside an imminent
+    /// access. Composition didn't work: every word that ends an access
+    /// moves the card (`RemoveCurrentlyAccessedCardFromGame`, a trash),
+    /// and "instead" leaves the chosen card where it is.
+    ForgoAccess,
     /// Removes the card the Runner is accessing from the game, ending its
     /// access (CR 7.1.7) — Salsette Slums' "pay the trash cost of the card
     /// you are accessing: **remove that card from the game**". See
@@ -4759,6 +4770,7 @@ impl Effect {
             | Effect::RezInstalled { .. }
             | Effect::TakeAllCountersAsCredits(..)
             | Effect::TrashCurrentlyAccessedCard
+            | Effect::ForgoAccess
             | Effect::RemoveCurrentlyAccessedCardFromGame
             | Effect::DerezCard(..)
             | Effect::GainCreditsPerCounter { .. }

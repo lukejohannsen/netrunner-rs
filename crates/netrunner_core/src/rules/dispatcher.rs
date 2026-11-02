@@ -293,8 +293,13 @@ pub(crate) mod audit {
         // occurrence to every card that asks about the turn. What is left
         // in the frame was dispatched with no record to match. An access is
         // the other half of `is_owed`: recorded by the action that
-        // presented the card, dispatched by this one.
-        if let Some(extra) = dispatched.iter().find(|extra| !matches!(extra, GameEvent::CardAccessed { .. }) && !listeners::moments(state, extra).is_empty()) {
+        // presented the card, dispatched by this one. An imminent access
+        // is never recorded and dispatched once, where the candidate is
+        // chosen (`run::access::choose_for_access`).
+        if let Some(extra) = dispatched
+            .iter()
+            .find(|extra| !matches!(extra, GameEvent::CardAccessed { .. } | GameEvent::AccessAboutToResolve { .. }) && !listeners::moments(state, extra).is_empty())
+        {
             panic!(
                 "{} was dispatched more often than it is in the action's record, and the turn log counted each: {extra:?}",
                 extra.variant_name()
@@ -489,6 +494,14 @@ fn fire_one(
     // requirement, no `TriggerFired`: the trigger already fired.
     if let Some(effect) = &due.continuation {
         let mut ctx = ability::ResolutionContext::for_install_trigger(due.install, Some(&due.card), due.event.as_ref());
+        // A delayed ability's "that card" is the card its moment is about,
+        // written in as a trigger's is (Immolation Script's "1 rezzed copy
+        // of **that ice**"); the rest of a `Sequence` had its written in
+        // before it was queued, and names none.
+        let that_card = due.event.as_ref().filter(|_| effect.names_that_card()).and_then(|event| crate::rules::listeners::card_about(state, event, due.trigger));
+        if let Some(card) = that_card {
+            return ability::evaluate_effect(state, &effect.clone().with_that_card(&card), &mut ctx, registry);
+        }
         return ability::evaluate_effect(state, effect, &mut ctx, registry);
     }
     // `due.event` is what makes a deferred trigger indistinguishable from

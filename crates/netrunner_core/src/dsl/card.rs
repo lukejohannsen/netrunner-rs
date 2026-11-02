@@ -1576,7 +1576,11 @@ impl CardDefinition {
             EventFilter::OntoThis => triggered.trigger == Trigger::OnInstall && self.continuous.iter().any(|effect| effect.kind == ContinuousKind::MayHost),
             // Only a Corp install's moment says where the card came
             // from (`listeners::Moment::from_hq`).
-            EventFilter::InstalledFromHq(_) | EventFilter::InstalledIn(_) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
+            EventFilter::InstalledFromHq(_) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
+            // …and where it went; or, of a candidate about to be accessed,
+            // which server's root it sits in (Gagarin Deep Space's "a card
+            // in the root of a remote server").
+            EventFilter::InstalledIn(_) => (triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp) || triggered.trigger == Trigger::OnAccessAboutToResolve,
             // …and only a Runner install's whether it left the heap.
             EventFilter::InstalledFromHeap => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Runner,
             // Only an install is in a root or not.

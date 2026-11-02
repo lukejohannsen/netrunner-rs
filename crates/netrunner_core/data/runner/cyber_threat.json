@@ -1,0 +1,126 @@
+{
+  "id": "cyber_threat",
+  "title": "Cyber Threat",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "play_requirement": "NoActionTakenThisTurn",
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseServer": {}
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OpponentInstalled",
+                "filter": {
+                  "All": [
+                    "UnrezzedIce",
+                    "InChosenServer"
+                  ]
+                },
+                "count": 1
+              }
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnInstalled",
+                      "filter": {
+                        "All": [
+                          "UnrezzedIce",
+                          "InChosenServer"
+                        ]
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "Sequence": [
+                          {
+                            "RezInstalled": {
+                              "install": 0,
+                              "pay_cost": true
+                            }
+                          },
+                          {
+                            "EffectIf": {
+                              "condition": {
+                                "ActingCardMatches": "Unrezzed"
+                              },
+                              "effect": {
+                                "AsThisCard": {
+                                  "PromptChooseServer": {
+                                    "chooser": "Runner",
+                                    "rez_cost_delta": 0,
+                                    "bonus_run_credits": 0,
+                                    "chosen_server": true,
+                                    "on_start": {
+                                      "Prohibit": {
+                                        "what": "RezIce",
+                                        "until": "Run"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "PromptChooseServer": {
+                      "chooser": "Runner",
+                      "rez_cost_delta": 0,
+                      "bonus_run_credits": 0,
+                      "chosen_server": true,
+                      "on_start": {
+                        "Prohibit": {
+                          "what": "RezIce",
+                          "until": "Run"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "texts": [
+                  "The Corp may rez 1 piece of ice protecting that server",
+                  "If they do not, run that server"
+                ]
+              }
+            },
+            "otherwise": {
+              "PromptChooseServer": {
+                "chooser": "Runner",
+                "rez_cost_delta": 0,
+                "bonus_run_credits": 0,
+                "chosen_server": true,
+                "on_start": {
+                  "Prohibit": {
+                    "what": "RezIce",
+                    "until": "Run"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Choose a server. The Corp may rez 1 piece of ice protecting that server. If they do not, run that server. The Corp cannot rez ice during that run."
+    }
+  ],
+  "built_from": 6013,
+  "is_playable": true
+}

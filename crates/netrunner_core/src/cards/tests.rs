@@ -56266,3 +56266,268 @@ mod engine_words_stage_17 {
         assert!(apply_action(&held, &registry, PlayerAction::RezIce { ice: InstallId(101) }).is_err(), "not for the rest of this turn");
     }
 }
+
+mod engine_words_stage_18 {
+    use super::*;
+    use crate::rules::{AccessCandidate, AccessPhase};
+    use crate::rules::{ArchivedCard, RunPhase};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.corp.resources.credits = Credits(10);
+        state.next_install_id = 200;
+        state
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn phase(state: &GameState) -> Option<RunPhase> {
+        state.active_run.as_ref().map(|run| run.phase)
+    }
+
+    fn access_phase(state: &GameState) -> Option<&AccessPhase> {
+        state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| &access.phase)
+    }
+
+    /// Passes and continues until the breach parks something, never
+    /// answering anything parked.
+    fn run_to_the_breach(mut state: GameState, registry: &CardRegistry) -> GameState {
+        for _ in 0..64 {
+            let parked = state.pending_decision.is_some() || state.pending_paid_choice.is_some();
+            if parked || phase(&state) == Some(RunPhase::AccessingCard) || state.active_run.is_none() {
+                return state;
+            }
+            let action = match (&state.paid_ability_window, phase(&state)) {
+                (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+                (None, Some(RunPhase::Initiation | RunPhase::Movement | RunPhase::EncounterIce | RunPhase::ApproachIce)) => PlayerAction::ContinueRun,
+                (None, Some(RunPhase::Success)) => PlayerAction::CompleteRun,
+                other => panic!("stuck at {other:?}"),
+            };
+            state = act(&state, registry, action);
+        }
+        panic!("never reached the breach");
+    }
+
+    fn accessed(state: &GameState) -> u32 {
+        state.active_run.as_ref().map_or(0, |run| run.cards_accessed_count)
+    }
+
+    /// "Whenever you would access a card in Archives, you may instead
+    /// remove it from the game." The card is chosen and not accessed: it
+    /// is gone, no access is counted (CR 7.3.6), and the breach goes on to
+    /// the next candidate, which is accessed — once per breach.
+    #[test]
+    fn archives_interface_removes_a_card_from_the_game_instead_of_accessing_it() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("archives_interface", 900)];
+        state.corp.archives = vec![ArchivedCard::faceup(id("hedge_fund")), ArchivedCard::faceup(id("ice_wall"))];
+
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives });
+        let breach = run_to_the_breach(started, &registry);
+        assert!(matches!(access_phase(&breach), Some(AccessPhase::SelectNextCard { .. })), "two candidates: {:?}", access_phase(&breach));
+
+        let chosen = act(&breach, &registry, PlayerAction::SelectCardToAccess { candidate: AccessCandidate::Archived(id("hedge_fund")) });
+        assert!(
+            matches!(access_phase(&chosen), Some(AccessPhase::Imminent { card_id, forgone: false, .. }) if *card_id == id("hedge_fund")),
+            "the access waits on the choice: {:?}",
+            access_phase(&chosen)
+        );
+        assert!(matches!(chosen.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { .. })), "you may");
+        assert_eq!(accessed(&chosen), 0, "not accessed yet");
+
+        let removed = act(&chosen, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        assert_eq!(removed.corp.removed_from_game, vec![id("hedge_fund")]);
+        assert!(!removed.corp.archives.iter().any(|archived| archived.card == id("hedge_fund")), "out of Archives");
+        // The one candidate left is accessed, and the interface is spent.
+        assert!(
+            matches!(access_phase(&removed), Some(AccessPhase::PendingChoice { card_id, .. }) if *card_id == id("ice_wall")),
+            "the next card is accessed: {:?}",
+            access_phase(&removed)
+        );
+        assert!(removed.pending_decision.is_none(), "once each time you breach Archives");
+        assert_eq!(accessed(&removed), 1, "the removed card was never accessed");
+
+        // Declined, the card is accessed as it would have been.
+        let kept = act(&chosen, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 });
+        assert!(matches!(access_phase(&kept), Some(AccessPhase::PendingChoice { card_id, .. }) if *card_id == id("hedge_fund")));
+        assert!(kept.corp.removed_from_game.is_empty());
+        assert_eq!(accessed(&kept), 1);
+    }
+
+    /// The imminent access is masked as the card is public: an Archives
+    /// card is everyone's.
+    #[test]
+    fn an_imminent_access_in_archives_names_its_card_to_both_players() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("archives_interface", 900)];
+        state.corp.archives = vec![ArchivedCard::faceup(id("hedge_fund")), ArchivedCard::faceup(id("ice_wall"))];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives });
+        let breach = run_to_the_breach(started, &registry);
+        let chosen = act(&breach, &registry, PlayerAction::SelectCardToAccess { candidate: AccessCandidate::Archived(id("hedge_fund")) });
+        for side in [Side::Corp, Side::Runner] {
+            let view = crate::view::build_client_view(&chosen, &registry, side);
+            let phase = &view.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase;
+            assert!(matches!(phase, crate::rules::PublicAccessPhase::Imminent { card: Some(card), .. } if *card == id("hedge_fund")), "{side:?}: {phase:?}");
+        }
+    }
+
+    /// "Run Archives. If successful, whenever you would access a faceup
+    /// piece of ice in Archives this run, you may instead trash 1 rezzed
+    /// copy of that ice." The copy in Archives is not accessed, and it is
+    /// a copy of *that* ice that goes.
+    #[test]
+    fn immolation_script_trashes_a_rezzed_copy_instead_of_accessing_the_ice_in_archives() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { install_id: InstallId(101), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() },
+            crate::rules::InstalledCard { install_id: InstallId(102), card: id("enigma"), server: ServerId::RnD, slot: InstallSlot::Ice, rezzed: true, ..Default::default() },
+        ];
+        state.corp.archives = vec![ArchivedCard::faceup(id("ice_wall")), ArchivedCard::faceup(id("hedge_fund"))];
+        state.runner.grip = vec![id("immolation_script")];
+
+        let played = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("immolation_script") });
+        let started = act(&played, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Archives });
+        let breach = run_to_the_breach(started, &registry);
+        let chosen = act(&breach, &registry, PlayerAction::SelectCardToAccess { candidate: AccessCandidate::Archived(id("ice_wall")) });
+        assert!(matches!(chosen.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { .. })), "you may: {:?}", chosen.pending_decision);
+        let instead = act(&chosen, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        let picked = act(&instead, &registry, PlayerAction::ToggleCardSelection { position: 0 });
+        let trashed = act(&picked, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(trashed.find_corp_install(InstallId(101)).is_none(), "the rezzed Ice Wall is trashed");
+        assert!(trashed.find_corp_install(InstallId(102)).is_some(), "Enigma is no copy of it");
+        assert!(
+            matches!(access_phase(&trashed), Some(AccessPhase::PendingChoice { card_id, .. }) if *card_id == id("hedge_fund")),
+            "the Ice Wall in Archives was not accessed, and the breach goes on: {:?}",
+            access_phase(&trashed)
+        );
+        assert_eq!(accessed(&trashed), 1, "only Hedge Fund is accessed");
+
+        // A card that is not ice does not hear it.
+        let other = act(&breach, &registry, PlayerAction::SelectCardToAccess { candidate: AccessCandidate::Archived(id("hedge_fund")) });
+        assert!(other.pending_decision.is_none());
+        assert!(matches!(access_phase(&other), Some(AccessPhase::PendingChoice { card_id, .. }) if *card_id == id("hedge_fund")));
+    }
+
+    /// "As an additional cost to access a card in the root of a remote
+    /// server, the Runner must pay 1[credit]." Declined, the card is not
+    /// accessed (CR 7.4.3's example) and the run ends with the breach; a
+    /// card in HQ costs nothing.
+    #[test]
+    fn gagarin_deep_space_charges_the_runner_to_access_a_remote_root() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.identity = Some(id("gagarin_deep_space_expanding_the_horizon"));
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(101), card: id("pad_campaign"), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() }];
+        state.corp.hq = vec![id("hedge_fund")];
+
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
+        let asked = run_to_the_breach(started, &registry);
+        assert!(asked.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Runner), "the Runner is asked to pay");
+        assert!(matches!(access_phase(&asked), Some(AccessPhase::Imminent { candidate: AccessCandidate::Root(InstallId(101)), .. })));
+        // The Runner is not told what the card is before paying.
+        let view = crate::view::build_client_view(&asked, &registry, Side::Runner);
+        let masked = &view.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase;
+        assert!(matches!(masked, crate::rules::PublicAccessPhase::Imminent { card: None, .. }), "{masked:?}");
+
+        let declined = act(&asked, &registry, PlayerAction::DeclinePendingPaidChoice);
+        assert!(declined.active_run.is_none(), "nothing accessed, and the breach is over");
+        assert!(declined.find_corp_install(InstallId(101)).is_some_and(|card| !card.seen_by_runner), "never seen");
+
+        let paid = act(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None });
+        assert_eq!(paid.runner.resources.credits, Credits(9));
+        assert!(matches!(access_phase(&paid), Some(AccessPhase::PendingChoice { card_id, .. }) if *card_id == id("pad_campaign")));
+
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let hq = run_to_the_breach(started, &registry);
+        assert!(hq.pending_paid_choice.is_none(), "HQ is no remote");
+        assert!(matches!(access_phase(&hq), Some(AccessPhase::PendingChoice { card_id, .. }) if *card_id == id("hedge_fund")));
+    }
+
+    fn hq_ice(rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(101), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    /// "Play only as your first [click]. Choose a server. The Corp may rez
+    /// 1 piece of ice protecting that server. If they do not, run that
+    /// server. The Corp cannot rez ice during that run." The rez is the
+    /// Corp's only way out, and only a rez that happens is one: with no
+    /// unrezzed ice there, or a rez the Corp cannot pay for, the run is
+    /// made.
+    #[test]
+    fn cyber_threat_runs_the_chosen_server_unless_the_corp_rezzes_ice_there() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![hq_ice(false)];
+        state.runner.grip = vec![id("cyber_threat")];
+        let clicked = act(&state, &registry, PlayerAction::GainCreditClick { side: Side::Runner });
+        assert!(apply_action(&clicked, &registry, PlayerAction::PlayEvent { card_id: id("cyber_threat") }).is_err(), "only as the first [click]");
+
+        let played = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("cyber_threat") });
+        let hq = act(&played, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq });
+        assert!(matches!(&hq.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })), "the Corp may: {:?}", hq.pending_decision);
+
+        // The Corp rezzes Ice Wall: no run.
+        let rez = act(&hq, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        let picked = act(&rez, &registry, PlayerAction::ToggleCardSelection { position: 0 });
+        let rezzed = act(&picked, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(rezzed.find_corp_install(InstallId(101)).is_some_and(|ice| ice.rezzed));
+        assert!(rezzed.active_run.is_none(), "they did, so no run");
+        assert_eq!(rezzed.corp.resources.credits, Credits(9), "Ice Wall's 1[credit]");
+
+        // The Corp does not: the run, with the ice unrezzable.
+        let runs = act(&hq, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 });
+        let runs = act(&runs, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq });
+        assert_eq!(runs.active_run.as_ref().map(|run| run.server), Some(ServerId::Hq), "run that server");
+        assert!(crate::rules::continuous::cannot(&runs, &registry, crate::dsl::Prohibition::RezIce), "the Corp cannot rez ice during that run");
+
+        // A rez the Corp cannot pay for is no rez.
+        let mut broke = hq.clone();
+        broke.corp.resources.credits = Credits(0);
+        let rez = act(&broke, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        let picked = act(&rez, &registry, PlayerAction::ToggleCardSelection { position: 0 });
+        let unpaid = act(&picked, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(unpaid.find_corp_install(InstallId(101)).is_some_and(|ice| !ice.rezzed));
+        let unpaid = act(&unpaid, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq });
+        assert_eq!(unpaid.active_run.as_ref().map(|run| run.server), Some(ServerId::Hq), "they did not rez, so the run is made");
+
+        // With no unrezzed ice protecting the server there is nothing to
+        // ask: the run follows.
+        let rnd = act(&played, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD });
+        assert!(matches!(&rnd.pending_decision, Some(crate::rules::PendingDecision::ChooseServer { chooser: Side::Runner, .. })), "the Corp is not asked: {:?}", rnd.pending_decision);
+        let rnd = act(&rnd, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD });
+        assert_eq!(rnd.active_run.as_ref().map(|run| run.server), Some(ServerId::RnD));
+    }
+
+    /// Heliamphora's "you may host it faceup on this program instead" is
+    /// the same moment: the card is hosted, never accessed.
+    #[test]
+    fn heliamphora_hosts_the_card_before_it_is_accessed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("heliamphora", 900)];
+        state.corp.archives = vec![ArchivedCard::faceup(id("hedge_fund")), ArchivedCard::faceup(id("ice_wall"))];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives });
+        let breach = run_to_the_breach(started, &registry);
+        let chosen = act(&breach, &registry, PlayerAction::SelectCardToAccess { candidate: AccessCandidate::Archived(id("hedge_fund")) });
+        let hosted = act(&chosen, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        assert!(hosted.runner.rig[0].hosted_cards.contains(&id("hedge_fund")));
+        assert_eq!(accessed(&hosted), 1, "only Ice Wall was accessed");
+        assert!(matches!(access_phase(&hosted), Some(AccessPhase::PendingChoice { card_id, .. }) if *card_id == id("ice_wall")));
+    }
+}

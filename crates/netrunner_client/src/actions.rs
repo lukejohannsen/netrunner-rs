@@ -684,6 +684,9 @@ pub fn narrate_event(
         } | GameEvent::TagsCleared { .. } | GameEvent::TagsAvoided { .. } | GameEvent::CardRemovedFromGame { .. } |
         GameEvent::AbilityGainedCredits { .. } | GameEvent::AbilityTookCredits { .. } | GameEvent::AbilityActivated { .. } |
         GameEvent::CardTrashedFromAccess { .. } | GameEvent::AccessPassed { .. } |
+        // The access that follows is the line; one that does not follow
+        // is the decision's, or the card's leaving.
+        GameEvent::AccessAboutToResolve { .. } |
         GameEvent::PaidAbilityWindowOpened { .. } | GameEvent::PriorityPassed { .. } |
         GameEvent::PaidAbilityWindowClosed | GameEvent::StrengthBoosted { .. } |
         GameEvent::TraceCorpBidSubmitted { .. } | GameEvent::TraceRunnerBidSubmitted { .. } |
