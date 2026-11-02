@@ -924,6 +924,14 @@ fn encode_access(run: &PublicRunState, features: &mut Vec<f32>) {
             features.extend([0.0, 1.0, 0.0]);
             features.extend([0.0, 0.0, 0.0, flag(*can_pay), credit_cost(cost)]);
         }
+        // An imminent access has **no slot of its own**: one would move
+        // every feature after it, and what it waits on is a card's
+        // decision, which `encode_decision` already says. All three phase
+        // flags clear is the one shape no other phase writes.
+        PublicAccessPhase::Imminent { .. } => {
+            features.extend([0.0; 3]);
+            features.extend([0.0; 5]);
+        }
         PublicAccessPhase::PendingChoice { trash_cost, mandatory_steal, steal_cost, .. } => {
             features.extend([0.0, 0.0, 1.0]);
             features.push(norm(trash_cost.unwrap_or(0) as f32, MAX_PRINTED_COST));

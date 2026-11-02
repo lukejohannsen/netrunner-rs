@@ -358,13 +358,54 @@ pub enum AccessPhase {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         trash_also: Option<Cost>,
     },
+    /// **A candidate is chosen and its access is imminent** (CR 7.4.3,
+    /// 9.9.4): the step between choosing a card and accessing it, where
+    /// what hears it (`GameEvent::AccessAboutToResolve`,
+    /// `Trigger::OnAccessAboutToResolve`) resolves first — Archives
+    /// Interface's "whenever you would access a card in Archives, you may
+    /// instead remove it from the game", Immolation Script's "you may
+    /// instead trash 1 rezzed copy of that ice", and Gagarin Deep Space's
+    /// additional cost to access a card in the root of a remote server
+    /// (CR 7.4.3's own example: declined, "the Runner … does not perform
+    /// the access. That card still ceases to be a candidate"). The
+    /// decisions the moment parks are the cards' own (`PendingDecision`,
+    /// a paid choice), so this phase offers no action of its own and
+    /// `ActionSpace` gains no segment; `engine::resume_run` carries the
+    /// access on (`access::move_on_if_left`) once nothing is parked.
+    ///
+    /// **The card is accessed unless it left its place or `forgone` is
+    /// set** (`Effect::ForgoAccess`), and either way it has ceased to be a
+    /// candidate; a card not accessed is not counted as one (CR 7.3.6)
+    /// and is not among `AccessState::resolved_cards`. The phase lasts
+    /// only while a decision is parked on it: with nothing listening the
+    /// access follows within the same action, as it always did.
+    ///
+    /// Rejected: a `PlayerAction` choosing among "instead" offers the
+    /// engine collected from the cards. Every one of them is a card's
+    /// "may", which a trigger already says in the cards' own words, with
+    /// the Listener Rule deciding who hears it; an offer list would have
+    /// been a second audience written in Rust.
+    Imminent {
+        /// The candidate chosen, which says how public the card is: a
+        /// card in Archives or set aside is faceup, a root install is the
+        /// Corp's and the Runner's once rezzed or seen, and a card out of
+        /// HQ or R&D is nobody's yet (`masking`).
+        candidate: AccessCandidate,
+        card_id: CardId,
+        /// The access will not happen (`Effect::ForgoAccess`): "instead",
+        /// or an additional cost to access declined. Public: both players
+        /// watched the decision that set it.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        forgone: bool,
+    },
 }
 
 impl AccessPhase {
-    /// The card being accessed, when the access is at one.
+    /// The card being accessed, when the access is at one. Not the card
+    /// of an `Imminent` access, which is not being accessed yet.
     pub fn card(&self) -> Option<&CardId> {
         match self {
-            AccessPhase::SelectNextCard { .. } => None,
+            AccessPhase::SelectNextCard { .. } | AccessPhase::Imminent { .. } => None,
             AccessPhase::PendingInteractiveTrigger { card_id, .. } | AccessPhase::PendingChoice { card_id, .. } => Some(card_id),
         }
     }

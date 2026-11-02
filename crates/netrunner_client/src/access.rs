@@ -83,7 +83,9 @@ impl Access {
         let run = view.active_run.as_ref()?;
         let access = run.access_state.as_ref()?;
         let (card, stage) = match &access.phase {
-            PublicAccessPhase::SelectNextCard { .. } => return None,
+            // Not accessed yet: what the access waits on is a card's own
+            // decision, drawn as that decision.
+            PublicAccessPhase::SelectNextCard { .. } | PublicAccessPhase::Imminent { .. } => return None,
             PublicAccessPhase::PendingChoice { card, .. } => (card.clone()?, Stage::Choice),
             PublicAccessPhase::PendingInteractiveTrigger { card, cost, decider, can_pay } => {
                 (card.clone()?, Stage::Trigger { cost: cost.clone(), decider: *decider, can_pay: *can_pay })

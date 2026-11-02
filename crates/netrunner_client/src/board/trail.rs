@@ -291,7 +291,7 @@ impl RunTrail {
                 });
                 let card = run.access_state.as_ref().and_then(|a| match &a.phase {
                     PublicAccessPhase::PendingChoice { card, .. } | PublicAccessPhase::PendingInteractiveTrigger { card, .. } => card.clone(),
-                    PublicAccessPhase::SelectNextCard { .. } => None,
+                    PublicAccessPhase::SelectNextCard { .. } | PublicAccessPhase::Imminent { .. } => None,
                 });
                 let count = match &self.stage {
                     Stage::Accessing { count, .. } => (*count).max(accessed),

@@ -287,7 +287,7 @@ fn offer_next(state: &mut GameState, registry: &CardRegistry, server: ServerId) 
         }
         1 => {
             let (card_id, install) = take_candidate(state, &options[0]).expect("a pruned candidate is still there");
-            present_card_for_access(state, registry, server, &card_id, install)
+            choose_for_access(state, registry, server, &options[0], &card_id, install)
         }
         _ => {
             access.phase = AccessPhase::SelectNextCard { selectable_cards: options };
@@ -1064,7 +1064,92 @@ pub fn resolve_select_card(
     }
     let (card_id, install) =
         take_candidate(state, candidate).ok_or_else(|| RulesError::InvalidAccessSelection { candidate: candidate.clone() })?;
-    present_card_for_access(state, registry, pending.server, &card_id, install)
+    choose_for_access(state, registry, pending.server, candidate, &card_id, install)
+}
+
+/// The Runner has chosen `candidate`, which has ceased to be a candidate
+/// (CR 7.4.3), and its access is imminent: dispatched for the cards that
+/// hear it (`GameEvent::AccessAboutToResolve`) with the access waiting at
+/// `AccessPhase::Imminent`, so that "whenever you would access" and an
+/// additional cost to access resolve before it (CR 9.9.4). With nothing
+/// parked by what heard it the access follows at once
+/// (`carry_on_imminent`); otherwise `engine::resume_run` carries it on
+/// once nothing stands in the way (`move_on_if_left`).
+///
+/// The instance is pinned here, before the moment, so a card that asks
+/// whether the candidate is installed (`CurrentlyAccessingInstalledCard`)
+/// reads the card chosen rather than the one before it.
+fn choose_for_access(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    server: ServerId,
+    candidate: &AccessCandidate,
+    card_id: &CardId,
+    install: Option<InstallId>,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let rezzed = install.and_then(|install| state.find_corp_install(install)).is_some_and(|c| c.rezzed);
+    if let Some(access) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()) {
+        access.pending_install = install;
+        access.pending_install_rezzed = rezzed;
+        access.currently_accessing = None;
+        access.left = false;
+        access.phase = AccessPhase::Imminent { candidate: candidate.clone(), card_id: card_id.clone(), forgone: false };
+    }
+    // Dispatched and not recorded, as `enter_pending_choice` dispatches
+    // the access itself: the record's line is the access that follows, or
+    // the decision a card parks on it, and a line for every candidate
+    // chosen would say nothing either of them does not.
+    let mut events = dispatcher::dispatch_event(state, registry, &GameEvent::AccessAboutToResolve { card: card_id.clone(), server, candidate: candidate.clone() })?;
+    if let Some(finish) = finish_if_game_over(state, server) {
+        events.extend(finish);
+        return Ok(events);
+    }
+    if state.resolution_halted() || !state.deferred_triggers.is_empty() {
+        return Ok(events);
+    }
+    events.extend(carry_on_imminent(state, registry)?);
+    Ok(events)
+}
+
+/// The access `AccessPhase::Imminent` holds goes on: the card is accessed
+/// (`present_card_for_access`), unless it was forgone (`Effect::
+/// ForgoAccess`) or has left its place — removed from the game instead
+/// (Archives Interface), hosted (Heliamphora), trashed by a card's text —
+/// in which case the next candidate is offered and nothing was accessed
+/// (CR 7.3.6). Nothing in any other phase.
+fn carry_on_imminent(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(access) = state.active_run.as_ref().filter(|run| run.phase == RunPhase::AccessingCard).and_then(|run| run.access_state.as_ref()) else {
+        return Ok(Vec::new());
+    };
+    let AccessPhase::Imminent { candidate, card_id, forgone } = &access.phase else { return Ok(Vec::new()) };
+    let (candidate, card_id, forgone, server) = (candidate.clone(), card_id.clone(), *forgone, access.server);
+    // A copy is still where it was chosen when the zone holds one more of
+    // it than the candidates still to be chosen do.
+    let still_there = match &candidate {
+        AccessCandidate::Root(install) => state.find_corp_install(*install).is_some(),
+        AccessCandidate::Archived(card) => {
+            let waiting = access.candidates.iter().filter(|c| matches!(c, AccessCandidate::Archived(other) if other == card)).count();
+            state.corp.archives.iter().filter(|archived| archived.card == *card).count() > waiting
+        }
+        AccessCandidate::SetAside(card) => {
+            let waiting = access.candidates.iter().filter(|c| matches!(c, AccessCandidate::SetAside(other) if other == card)).count();
+            state.corp.set_aside.iter().filter(|c| *c == card).count() > waiting
+        }
+        AccessCandidate::Zone => zone_holds(state, server, &card_id, access.from_zone.iter().filter(|c| **c == card_id).count()),
+    };
+    if forgone || access.left || !still_there {
+        let access = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()).expect("checked above");
+        access.pending_install = None;
+        access.pending_install_rezzed = false;
+        access.left = false;
+        access.phase = AccessPhase::SelectNextCard { selectable_cards: Vec::new() };
+        return offer_next(state, registry, server);
+    }
+    let install = match candidate {
+        AccessCandidate::Root(install) => Some(install),
+        _ => None,
+    };
+    present_card_for_access(state, registry, server, &card_id, install)
 }
 
 /// If `state.phase` became `GameOver` (e.g. a flatline mid-trigger, or an
@@ -1123,6 +1208,9 @@ pub(crate) fn move_on_if_left(state: &mut GameState, registry: &CardRegistry) ->
     let Some(access) = state.active_run.as_ref().filter(|run| run.phase == RunPhase::AccessingCard).and_then(|run| run.access_state.as_ref()) else {
         return Ok(Vec::new());
     };
+    if matches!(access.phase, AccessPhase::Imminent { .. }) {
+        return carry_on_imminent(state, registry);
+    }
     let AccessPhase::PendingChoice { card_id, .. } = &access.phase else { return Ok(Vec::new()) };
     let install_gone = access.pending_install.is_some_and(|install| state.find_corp_install(install).is_none());
     if !(access.left || install_gone) {
@@ -1437,6 +1525,10 @@ fn move_to_archives(
 /// seed 224).
 fn accessed_and_at_decision(access: &AccessState) -> Result<(CardId, bool), RulesError> {
     match (&access.phase, &access.currently_accessing) {
+        // The card about to be accessed, moved instead (Archives
+        // Interface, Heliamphora): `carry_on_imminent` sees it gone and
+        // moves on without the access.
+        (AccessPhase::Imminent { card_id, .. }, None) => Ok((card_id.clone(), false)),
         (AccessPhase::PendingChoice { card_id, .. }, accessing) if accessing.as_ref().is_none_or(|accessing| accessing == card_id) => Ok((card_id.clone(), true)),
         (_, accessing) => Ok((accessing.clone().ok_or(RulesError::NotInAccessPhase)?, false)),
     }
@@ -1877,7 +1969,7 @@ mod tests {
     fn reached_from_zone(state: &GameState) -> Vec<CardId> {
         let access = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
         let current = match &access.phase {
-            AccessPhase::PendingChoice { card_id, .. } | AccessPhase::PendingInteractiveTrigger { card_id, .. } => Some(card_id.clone()),
+            AccessPhase::PendingChoice { card_id, .. } | AccessPhase::PendingInteractiveTrigger { card_id, .. } | AccessPhase::Imminent { card_id, .. } => Some(card_id.clone()),
             AccessPhase::SelectNextCard { .. } => None,
         };
         current.into_iter().chain(access.from_zone.iter().cloned()).collect()

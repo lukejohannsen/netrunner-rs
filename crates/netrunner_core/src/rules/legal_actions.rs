@@ -919,6 +919,10 @@ fn access_flow_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pla
             .iter()
             .map(|candidate| PlayerAction::SelectCardToAccess { candidate: candidate.clone() })
             .collect(),
+        // What the imminent access waits on is a card's decision, offered
+        // by the pending decision's own candidates; the access itself
+        // offers nothing (`AccessPhase::Imminent`).
+        AccessPhase::Imminent { .. } => Vec::new(),
         AccessPhase::PendingInteractiveTrigger { card_id, .. } => vec![
             PlayerAction::PayAccessTrigger { card_id: card_id.clone() },
             PlayerAction::DeclineAccessTrigger { card_id: card_id.clone() },

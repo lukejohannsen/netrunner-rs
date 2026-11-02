@@ -7,7 +7,7 @@
   "memory_cost": 1,
   "triggers": [
     {
-      "trigger": "OnAccessed",
+      "trigger": "OnAccessAboutToResolve",
       "subject": "Any",
       "requirement": {
         "And": [

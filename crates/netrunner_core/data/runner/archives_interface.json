@@ -1,0 +1,50 @@
+{
+  "id": "archives_interface",
+  "title": "Archives Interface",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnAccessAboutToResolve",
+      "subject": "Any",
+      "requirement": {
+        "And": [
+          "OncePerRun",
+          {
+            "And": [
+              {
+                "AccessingIn": "Archives"
+              },
+              {
+                "Not": {
+                  "CurrentlyAccessingInstalledCard": {}
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              "RemoveCurrentlyAccessedCardFromGame",
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may instead remove it from the game",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you would access a card in Archives, you may instead remove it from the game. Use this ability only once each time you breach Archives."
+    }
+  ],
+  "built_from": 7044,
+  "is_playable": true
+}

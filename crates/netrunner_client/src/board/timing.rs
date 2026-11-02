@@ -318,6 +318,8 @@ fn lit(view: &ClientView) -> Vec<&'static str> {
     {
         match access.phase {
             PublicAccessPhase::SelectNextCard { .. } => lit.push("CR 7.5.4"),
+            // Chosen and not yet accessed (CR 7.4.3).
+            PublicAccessPhase::Imminent { .. } => lit.extend(["CR 7.5.4", "CR 7.4.3"]),
             PublicAccessPhase::PendingInteractiveTrigger { .. } => lit.extend(["CR 7.5.5", "CR 7.2.1"]),
             PublicAccessPhase::PendingChoice { .. } => lit.extend(["CR 7.5.5", "CR 7.2.2"]),
         }

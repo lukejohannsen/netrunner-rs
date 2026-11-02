@@ -246,6 +246,20 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             let install = install.or_else(|| root_install_of(state, accessed, *server));
             vec![moment(Trigger::OnAccessed, &card(accessed, install), Some(Side::Runner))]
         }
+        // The candidate chosen, before it is accessed: a root install is
+        // the copy it is and says the server it sits in (Gagarin Deep
+        // Space's "a card in the root of a remote server",
+        // `EventFilter::InstalledIn`), and a card in a pile is in none.
+        GameEvent::AccessAboutToResolve { card: chosen, server, candidate } => {
+            let install = match candidate {
+                crate::rules::run::AccessCandidate::Root(install) => Some(*install),
+                _ => None,
+            };
+            let about = About::Card { card: chosen.clone(), install, installed: install.is_some() };
+            let installed_in = install.and_then(|install| state.find_corp_install(install)).map(|installed| installed.server).or(install.map(|_| *server));
+            let in_archives = matches!(candidate, crate::rules::run::AccessCandidate::Archived(_));
+            vec![Moment { installed_in, in_archives: Some(in_archives), ..moment(Trigger::OnAccessAboutToResolve, &about, Some(Side::Runner)) }]
+        }
         // Neither stolen nor trashed. Only the Runner accesses.
         GameEvent::AccessPassed { card: passed, in_archives } => {
             vec![Moment { in_archives: Some(*in_archives), ..moment(Trigger::OnAccessPassed, &card(passed, None), Some(Side::Runner)) }]

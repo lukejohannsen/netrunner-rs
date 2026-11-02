@@ -1,0 +1,76 @@
+{
+  "id": "immolation_script",
+  "title": "Immolation Script",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "allowed_servers": [
+              "Archives"
+            ],
+            "on_success": {
+              "LaterThisTurn": {
+                "when": "OnAccessAboutToResolve",
+                "filter": {
+                  "Card": "Ice"
+                },
+                "this_run": true,
+                "effect": {
+                  "PresentChoice": {
+                    "chooser": "Runner",
+                    "options": [
+                      {
+                        "PromptChooseCards": {
+                          "side": "Runner",
+                          "source": "OpponentInstalled",
+                          "filter": {
+                            "All": [
+                              "Ice",
+                              "Rezzed",
+                              "ThatCard"
+                            ]
+                          },
+                          "min": 1,
+                          "max": 1,
+                          "reveal": false,
+                          "shuffle_after": false,
+                          "then": {
+                            "Sequence": [
+                              {
+                                "TrashCard": "ThisCard"
+                              },
+                              "ForgoAccess"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "Sequence": []
+                      }
+                    ],
+                    "texts": [
+                      "you may instead trash 1 rezzed copy of that ice",
+                      ""
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run Archives. If successful, whenever you would access a faceup piece of ice in Archives this run, you may instead trash 1 rezzed copy of that ice. Use this ability only once this run."
+    }
+  ],
+  "built_from": 8041,
+  "is_playable": true
+}

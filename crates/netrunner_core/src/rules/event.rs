@@ -443,6 +443,22 @@ pub enum GameEvent {
         #[serde(default)]
         install: Option<crate::rules::state::InstallId>,
     },
+    /// The Runner chose `candidate` and its access is imminent
+    /// (`run::AccessPhase::Imminent`, CR 7.4.3, 9.9.4) — the moment
+    /// "whenever you would access a card" hears
+    /// (`Trigger::OnAccessAboutToResolve`). Dispatched for every chosen
+    /// candidate, whether or not anybody listens, and never recorded, as
+    /// the access is dispatched from `CardAccessed`'s shape without a
+    /// second line (`run::access::choose_for_access`). **Masked as the card
+    /// is public** wherever one is shown: a card in Archives
+    /// or set aside to everyone, a root install to the Corp and to a
+    /// Runner who can see it, a card out of HQ or R&D to nobody — it is
+    /// not accessed yet (`masking::mask_event_for_player`).
+    AccessAboutToResolve {
+        card: CardId,
+        server: ServerId,
+        candidate: crate::rules::run::AccessCandidate,
+    },
     TurnEnded { side: Side },
     TurnStarted { side: Side, clicks: u32 },
     DiscardPending { side: Side, required: usize },
@@ -1046,6 +1062,9 @@ impl GameEvent {
             | GameEvent::IceFullyBroken { .. }
             | GameEvent::ServerApproached { .. } | GameEvent::RunSucceeded { .. } | GameEvent::RunJackedOut { .. }
             | GameEvent::BreachBegun { .. } | GameEvent::BreachEnded { .. }
+            // Masked as the card is public: whoever may not know the card
+            // is not told it, and the access that follows is what teaches.
+            | GameEvent::AccessAboutToResolve { .. }
             | GameEvent::RunCompleted { .. } | GameEvent::CardInstalled { .. } | GameEvent::CardDerezzed { .. }
             | GameEvent::IceSwapped { .. } | GameEvent::CardMoved { .. } | GameEvent::RunInitiated { .. }
             | GameEvent::EventPlayed { .. } | GameEvent::OperationPlayed { .. } | GameEvent::HardwareInstalled { .. }

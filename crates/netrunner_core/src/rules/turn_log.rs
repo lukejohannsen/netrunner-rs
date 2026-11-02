@@ -372,6 +372,9 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // `mask_event_for_player` strikes the advanced card's identity, and
         // the Corp is not shown what is accessed out of R&D.
         Trigger::OnAdvance | Trigger::OnAccessed => true,
+        // A candidate out of HQ, R&D or an unrezzed root is nobody's yet
+        // (`masking`): not accessed, and its event is struck.
+        Trigger::OnAccessAboutToResolve => true,
         // A placement strikes the card as an advance does.
         Trigger::OnAdvancementCounterPlaced => true,
         // About no card: a credit pool, and a trace, are public.

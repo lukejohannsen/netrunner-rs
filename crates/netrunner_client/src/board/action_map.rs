@@ -725,6 +725,11 @@ impl Prompt {
                     PublicAccessPhase::SelectNextCard { .. } => {
                         return Some(Prompt { title: format!("Breaching {}: choose a card to access", server_name(run.server)), detail: String::new() });
                     }
+                    // Seen only while a card's "would access" decision is
+                    // parked on it, which has a prompt of its own above.
+                    PublicAccessPhase::Imminent { card, .. } => {
+                        return Some(Prompt { title: format!("About to access {}", card.as_ref().map_or_else(|| "a card".to_string(), |id| card_title(id, registry))), detail: String::new() });
+                    }
                 }
             }
             let phase = match run.phase {

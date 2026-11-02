@@ -917,6 +917,12 @@ pub fn evaluate_effect(
 
 
         Effect::TrashCurrentlyAccessedCard => run::trash_currently_accessed_card_without_cost(state, registry),
+        Effect::ForgoAccess => {
+            if let Some(crate::rules::run::AccessPhase::Imminent { forgone, .. }) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()).map(|access| &mut access.phase) {
+                *forgone = true;
+            }
+            Ok(Vec::new())
+        }
         Effect::RemoveCurrentlyAccessedCardFromGame => run::move_currently_accessed_card(state, registry, run::AccessedTo::RemovedFromGame),
 
         Effect::DerezCard(target) => {
@@ -6050,6 +6056,10 @@ pub fn check_requirement(
         EffectRequirement::ZoneHasAtLeast { zone, count, filter } => {
             let found = match filter {
                 Some(filter) => {
+                    // "That server", the one the card chose, as a selection
+                    // reads it (Cyber Threat's "1 piece of ice protecting
+                    // that server", asked before the Corp is).
+                    let filter = &filter.clone().with_chosen_server(ctx.acting_card.and_then(|card| crate::rules::lingering::chosen_server(state, card, ctx.acting_install)));
                     crate::rules::pending_choice::eligible_positions(state, registry, side, zone, filter, ctx.acting_install, ctx.acting_card).len()
                 }
                 None => crate::rules::pending_choice::zone_card_ids(state, side, zone, ctx.acting_install).len(),

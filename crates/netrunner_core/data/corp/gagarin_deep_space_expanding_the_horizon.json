@@ -1,0 +1,35 @@
+{
+  "id": "gagarin_deep_space_expanding_the_horizon",
+  "title": "Gagarin Deep Space: Expanding the Horizon",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnAccessAboutToResolve",
+      "subject": "Any",
+      "when": {
+        "InstalledIn": "Remote"
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Credits": 1
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": "ForgoAccess",
+            "text": "As an additional cost to access a card in the root of a remote server, the Runner must pay 1[credit]"
+          }
+        }
+      ],
+      "text": "As an additional cost to access a card in the root of a remote server, the Runner must pay 1[credit]."
+    }
+  ],
+  "built_from": 7002,
+  "is_playable": true
+}
