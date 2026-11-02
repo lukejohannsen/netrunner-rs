@@ -754,6 +754,11 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
     if let CardFilter::RezzedDuringThisRun = filter {
         return state.active_run.as_ref().is_some_and(|run| run.rezzed.contains(&install));
     }
+    // "That piece of ice" (Social Engineering), a selection's choice
+    // written into a moment's filter: by handle, wherever the copy is.
+    if let CardFilter::AmongInstalls(installs) = filter {
+        return installs.contains(&install);
+    }
     if let CardFilter::FullyBrokenDuringThisRun = filter {
         return state.active_run.as_ref().is_some_and(|run| run.fully_broken_ice.contains(&install));
     }

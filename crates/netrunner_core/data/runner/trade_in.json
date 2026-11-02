@@ -1,0 +1,52 @@
+{
+  "id": "trade_in",
+  "title": "Trade-In",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "additional_play_cost": {
+    "Trash": {
+      "from": "OwnInstalled",
+      "filter": {
+        "CardType": "Hardware"
+      },
+      "count": 1
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Runner",
+            {
+              "Every": {
+                "amount": "PaidCardPrintedCost",
+                "every": 2
+              }
+            }
+          ]
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnStack",
+            "filter": {
+              "CardType": "Hardware"
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": true,
+            "shuffle_after": true,
+            "destination": "OwnGrip"
+          }
+        }
+      ],
+      "text": "Gain credits equal to half the install cost of the trashed hardware (rounded down) and search your stack for a piece of hardware, reveal it, and add it to your grip. Shuffle your stack."
+    }
+  ],
+  "built_from": 6078,
+  "is_playable": true
+}

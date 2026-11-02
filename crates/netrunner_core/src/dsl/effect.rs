@@ -1855,6 +1855,17 @@ pub enum Effect {
         /// binds one. Only with `CostedStep::Rez`.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         this_install: bool,
+        /// Only about the piece of ice being approached — Bribery's "the
+        /// Corp must pay X[credit] as an additional cost to rez **the first
+        /// unrezzed piece of ice approached**", made by a `LaterThisTurn`
+        /// on the run's first approach of an unrezzed piece of ice
+        /// (`lingering::On::Install` of that ice). The acting card is the
+        /// event, so `this_install` could not name it, as
+        /// `Prohibit::encountered_ice` names the ice a breaker meets. Only
+        /// with `CostedStep::Rez`; `RulesError::NoActiveRun` with no ice
+        /// approached.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        approached_ice: bool,
     },
     Prohibit {
         what: Prohibition,
@@ -2886,7 +2897,10 @@ pub enum Amount {
     /// encounter is with (`GameEvent::IceEncountered`), Nasir Meidan's
     /// "gain credits equal to the rez cost of that ice": the printed cost,
     /// since a rez cost is the printed one and what the table adds is to
-    /// the rez, which is over. 0 for any other event or none. Composition didn't
+    /// the rez, which is over. And of the card the triggering rez is about
+    /// (`GameEvent::IceRezzed`, every rez): Social Engineering's "gain
+    /// credits equal to its rez cost" and Councilman's "pay credits equal
+    /// to its rez cost". 0 for any other event or none. Composition didn't
     /// work: `PrintedCost` reads the acting card, and making the trashed
     /// card the acting one (`acts_on_subject`) would key Ob's "once per
     /// turn" and its prompt on the card in Archives.
@@ -4194,6 +4208,21 @@ impl Effect {
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
             Effect::Repeat { times, effect } => Effect::Repeat { times, effect: Box::new(effect.with_chosen_installs(installs)) },
             Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: Box::new(effect.with_chosen_installs(installs)), otherwise: otherwise.map(|e| Box::new(e.with_chosen_installs(installs))) },
+            // Social Engineering's "If the Corp rezzes that piece of ice this
+            // turn": an ability left waiting by the card whose text it is
+            // (`AsThisCard`, since a `then` acts as the card chosen, and a
+            // delayed ability made as a facedown piece of ice would name it
+            // in every view), about the install chosen.
+            Effect::AsThisCard(effect) => Effect::AsThisCard(Box::new(effect.with_chosen_installs(installs))),
+            Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn, while_in_play } => Effect::LaterThisTurn {
+                when,
+                filter: filter.map(|filter| filter.with_chosen_installs(installs)),
+                every_time,
+                effect: Box::new(effect.with_chosen_installs(installs)),
+                this_run,
+                next_turn,
+                while_in_play,
+            },
             other => other,
         }
     }
@@ -4505,6 +4534,41 @@ impl Effect {
             // and `on_success` has its margin written in when it succeeds.
             Effect::Trace { base, on_success, on_failure } => Effect::Trace { base: amount(base), on_success, on_failure },
             Effect::AsThisCard(effect) => Effect::AsThisCard(boxed(effect)),
+            // Bribery's "Make a run. During this run, the Corp must pay
+            // X[credit]": X rides into the run's riders and the cost they
+            // leave waiting.
+            Effect::PromptChooseServer {
+                chooser,
+                rez_cost_delta,
+                bonus_run_credits,
+                allowed_servers,
+                on_success,
+                on_start,
+                exclude_servers_run_this_turn,
+                only_protected_by_ice,
+                only_protected_by_unrezzed_ice,
+                only_in,
+                last_run_server,
+                chosen_server,
+                ignore_additional_costs,
+            } => Effect::PromptChooseServer {
+                chooser,
+                rez_cost_delta,
+                bonus_run_credits,
+                allowed_servers,
+                on_success: on_success.map(boxed),
+                on_start: on_start.map(boxed),
+                exclude_servers_run_this_turn,
+                only_protected_by_ice,
+                only_protected_by_unrezzed_ice,
+                only_in,
+                last_run_server,
+                chosen_server,
+                ignore_additional_costs,
+            },
+            Effect::ImposeAdditionalCost { on, cost: crate::dsl::Cost::CreditsAmount(a), until, this_install, approached_ice } => {
+                Effect::ImposeAdditionalCost { on, cost: crate::dsl::Cost::CreditsAmount(amount(a)), until, this_install, approached_ice }
+            }
             // RNG Key's "the next card that you access this run": the
             // number named rides into what waits for the access.
             Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn, while_in_play } => Effect::LaterThisTurn { when, filter, every_time, effect: boxed(effect), this_run, next_turn, while_in_play },

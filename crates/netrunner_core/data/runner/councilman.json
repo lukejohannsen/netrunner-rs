@@ -1,0 +1,73 @@
+{
+  "id": "councilman",
+  "title": "Councilman",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "CardTypeOneOf": [
+            "Asset",
+            "Upgrade"
+          ]
+        }
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "AllOf": [
+                {
+                  "CreditsAmount": "TriggeringCardPrintedCost"
+                },
+                "TrashSelf"
+              ]
+            },
+            "if_paid": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OpponentInstalled",
+                "filter": {
+                  "All": [
+                    "ThatCard",
+                    "Rezzed"
+                  ]
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "Sequence": [
+                    {
+                      "DerezCard": "ThisCard"
+                    },
+                    {
+                      "Prohibit": {
+                        "what": "Rez",
+                        "until": "Turn",
+                        "this_install": true
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay credits equal to its rez cost and trash Councilman"
+          }
+        }
+      ],
+      "text": "Whenever the Corp rezzes an asset or upgrade, you may pay credits equal to its rez cost and trash Councilman. If you do, derez that asset or upgrade. The Corp cannot rez it for the remainder of this turn."
+    }
+  ],
+  "built_from": 10047,
+  "is_playable": true
+}

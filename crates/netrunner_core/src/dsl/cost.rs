@@ -394,6 +394,21 @@ impl Cost {
     /// Whether paying this takes the ability's own source off the table —
     /// "[trash]:", or a removal from the game. Its hosted cards are then
     /// set aside for an effect that acts on them (CR 9.5.5).
+    /// This cost with every amount `fill` answers written over by `Fixed`
+    /// (`Amount::filled`) — Councilman's "you may pay credits equal to
+    /// **its rez cost**", a paid choice parked by a trigger whose moment is
+    /// gone by the time it is accepted (`Effect::OfferPaidChoice` in
+    /// `ability`).
+    pub fn filled(self, fill: &dyn Fn(&Amount) -> Option<u32>) -> Cost {
+        match self {
+            Cost::CreditsAmount(amount) => Cost::CreditsAmount(amount.filled(fill)),
+            Cost::ClicksAmount(amount) => Cost::ClicksAmount(amount.filled(fill)),
+            Cost::AnyOf(costs) => Cost::AnyOf(costs.into_iter().map(|cost| cost.filled(fill)).collect()),
+            Cost::AllOf(costs) => Cost::AllOf(costs.into_iter().map(|cost| cost.filled(fill)).collect()),
+            other => other,
+        }
+    }
+
     pub fn uninstalls_its_source(&self) -> bool {
         match self {
             Cost::TrashSelf | Cost::RemoveSelfFromGame | Cost::AddSelfToHq => true,

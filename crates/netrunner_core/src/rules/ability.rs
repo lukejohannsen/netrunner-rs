@@ -2355,14 +2355,30 @@ pub fn evaluate_effect(
             crate::rules::engine::install_runner_card_from_grip_paying_cost(state, registry, card_id)
         }
 
-        Effect::ImposeAdditionalCost { on, cost, until, this_install } => {
+        Effect::ImposeAdditionalCost { on, cost, until, this_install, approached_ice } => {
             let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             let source = ctx.attributed_card().ok_or(RulesError::UnresolvedCardTarget)?;
+            // Bribery's "the first unrezzed piece of ice approached", heard
+            // as it is approached.
+            let approached = match approached_ice {
+                true => Some(
+                    state
+                        .active_run
+                        .as_ref()
+                        .filter(|run| run.phase == RunPhase::ApproachIce)
+                        .and_then(|run| run.ice.get(run.position))
+                        .map(|ice| ice.install_id)
+                        .ok_or(RulesError::NoActiveRun)?,
+                ),
+                false => None,
+            };
             for step in on {
-                // A rez is the Corp's, about ice: the one chosen, or each.
-                let about = match (step, this_install) {
-                    (CostedStep::Rez, true) => On::Install(ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?),
-                    (CostedStep::Rez, false) => On::EachIce,
+                // A rez is the Corp's, about ice: the one chosen, the one
+                // approached, or each.
+                let about = match (step, this_install, approached) {
+                    (CostedStep::Rez, _, Some(ice)) => On::Install(ice),
+                    (CostedStep::Rez, true, None) => On::Install(ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?),
+                    (CostedStep::Rez, false, None) => On::EachIce,
                     _ => On::Player(Side::Runner),
                 };
                 state.lingering.push(LingeringEffect { what: Lingering::AdditionalCost { to: *step, cost: cost.clone() }, on: about, until, source: source.clone() });
@@ -2798,9 +2814,22 @@ pub fn evaluate_effect(
         }
 
         Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
+            // A price read off the moment a trigger heard is read now, as a
+            // parked choice's options are: Councilman's "pay credits equal
+            // to its rez cost" is paid when the Runner accepts, and the rez
+            // is not on the parked choice.
+            let cost = match ctx.triggering_event {
+                Some(_) => cost.clone().filled(&|amount| match amount {
+                    Amount::TriggeringCardPrintedCost | Amount::TriggeringCardTrashCost | Amount::TriggeringAgendaAdvancementRequirement => {
+                        Some(resolve_amount(amount, ctx, state, registry))
+                    }
+                    _ => None,
+                }),
+                None => cost.clone(),
+            };
             state.pending_paid_choice = Some(PendingPaidChoice {
                 side: *side,
-                cost: cost.clone(),
+                cost,
                 if_paid: (**if_paid).clone(),
                 if_declined: (**if_declined).clone(),
                 text: text.clone(),
@@ -2861,6 +2890,13 @@ pub fn evaluate_effect(
                         Amount::VirusCountersPurged if matches!(ctx.triggering_event, Some(GameEvent::VirusCountersPurged { .. })) => {
                             Some(resolve_amount(amount, ctx, state, registry))
                         }
+                        // What an event's additional cost was paid with
+                        // (Scavenge's "install 1 program from your grip or
+                        // heap, paying X[credit] less"), which the play's own
+                        // resolution carries and the parked choice does not —
+                        // and only then: an option whose own cost will pay
+                        // with a card reads that card when it does.
+                        Amount::PaidCardPrintedCost if !ctx.paid_with.is_empty() => Some(resolve_amount(amount, ctx, state, registry)),
                         _ => None,
                     };
                     let passed = match ctx.triggering_event {
@@ -6682,6 +6718,9 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             Some(GameEvent::CardTrashed { card, .. }) => registry.get(card).map_or(0, |def| def.cost),
             // Nasir Meidan's "the rez cost of that ice", on the encounter.
             Some(GameEvent::IceEncountered { card_id, .. }) => registry.get(card_id).map_or(0, |def| def.cost),
+            // Social Engineering's and Councilman's "its rez cost", on the
+            // rez (every rez is an `IceRezzed`, whatever the card is).
+            Some(GameEvent::IceRezzed { card, .. }) => registry.get(card).map_or(0, |def| def.cost),
             _ => 0,
         },
         Amount::PassedIceSubroutinesResolved => match ctx.triggering_event {

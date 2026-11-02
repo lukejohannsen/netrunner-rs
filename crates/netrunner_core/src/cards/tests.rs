@@ -56062,3 +56062,207 @@ mod engine_words_stage_16 {
         assert!(use_ability(&broke, &registry, 900, 0).is_err(), "once per turn");
     }
 }
+
+mod engine_words_stage_17 {
+    use super::*;
+    use crate::rules::RunPhase;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.corp.resources.credits = Credits(10);
+        state.next_install_id = 200;
+        state
+    }
+
+    fn ice(card: &str, server: ServerId, rezzed: bool, install: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn phase(state: &GameState) -> Option<RunPhase> {
+        state.active_run.as_ref().map(|run| run.phase)
+    }
+
+    fn approaching(state: &GameState, at: usize) -> bool {
+        phase(state) == Some(RunPhase::ApproachIce)
+            && state.active_run.as_ref().is_some_and(|run| run.position == at)
+            && state.paid_ability_window.as_ref().is_some_and(|window| window.active_priority == Side::Runner)
+    }
+
+    /// Passes and continues until `done`, never answering anything parked.
+    fn pass_until(mut state: GameState, registry: &CardRegistry, done: impl Fn(&GameState) -> bool) -> GameState {
+        for _ in 0..64 {
+            if done(&state) {
+                return state;
+            }
+            let parked = state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.pending_payment.is_some();
+            assert!(!parked, "parked before it was done: {:?} {:?}", state.pending_decision, state.pending_paid_choice);
+            let action = match (&state.paid_ability_window, phase(&state)) {
+                (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+                (None, Some(RunPhase::Initiation | RunPhase::Movement | RunPhase::EncounterIce)) => PlayerAction::ContinueRun,
+                (None, Some(RunPhase::Success)) => PlayerAction::CompleteRun,
+                other => panic!("stuck at {other:?}"),
+            };
+            state = act(&state, registry, action);
+        }
+        panic!("never done");
+    }
+
+    /// "Play only as your first [click]. Choose an unrezzed piece of ice. If
+    /// the Corp rezzes that piece of ice this turn, gain credits equal to
+    /// its rez cost." Once, and only for the ice chosen.
+    #[test]
+    fn social_engineering_pays_the_runner_the_rez_cost_of_the_ice_chosen() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("enigma", ServerId::Hq, false, 101), ice("enigma", ServerId::RnD, false, 102)];
+        state.runner.grip = vec![id("social_engineering"), id("social_engineering")];
+
+        let clicked = act(&state, &registry, PlayerAction::GainCreditClick { side: Side::Runner });
+        assert!(apply_action(&clicked, &registry, PlayerAction::PlayEvent { card_id: id("social_engineering") }).is_err(), "only as the first [click]");
+
+        let asked = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("social_engineering") });
+        let picked = act(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 });
+        let chosen = act(&picked, &registry, PlayerAction::ConfirmCardSelection);
+        assert_eq!(chosen.runner.resources.credits, Credits(8), "its 2[credit]");
+        assert_eq!(chosen.delayed.len(), 1, "waiting for that ice's rez");
+        assert_eq!(chosen.delayed[0].card, id("social_engineering"), "made as the event, never as the facedown ice");
+
+        // The other copy of Enigma is not that piece of ice.
+        let started = act(&chosen, &registry, PlayerAction::InitiateRun { server: ServerId::RnD });
+        let near = pass_until(started, &registry, |state| approaching(state, 0));
+        let other = act(&near, &registry, PlayerAction::RezIce { ice: InstallId(102) });
+        assert_eq!(other.runner.resources.credits, Credits(8), "nothing for another copy");
+
+        let started = act(&chosen, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let near = pass_until(started, &registry, |state| approaching(state, 0));
+        let rezzed = act(&near, &registry, PlayerAction::RezIce { ice: InstallId(101) });
+        assert_eq!(rezzed.runner.resources.credits, Credits(11), "Enigma's rez cost of 3");
+        assert!(rezzed.delayed.is_empty(), "once");
+    }
+
+    /// "As an additional cost to play this event, trash 1 installed program.
+    /// Install 1 program from your grip or heap, paying X[credit] less. X is
+    /// equal to the install cost of the program you trashed."
+    #[test]
+    fn scavenge_trades_a_program_for_one_from_the_grip_or_heap_at_its_cost_less() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(3);
+        state.runner.rig = vec![rig("corroder", 900)];
+        state.runner.grip = vec![id("scavenge"), id("gordian_blade")];
+        state.runner.heap = vec![id("datasucker")];
+
+        // From the grip: Gordian Blade's 4, less Corroder's 2.
+        let asked = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("scavenge") });
+        assert!(asked.runner.rig.is_empty(), "Corroder is the cost");
+        assert_eq!(asked.runner.heap, vec![id("datasucker"), id("corroder")]);
+        let grip = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        let picked = act(&grip, &registry, PlayerAction::ToggleCardSelection { position: 0 });
+        let installed = act(&picked, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("gordian_blade")), "installed");
+        assert_eq!(installed.runner.resources.credits, Credits(1), "4 less 2");
+
+        // From the heap, which now holds the program the cost trashed.
+        let heap = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 });
+        let position = heap.runner.heap.iter().position(|card| *card == id("corroder")).expect("in the heap");
+        let picked = act(&heap, &registry, PlayerAction::ToggleCardSelection { position });
+        let installed = act(&picked, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("corroder")), "back from the heap");
+        assert_eq!(installed.runner.resources.credits, Credits(3), "2 less 2");
+
+        state.runner.rig.clear();
+        assert!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("scavenge") }).is_err(), "no program to trash");
+    }
+
+    /// "As an additional cost to play this event, trash an installed piece
+    /// of hardware. Gain credits equal to half the install cost of the
+    /// trashed hardware (rounded down) and search your stack for a piece of
+    /// hardware".
+    #[test]
+    fn trade_in_returns_half_the_hardware_and_finds_another() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![rig("plascrete_carapace", 900)];
+        state.runner.grip = vec![id("trade_in")];
+        state.runner.stack = vec![id("sure_gamble"), id("akamatsu_mem_chip")];
+        let asked = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("trade_in") });
+        assert!(asked.runner.rig.is_empty(), "the carapace is the cost");
+        assert_eq!(asked.runner.resources.credits, Credits(5), "1[credit] to play, and 3 / 2 = 1 back");
+        let position = asked.runner.stack.iter().position(|card| *card == id("akamatsu_mem_chip")).expect("in the stack");
+        let picked = act(&asked, &registry, PlayerAction::ToggleCardSelection { position });
+        let found = act(&picked, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(found.runner.grip.contains(&id("akamatsu_mem_chip")), "to the grip");
+        assert_eq!(found.runner.stack, vec![id("sure_gamble")]);
+    }
+
+    /// "Make a run. During this run, the Corp must pay X[credit] as an
+    /// additional cost to rez the first unrezzed piece of ice approached."
+    /// The first one approached, rezzed then or not; never the second.
+    #[test]
+    fn bribery_taxes_the_rez_of_the_first_unrezzed_ice_approached() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("ice_wall", ServerId::Hq, false, 101), ice("ice_wall", ServerId::Hq, false, 102)];
+        state.runner.grip = vec![id("bribery")];
+        let asked = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("bribery") });
+        assert!(asked.pending_payment.is_some(), "X is chosen as it is played");
+        let played = act(&asked, &registry, PlayerAction::ChooseNumber { amount: 3 });
+        assert_eq!(played.runner.resources.credits, Credits(7), "X = 3");
+        let started = act(&played, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq });
+        let outer = pass_until(started, &registry, |state| approaching(state, 0));
+        let at = |state: &GameState, position: usize| state.active_run.as_ref().expect("a run").ice[position].install_id;
+        let rezzed = act(&outer, &registry, PlayerAction::RezIce { ice: at(&outer, 0) });
+        assert_eq!(rezzed.corp.resources.credits, Credits(6), "Ice Wall's 1 and X's 3");
+
+        // Left facedown, the outer ice was still the first approached.
+        let passed = act(&outer, &registry, PlayerAction::PassPriority { side: Side::Runner });
+        let inner = pass_until(passed, &registry, |state| approaching(state, 1));
+        let second = act(&inner, &registry, PlayerAction::RezIce { ice: at(&inner, 1) });
+        assert_eq!(second.corp.resources.credits, Credits(9), "only Ice Wall's 1");
+    }
+
+    /// "Whenever the Corp rezzes an asset or upgrade, you may pay credits
+    /// equal to its rez cost and trash Councilman. If you do, derez that
+    /// asset or upgrade. The Corp cannot rez it for the remainder of this
+    /// turn."
+    #[test]
+    fn councilman_buys_back_a_rez_and_holds_the_card_down_for_the_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        state.runner.resources.credits = Credits(5);
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(101), card: id("pad_campaign"), server: ServerId::Remote(1), slot: InstallSlot::Root, ..Default::default() }];
+        state.runner.rig = vec![rig("councilman", 900)];
+        let rezzed = act(&state, &registry, PlayerAction::RezIce { ice: InstallId(101) });
+        assert!(rezzed.pending_paid_choice.is_some(), "the Runner may pay");
+
+        let declined = act(&rezzed, &registry, PlayerAction::DeclinePendingPaidChoice);
+        assert!(declined.corp.installed[0].rezzed && declined.runner.rig.len() == 1, "declined, nothing happens");
+
+        let paid = act(&rezzed, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None });
+        assert_eq!(paid.runner.resources.credits, Credits(3), "PAD Campaign's rez cost of 2");
+        assert!(paid.runner.rig.is_empty(), "Councilman trashed");
+        let picked = act(&paid, &registry, PlayerAction::ToggleCardSelection { position: 0 });
+        let held = act(&picked, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(!held.corp.installed[0].rezzed, "derezzed");
+        assert!(apply_action(&held, &registry, PlayerAction::RezIce { ice: InstallId(101) }).is_err(), "not for the rest of this turn");
+    }
+}

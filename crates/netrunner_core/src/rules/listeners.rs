@@ -338,7 +338,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         }
         GameEvent::IceApproached { server, position } => {
             let rezzed = state.active_run.as_ref().and_then(|run| run.ice.get(*position as usize)).is_some_and(|ice| ice.rezzed);
-            vec![Moment { ice: Some(IceFacts { rezzed, ..IceFacts::default() }), ..moment(Trigger::OnIceApproached, &About::Server(*server), Some(Side::Runner)) }]
+            vec![Moment { ice: Some(IceFacts { rezzed, unrezzed: !rezzed, ..IceFacts::default() }), ..moment(Trigger::OnIceApproached, &About::Server(*server), Some(Side::Runner)) }]
         }
         GameEvent::ServerApproached { server } => vec![moment(Trigger::OnApproachServer, &About::Server(*server), Some(Side::Runner))],
         GameEvent::IceEncountered { card_id, .. } => {

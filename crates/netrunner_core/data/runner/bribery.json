@@ -1,0 +1,51 @@
+{
+  "id": "bribery",
+  "title": "Bribery",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "additional_play_cost": {
+    "CreditsX": {}
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "LaterThisTurn": {
+                "when": "OnIceApproached",
+                "filter": {
+                  "Ice": {
+                    "unrezzed": true
+                  }
+                },
+                "this_run": true,
+                "effect": {
+                  "ImposeAdditionalCost": {
+                    "on": [
+                      "Rez"
+                    ],
+                    "cost": {
+                      "CreditsAmount": "ChosenNumber"
+                    },
+                    "until": "Run",
+                    "approached_ice": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Make a run. During this run, the Corp must pay X[credit] as an additional cost to rez the first unrezzed piece of ice approached."
+    }
+  ],
+  "built_from": 6118,
+  "is_playable": true
+}
