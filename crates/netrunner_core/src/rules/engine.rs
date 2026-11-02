@@ -1292,6 +1292,16 @@ pub(crate) fn rez_install(
     if matches!(card_def.card_type, CardType::Ice(_)) && continuous::cannot(next, registry, Prohibition::RezIce) {
         return Err(RulesError::RezRestricted { card: ice_id });
     }
+    // EMP Device's "cannot rez more than 1 piece of ice for the remainder
+    // of this run": a piece of ice already rezzed in this run is the one.
+    if matches!(card_def.card_type, CardType::Ice(_)) && continuous::cannot(next, registry, Prohibition::RezSecondIce) {
+        let rezzed_ice = next.active_run.as_ref().is_some_and(|run| {
+            run.rezzed.iter().any(|install| next.find_corp_install(*install).is_some_and(|card| card.slot == crate::rules::state::InstallSlot::Ice))
+        });
+        if rezzed_ice {
+            return Err(RulesError::RezRestricted { card: ice_id });
+        }
+    }
     // Another card's additional cost to rez (Hacktivist Meeting's random
     // trash from HQ), asked ahead of any payment so a rez that cannot be
     // finished takes nothing, and paid before the card turns faceup. A rez

@@ -328,6 +328,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::ResolveFirstThreeSubroutines => "the first 3 subroutines of the next encounter do not resolve",
         Prohibition::ResolveFirstSubroutine => "the first subroutine to resolve this run does not",
         Prohibition::CorpInstall => "the Corp cannot install cards",
+        Prohibition::RezSecondIce => "the Corp cannot rez more than 1 piece of ice this run",
     }
 }
 
@@ -403,6 +404,15 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                         netrunner_core::dsl::CostedStep::JackOut => "jack out",
                         netrunner_core::dsl::CostedStep::BreakSubroutine => "break each subroutine",
                         netrunner_core::dsl::CostedStep::IcebreakerBreak => "use an icebreaker ability to break subroutines",
+                        netrunner_core::dsl::CostedStep::Rez => {
+                            // Cortez Chip: about the ice it chose; Running
+                            // Interference: each piece of ice, for the run.
+                            let ice = match effect.on {
+                                On::Install(install) => super::facts::card_of(view, install).map_or_else(|| "the chosen ice".to_string(), |card| title(&card)),
+                                _ => "each piece of ice".to_string(),
+                            };
+                            return Some(format!("the Corp must {} as an additional cost to rez {ice}", crate::prose::describe_cost(cost)));
+                        }
                     };
                     format!("the Runner must {} to {step}", crate::prose::describe_cost(cost))
                 }
@@ -444,6 +454,10 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 (Lingering::Cannot(Prohibition::BreakSubroutinesOnIce), On::Install(ice)) => {
                     let ice = super::facts::card_of(view, *ice).map_or_else(|| "the chosen ice".to_string(), |card| title(&card));
                     format!("Runner card abilities cannot break subroutines on {ice}")
+                }
+                // Unorthodox Predictions: about every piece of ice of a type.
+                (Lingering::Cannot(Prohibition::BreakSubroutinesOnIce), On::IceOfType(kind)) => {
+                    format!("Runner card abilities cannot break subroutines on {}", super::facts::ice_type_words(&[*kind]))
                 }
                 (Lingering::Cannot(what), _) => cannot_words(*what).to_string(),
                 // Klevetnik: the resource it chose.

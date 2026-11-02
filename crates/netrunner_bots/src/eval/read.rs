@@ -515,6 +515,8 @@ pub(super) fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &Ru
                     // Clears the ice only when the last is all that is left.
                     SubroutineBreakCount::Last if pending > 1 => return,
                     SubroutineBreakCount::Last => 1,
+                    // Never clears the ice: one is always left.
+                    SubroutineBreakCount::AllButOne => return,
                 };
                 if let Some(cost) = spend(activations) {
                     keep_min(&mut cheapest_break, cost);
@@ -527,6 +529,8 @@ pub(super) fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &Ru
                     // Clears the ice only when the last is all that is left.
                     SubroutineBreakCount::Last if pending > 1 => return,
                     SubroutineBreakCount::Last => 1,
+                    // Never clears the ice: one is always left.
+                    SubroutineBreakCount::AllButOne => return,
                 };
                 if let Some(cost) = spend(activations) {
                     keep_min(&mut cheapest_outright, cost);

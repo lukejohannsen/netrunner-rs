@@ -1816,6 +1816,13 @@ pub enum Effect {
         on: Vec<CostedStep>,
         cost: crate::dsl::Cost,
         until: EffectDuration,
+        /// Only about the install resolving it — Cortez Chip's "Choose a
+        /// piece of ice. The Corp must pay 2[credit] as an additional cost
+        /// to rez that ice", the selection's `then` acting as the ice
+        /// chosen (`lingering::On::Install`), as `Prohibit::this_install`
+        /// binds one. Only with `CostedStep::Rez`.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        this_install: bool,
     },
     Prohibit {
         what: Prohibition,
@@ -1848,6 +1855,12 @@ pub enum Effect {
         /// does not move it. `RulesError::NoActiveRun` outside a run.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         attacked_server: bool,
+        /// Only about each piece of ice of this type — Unorthodox
+        /// Predictions' "Subroutines on ice of the chosen type cannot be
+        /// broken", one under each option of the choice
+        /// (`lingering::On::IceOfType`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        of_type: Option<IceType>,
     },
     /// Leaves `effect` waiting for a moment later this turn, then resolves
     /// it as the card that made it (a `lingering::DelayedAbility`, CR
@@ -3586,6 +3599,16 @@ pub enum CostedStep {
     /// `BreakSubroutine`: that is per subroutine and by anything that
     /// breaks, a click included.
     IcebreakerBreak,
+    /// Paid by the Corp as it rezzes a piece of ice, beside the rez cost —
+    /// Cortez Chip's "The Corp must pay 2[credit] as an additional cost to
+    /// rez that ice until the end of the turn" (one install) and Running
+    /// Interference's "the Corp must pay X[credit] as an additional cost to
+    /// rez each piece of ice, where X is the rez cost of that ice" (each).
+    /// Asked with the cards' own additional rez costs
+    /// (`continuous::rez_costs`), and paid as the ice it is about, so an
+    /// amount reads that ice. A rez ignoring all costs pays none (CR
+    /// 1.16.5c). The one step the Corp pays for.
+    Rez,
 }
 
 /// What a player cannot do while an `Effect::Prohibit` holds. Only what a
@@ -3880,6 +3903,12 @@ pub enum Prohibition {
     /// Composition didn't work: `Rez` is bound to one install and
     /// `RezOutermostIce` to one position in the run.
     RezIce,
+    /// The Corp cannot rez a second piece of ice this run — EMP Device's
+    /// "The Corp cannot rez more than 1 piece of ice for the remainder of
+    /// this run": asked where `RezIce` is, of the ice the run has seen
+    /// rezzed (`RunState::rezzed`). Composition didn't work: `RezIce`
+    /// forbids the first rez too.
+    RezSecondIce,
     /// The Runner cannot play current events — The News Now Hour's "The
     /// Runner cannot play **current** events", a standing effect on the
     /// Runner (`Scope::Player`). Asked of an event as it is offered and as
@@ -3901,7 +3930,7 @@ pub enum Prohibition {
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 34] = [
+    pub const ALL: [Prohibition; 35] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -3934,6 +3963,7 @@ impl Prohibition {
         Prohibition::Draw,
         Prohibition::RezOutermostIce,
         Prohibition::RezIce,
+        Prohibition::RezSecondIce,
         Prohibition::PlayCurrents,
         Prohibition::InstallIce,
     ];
@@ -3941,7 +3971,7 @@ impl Prohibition {
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
-            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::InstallIce => Side::Corp,
+            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::InstallIce => Side::Corp,
             Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::PlayCurrents => Side::Runner,
         }
     }
@@ -3953,7 +3983,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::PlayCurrents | Prohibition::InstallIce => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::PlayCurrents | Prohibition::InstallIce => None,
         }
     }
 }
@@ -3978,6 +4008,11 @@ pub enum SubroutineBreakCount {
     /// "the last" is a place, not "the last one left". Composition didn't
     /// work: every other count breaks from the first.
     Last,
+    /// Every pending subroutine but one, the last left unbroken —
+    /// Grappling Hook's "Break all but 1 subroutine on a piece of ice".
+    /// Composition didn't work: `All` leaves none, and a `Fixed` count is
+    /// the card file's, never the ice's.
+    AllButOne,
 }
 
 impl Effect {

@@ -1,0 +1,23 @@
+{
+  "id": "grappling_hook",
+  "title": "Grappling Hook",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": "AllButOne"
+        }
+      },
+      "text": "[trash]: Break all but 1 subroutine on a piece of ice."
+    }
+  ],
+  "built_from": 5045,
+  "is_playable": true
+}

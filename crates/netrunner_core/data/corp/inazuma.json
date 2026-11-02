@@ -1,0 +1,33 @@
+{
+  "id": "inazuma",
+  "title": "Inazuma",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 5,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "During the next encounter this run, the Runner cannot break subroutines on the encountered ice.",
+      "effect": {
+        "Prohibit": {
+          "what": "BreakSubroutinesOnIce",
+          "until": "NextEncounter"
+        }
+      }
+    },
+    {
+      "text": "The Runner cannot jack out this run until after their next encounter with a piece of ice begins.",
+      "effect": {
+        "Prohibit": {
+          "what": "JackOut",
+          "until": "UntilNextEncounter"
+        }
+      }
+    }
+  ],
+  "built_from": 5016,
+  "is_playable": true
+}

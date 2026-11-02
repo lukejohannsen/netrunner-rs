@@ -1,0 +1,53 @@
+{
+  "id": "unorthodox_predictions",
+  "title": "Unorthodox Predictions",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Prohibit": {
+                  "what": "BreakSubroutinesOnIce",
+                  "until": "UntilYourNextTurnBegins",
+                  "of_type": "Sentry"
+                }
+              },
+              {
+                "Prohibit": {
+                  "what": "BreakSubroutinesOnIce",
+                  "until": "UntilYourNextTurnBegins",
+                  "of_type": "CodeGate"
+                }
+              },
+              {
+                "Prohibit": {
+                  "what": "BreakSubroutinesOnIce",
+                  "until": "UntilYourNextTurnBegins",
+                  "of_type": "Barrier"
+                }
+              }
+            ],
+            "texts": [
+              "sentry",
+              "code gate",
+              "barrier"
+            ]
+          }
+        }
+      ],
+      "text": "When you score Unorthodox Predictions, choose sentry, code gate or barrier. Subroutines on ice of the chosen type cannot be broken until the beginning of your next turn."
+    }
+  ],
+  "built_from": 4053,
+  "is_playable": true
+}

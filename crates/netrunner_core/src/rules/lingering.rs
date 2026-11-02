@@ -140,6 +140,13 @@ pub enum On {
     /// `continuous::breaker_strength`), so one installed after the effect
     /// was made has it too.
     Icebreakers,
+    /// Each piece of ice of one type, read at every ask through
+    /// `continuous::ice_is` (printed or gained, and not lost) —
+    /// Unorthodox Predictions' "Subroutines on ice of the chosen type
+    /// cannot be broken until the beginning of your next turn". Not
+    /// `EachIce` under a condition: the type is the card's choice, made
+    /// when the effect is.
+    IceOfType(crate::dsl::IceType),
 }
 
 /// What changes. Only what a card in the pool does for a duration.
@@ -533,7 +540,7 @@ fn reaches(state: &GameState, on: &On, install: InstallId) -> bool {
     match on {
         On::Install(about) => *about == install,
         On::RootOfAttackedServer => in_attacked_root(state).any(|card| card == install),
-        On::EachIce | On::Player(_) | On::CopiesOf(_) | On::Server(_) | On::Icebreakers => false,
+        On::EachIce | On::Player(_) | On::CopiesOf(_) | On::Server(_) | On::Icebreakers | On::IceOfType(_) => false,
     }
 }
 
@@ -658,6 +665,22 @@ pub(crate) fn additional_costs(state: &GameState, to: CostedStep) -> Vec<crate::
         .filter(|effect| effect.on == On::Player(Side::Runner) && effect.holds(state))
         .filter_map(|effect| match &effect.what {
             Lingering::AdditionalCost { to: step, cost } if *step == to => Some(cost.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The additional costs to rez the piece of ice `ice` made for a duration
+/// (`CostedStep::Rez`): about that install (Cortez Chip) or each piece of
+/// ice (Running Interference), for as long as each holds.
+pub(crate) fn rez_costs(state: &GameState, ice: InstallId) -> Vec<crate::dsl::Cost> {
+    state
+        .lingering
+        .iter()
+        .filter(|effect| matches!(effect.on, On::EachIce) || effect.on == On::Install(ice))
+        .filter(|effect| effect.holds(state))
+        .filter_map(|effect| match &effect.what {
+            Lingering::AdditionalCost { to: crate::dsl::CostedStep::Rez, cost } => Some(cost.clone()),
             _ => None,
         })
         .collect()

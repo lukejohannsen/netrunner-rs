@@ -55360,3 +55360,207 @@ mod engine_words_stage_12 {
         assert_eq!(paid.corp.bad_publicity, state.corp.bad_publicity + 1);
     }
 }
+
+mod engine_words_stage_13 {
+    use super::*;
+    use crate::rules::RunPhase;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.corp.resources.credits = Credits(10);
+        state.next_install_id = 200;
+        state
+    }
+
+    fn ice(card: &str, server: ServerId, rezzed: bool, install: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn phase(state: &GameState) -> Option<RunPhase> {
+        state.active_run.as_ref().map(|run| run.phase)
+    }
+
+    fn position(state: &GameState) -> Option<usize> {
+        state.active_run.as_ref().map(|run| run.position)
+    }
+
+    fn runner_priority(state: &GameState) -> bool {
+        state.paid_ability_window.as_ref().is_some_and(|window| window.active_priority == Side::Runner)
+    }
+
+    /// Passes and continues until `done`, never answering anything parked.
+    fn pass_until(mut state: GameState, registry: &CardRegistry, done: impl Fn(&GameState) -> bool) -> GameState {
+        for _ in 0..64 {
+            if done(&state) {
+                return state;
+            }
+            let parked = state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.pending_payment.is_some();
+            assert!(!parked, "parked before it was done: {:?} {:?}", state.pending_decision, state.pending_paid_choice);
+            let action = match (&state.paid_ability_window, phase(&state)) {
+                (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+                (None, Some(RunPhase::Initiation | RunPhase::Movement | RunPhase::EncounterIce)) => PlayerAction::ContinueRun,
+                (None, Some(RunPhase::Success)) => PlayerAction::CompleteRun,
+                other => panic!("stuck at {other:?}"),
+            };
+            state = act(&state, registry, action);
+        }
+        panic!("never done");
+    }
+
+    fn approaching(state: &GameState, at: usize) -> bool {
+        phase(state) == Some(RunPhase::ApproachIce) && position(state) == Some(at) && runner_priority(state)
+    }
+
+    fn encountering(state: &GameState, at: usize) -> bool {
+        phase(state) == Some(RunPhase::EncounterIce) && position(state) == Some(at) && runner_priority(state)
+    }
+
+    fn broken(state: &GameState) -> usize {
+        let run = state.active_run.as_ref().expect("a run");
+        run.ice[run.position].subroutines.iter().filter(|sub| sub.status == crate::rules::SubroutineStatus::Broken).count()
+    }
+
+    /// "[trash]: Break all but 1 subroutine on a piece of ice."
+    #[test]
+    fn grappling_hook_breaks_all_but_one_subroutine() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("enigma", ServerId::Hq, true, 101)];
+        state.runner.rig = vec![rig("grappling_hook", 900)];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let met = pass_until(started, &registry, |state| encountering(state, 0));
+        let hooked = act(&met, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 0 });
+        assert_eq!(broken(&hooked), 1, "Enigma's two, all but one");
+        assert!(hooked.runner.rig.is_empty(), "[trash]");
+    }
+
+    /// Inazuma's first subroutine forbids breaking on the next piece of ice
+    /// — not on Inazuma — and its second holds the jack out until that
+    /// encounter begins.
+    #[test]
+    fn inazuma_locks_the_next_encounter_and_the_jack_out_before_it() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("inazuma", ServerId::Hq, true, 101), ice("ice_wall", ServerId::Hq, true, 102)];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { base_strength: 2, ..rig("corroder", 900) }];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let met = pass_until(started, &registry, |state| encountering(state, 0));
+        let passed = pass_until(met, &registry, |state| phase(state) == Some(RunPhase::Movement));
+        assert!(apply_action(&passed, &registry, PlayerAction::JackOut).is_err(), "cannot jack out before the next encounter");
+        let walled = pass_until(passed, &registry, |state| encountering(state, 1));
+        assert!(apply_action(&walled, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 1 }).is_err(), "cannot break on the encountered ice");
+
+        let mut free = state.clone();
+        free.corp.installed[0] = ice("ice_wall", ServerId::Hq, true, 101);
+        free.corp.installed[1] = ice("inazuma", ServerId::Hq, true, 102);
+        let started = act(&free, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let walled = pass_until(started, &registry, |state| encountering(state, 0));
+        let broke = act(&walled, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 1 });
+        assert_eq!(broken(&broke), 1, "an Ice Wall before Inazuma breaks as ever");
+    }
+
+    /// "Subroutines on ice of the chosen type cannot be broken until the
+    /// beginning of your next turn" — only that type.
+    #[test]
+    fn unorthodox_predictions_forbids_breaking_the_chosen_type() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(60),
+            card: id("unorthodox_predictions"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            advancement_tokens: 3,
+            ..Default::default()
+        }];
+        state.corp.installed.push(ice("ice_wall", ServerId::Hq, true, 101));
+        state.corp.installed.push(ice("enigma", ServerId::RnD, true, 102));
+        let scored = act(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(60) });
+        let chosen = act(&scored, &registry, PlayerAction::ResolvePendingChoice { option_index: 2 });
+        assert!(!crate::rules::continuous::subroutines_may_be_broken(&chosen, &registry, InstallId(101)), "barrier");
+        assert!(crate::rules::continuous::subroutines_may_be_broken(&chosen, &registry, InstallId(102)), "a code gate is not");
+
+        let mut run = chosen;
+        run.phase = GamePhase::Action(Side::Runner);
+        run.runner.resources.clicks = Clicks(4);
+        run.runner.resources.credits = Credits(10);
+        run.runner.rig = vec![crate::rules::InstalledRunnerCard { base_strength: 2, ..rig("corroder", 900) }];
+        let started = act(&run, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let walled = pass_until(started, &registry, |state| encountering(state, 0));
+        assert!(apply_action(&walled, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 1 }).is_err());
+    }
+
+    /// "The Corp must pay 2[credit] as an additional cost to rez that ice
+    /// until the end of the turn."
+    #[test]
+    fn cortez_chip_taxes_the_chosen_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("ice_wall", ServerId::Hq, false, 101)];
+        state.runner.rig = vec![rig("cortez_chip", 900)];
+        let asked = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 0 });
+        let picked = act(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 });
+        let chosen = act(&picked, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(chosen.runner.rig.is_empty(), "[trash]");
+        let started = act(&chosen, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let near = pass_until(started, &registry, |state| approaching(state, 0));
+        let rezzed = act(&near, &registry, PlayerAction::RezIce { ice: InstallId(101) });
+        assert_eq!(rezzed.corp.resources.credits, Credits(7), "Ice Wall's 1 and Cortez Chip's 2");
+    }
+
+    /// "During this run, the Corp must pay X[credit] as an additional cost
+    /// to rez each piece of ice, where X is the rez cost of that ice."
+    #[test]
+    fn running_interference_doubles_each_rez_for_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("enigma", ServerId::Hq, false, 101)];
+        state.runner.grip = vec![id("running_interference")];
+        let asked = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("running_interference") });
+        assert_eq!(asked.runner.resources.clicks, Clicks(2), "the play's click and the additional one");
+        let started = act(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq });
+        let near = pass_until(started, &registry, |state| approaching(state, 0));
+        let rezzed = act(&near, &registry, PlayerAction::RezIce { ice: InstallId(101) });
+        assert_eq!(rezzed.corp.resources.credits, Credits(4), "Enigma's 3, twice");
+    }
+
+    /// "The Corp cannot rez more than 1 piece of ice for the remainder of
+    /// this run."
+    #[test]
+    fn emp_device_holds_the_corp_to_one_rez_of_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("ice_wall", ServerId::Hq, false, 101), ice("ice_wall", ServerId::Hq, false, 102)];
+        state.runner.rig = vec![rig("emp_device", 900), crate::rules::InstalledRunnerCard { base_strength: 2, ..rig("corroder", 901) }];
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 0 }).is_err(), "only during a run");
+        let second_rez = |emp: bool| {
+            let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+            let mut near = pass_until(started, &registry, |state| approaching(state, 0));
+            if emp {
+                near = act(&near, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 0 });
+            }
+            let rezzed = act(&near, &registry, PlayerAction::RezIce { ice: InstallId(101) });
+            let walled = pass_until(rezzed, &registry, |state| encountering(state, 0));
+            let broke = act(&walled, &registry, PlayerAction::ActivateAbility { target: InstallId(901), ability_index: 1 });
+            let next = pass_until(broke, &registry, |state| approaching(state, 1));
+            apply_action(&next, &registry, PlayerAction::RezIce { ice: InstallId(102) }).is_ok()
+        };
+        assert!(second_rez(false), "two rezzes without it");
+        assert!(!second_rez(true), "one with it");
+    }
+}

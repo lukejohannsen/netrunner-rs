@@ -1,0 +1,40 @@
+{
+  "id": "cortez_chip",
+  "title": "Cortez Chip",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OpponentInstalled",
+          "filter": "Ice",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "ImposeAdditionalCost": {
+              "on": [
+                "Rez"
+              ],
+              "cost": {
+                "Credits": 2
+              },
+              "until": "Turn",
+              "this_install": true
+            }
+          }
+        }
+      },
+      "text": "[trash]: Choose a piece of ice. The Corp must pay 2[credit] as an additional cost to rez that ice until the end of the turn."
+    }
+  ],
+  "built_from": 2005,
+  "is_playable": true
+}
