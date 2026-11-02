@@ -1,0 +1,71 @@
+{
+  "id": "rook",
+  "title": "Rook",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "RezCost": {
+          "per": 2
+        }
+      },
+      "applies_to": {
+        "IceProtectingThisServer": "Any"
+      },
+      "text": "While this program is hosted on ice, the rez cost of each piece of ice protecting this server is increased by 2."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OpponentInstalled",
+          "filter": {
+            "All": [
+              "Ice",
+              {
+                "Not": {
+                  "Hosting": {
+                    "All": [
+                      {
+                        "CardType": "Program"
+                      },
+                      {
+                        "HasSubtype": "Caïssa"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "Placed": "SameServerOrPositionAsHost"
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "HostRigCardOnInstall": {
+              "card": 0,
+              "host": 0
+            }
+          }
+        }
+      },
+      "text": "[click]: Host this program on a piece of ice that is not hosting a Caïssa program."
+    }
+  ],
+  "built_from": 4003,
+  "is_playable": true
+}

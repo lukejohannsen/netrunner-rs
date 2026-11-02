@@ -1684,7 +1684,69 @@ pub fn evaluate_effect(
 
         // Loki: what the chosen ice is, the prompting ice takes on for
         // the run.
-        Effect::CopiedByPromptingIce => {
+        // A Grail lends what it prints from HQ: revealed, its
+        // subroutines after the borrower's others, no type.
+        Effect::CopiedByPromptingIce { lent: true } => {
+            let (Some(card), Some(copier)) = (acting_card.cloned(), ctx.prompting_install) else { return Err(RulesError::MissingActingCardContext) };
+            if !state.corp.hq.contains(&card) {
+                return Ok(Vec::new());
+            }
+            let definition = registry.get(&card).ok_or_else(|| RulesError::CardNotFoundInRegistry(card.clone()))?;
+            let mut events = Vec::new();
+            reveal(state, Side::Corp, &card, true);
+            dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side: Side::Corp, card: card.clone(), by: Side::Corp })?;
+            if !crate::rules::active::may_have_granted(state, registry, copier) {
+                return Ok(events);
+            }
+            let subroutines = definition.subroutines.clone();
+            let Some(run) = state.active_run.as_mut() else { return Ok(events) };
+            for subroutine in &subroutines {
+                run.gained_for_the_run.push(run::GainedForTheRun { ice: copier, subroutine: subroutine.clone(), after: true });
+            }
+            if run.phase != RunPhase::EncounterIce {
+                return Ok(events);
+            }
+            let position = run.position;
+            let Some(ice) = run.ice.get_mut(position).filter(|ice| ice.install_id == copier) else { return Ok(events) };
+            for subroutine in &subroutines {
+                ice.subroutines.push(run::EncounteredSubroutine { id: 0, definition: subroutine.clone(), status: SubroutineStatus::Pending, gained: true });
+                events.push(GameEvent::SubroutineGained { card_id: ice.card_id.clone(), text: subroutine.text.clone() });
+            }
+            run::renumber_subroutines(ice);
+            Ok(events)
+        }
+
+        // Another card's printed ability, as that card and for nothing.
+        Effect::ResolveItsAbility(which) => {
+            let card = acting_card.cloned().ok_or(RulesError::MissingActingCardContext)?;
+            let definition = registry.get(&card).ok_or_else(|| RulesError::CardNotFoundInRegistry(card.clone()))?;
+            match which {
+                crate::dsl::ItsAbility::WhenScored => {
+                    // The copy in the score area: the selection's `then`
+                    // names the card, and a scored agenda keeps its handle.
+                    let install = ctx.acting_install.or_else(|| state.corp.scored_agendas.iter().find(|scored| scored.card == card).map(|scored| scored.install_id));
+                    let mut events = Vec::new();
+                    for trigger in definition.triggers.iter().filter(|trigger| trigger.trigger == crate::dsl::Trigger::OnAgendaScored && trigger.subject == Some(crate::dsl::Subject::This)) {
+                        let mut inner = ResolutionContext::for_install_trigger(install, Some(&definition.id), None);
+                        if trigger.requirement.as_ref().is_some_and(|requirement| check_requirement(state, requirement, Side::Corp, &inner, registry).is_err()) {
+                            continue;
+                        }
+                        events.extend(evaluate_sequence(state, &trigger.effects, &mut inner, registry)?);
+                    }
+                    Ok(events)
+                }
+                crate::dsl::ItsAbility::Click => {
+                    let Some(ability) = definition.abilities.iter().find(|ability| ability.cost == Some(crate::dsl::Cost::Clicks(1))) else { return Ok(Vec::new()) };
+                    let mut inner = ResolutionContext::for_parked(ctx.acting_install, Some(&definition.id));
+                    if ability.requirement.as_ref().is_some_and(|requirement| check_requirement(state, requirement, definition.side, &inner, registry).is_err()) {
+                        return Ok(Vec::new());
+                    }
+                    evaluate_effect(state, &ability.effect, &mut inner, registry)
+                }
+            }
+        }
+
+        Effect::CopiedByPromptingIce { lent: false } => {
             let (Some(chosen), Some(copier)) = (ctx.acting_install, ctx.prompting_install) else { return Err(RulesError::MissingActingCardContext) };
             let Some(chosen_card) = state.corp.installed.iter().find(|card| card.install_id == chosen && card.slot == InstallSlot::Ice).map(|card| card.card.clone()) else {
                 return Ok(Vec::new());

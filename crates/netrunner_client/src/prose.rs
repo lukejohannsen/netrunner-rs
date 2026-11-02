@@ -667,7 +667,10 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::WinTheGame => "you win the game".to_string(),
         Effect::TurnHostedFaceup => "turn each hosted card faceup".to_string(),
-        Effect::CopiedByPromptingIce => "for the remainder of this run, the choosing ice gains the subtypes of this ice and its subroutines in order before its other subroutines".to_string(),
+        Effect::CopiedByPromptingIce { lent: false } => "for the remainder of this run, the choosing ice gains the subtypes of this ice and its subroutines in order before its other subroutines".to_string(),
+        Effect::CopiedByPromptingIce { lent: true } => "reveal it; for the remainder of this run, the choosing ice gains its subroutines after its others".to_string(),
+        Effect::ResolveItsAbility(netrunner_core::dsl::ItsAbility::WhenScored) => "resolve its \"when scored\" ability".to_string(),
+        Effect::ResolveItsAbility(netrunner_core::dsl::ItsAbility::Click) => "trigger its [click] ability without spending [click]".to_string(),
         Effect::GainIceSubtype { subtype, for_the_turn: true, .. } => {
             format!("that ice gains {} until the end of the turn", crate::board::facts::ice_type_words(&[*subtype]))
         }

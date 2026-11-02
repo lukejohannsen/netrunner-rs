@@ -1,0 +1,182 @@
+{
+  "id": "pawn",
+  "title": "Pawn",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "requirement": {
+        "ZoneHasAtLeast": {
+          "zone": "OpponentInstalled",
+          "filter": "ThisCardsHost",
+          "count": 1
+        }
+      },
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OpponentInstalled",
+                "filter": {
+                  "Placed": "NextInwardFromHost"
+                },
+                "count": 1
+              }
+            },
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OpponentInstalled",
+                "filter": {
+                  "All": [
+                    "Ice",
+                    {
+                      "Placed": "NextInwardFromHost"
+                    }
+                  ]
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "HostRigCardOnInstall": {
+                    "card": 0,
+                    "host": 0
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "Sequence": [
+                {
+                  "PresentChoice": {
+                    "chooser": "Runner",
+                    "options": [
+                      {
+                        "PromptChooseCards": {
+                          "side": "Runner",
+                          "source": "OwnGrip",
+                          "filter": {
+                            "All": [
+                              {
+                                "CardType": "Program"
+                              },
+                              {
+                                "HasSubtype": "Caïssa"
+                              },
+                              {
+                                "InstallableRunnerCardWithDiscount": "AllCosts"
+                              }
+                            ]
+                          },
+                          "min": 1,
+                          "max": 1,
+                          "reveal": false,
+                          "shuffle_after": false,
+                          "then": {
+                            "InstallRunnerCardFromGripWithDiscount": "AllCosts"
+                          }
+                        }
+                      },
+                      {
+                        "PromptChooseCards": {
+                          "side": "Runner",
+                          "source": "OwnHeap",
+                          "filter": {
+                            "All": [
+                              {
+                                "CardType": "Program"
+                              },
+                              {
+                                "HasSubtype": "Caïssa"
+                              },
+                              {
+                                "InstallableRunnerCardWithDiscount": "AllCosts"
+                              }
+                            ]
+                          },
+                          "min": 1,
+                          "max": 1,
+                          "reveal": false,
+                          "shuffle_after": false,
+                          "then": {
+                            "InstallRunnerCardFromZone": {
+                              "from": "OwnHeap",
+                              "discount": "AllCosts"
+                            }
+                          }
+                        }
+                      }
+                    ],
+                    "texts": [
+                      "install 1 other Caïssa program from your grip or heap, ignoring all costs — grip",
+                      "install 1 other Caïssa program from your grip or heap, ignoring all costs — heap"
+                    ]
+                  }
+                },
+                {
+                  "TrashCard": "ThisCard"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run while this program is hosted on a piece of ice, host it on the next inward piece of ice. If you cannot, trash this program and install 1 other Caïssa program from your grip or heap, ignoring all costs."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OpponentInstalled",
+          "filter": {
+            "All": [
+              "Ice",
+              {
+                "Placed": "Outermost"
+              },
+              {
+                "AnyOf": [
+                  {
+                    "InServer": "Hq"
+                  },
+                  {
+                    "InServer": "RnD"
+                  },
+                  {
+                    "InServer": "Archives"
+                  }
+                ]
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "HostRigCardOnInstall": {
+              "card": 0,
+              "host": 0
+            }
+          }
+        }
+      },
+      "text": "[click]: Host this program on the outermost piece of ice protecting a central server."
+    }
+  ],
+  "built_from": 4002,
+  "is_playable": true
+}

@@ -1,0 +1,33 @@
+{
+  "id": "harmony_medtech_biomedical_pioneer",
+  "title": "Harmony Medtech: Biomedical Pioneer",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 40,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "AgendaPointsToWin": {
+          "per": -1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Each player needs 1 fewer agenda point to win the game."
+    },
+    {
+      "kind": {
+        "AgendaPointsToWin": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "text": "Each player needs 1 fewer agenda point to win the game."
+    }
+  ],
+  "built_from": 5001,
+  "is_playable": true
+}

@@ -1,0 +1,16 @@
+{
+  "id": "custom_biotics_engineered_for_success",
+  "title": "Custom Biotics: Engineered for Success",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [],
+  "deck_rules": [
+    {
+      "NoCardsOfFaction": "Jinteki"
+    }
+  ],
+  "built_from": 3002,
+  "is_playable": true
+}

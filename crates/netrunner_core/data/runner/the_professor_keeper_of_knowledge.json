@@ -1,0 +1,17 @@
+{
+  "id": "the_professor_keeper_of_knowledge",
+  "title": "The Professor: Keeper of Knowledge",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "triggers": [],
+  "deck_rules": [
+    {
+      "FirstCopyOfEachFree": "Program"
+    }
+  ],
+  "built_from": 3029,
+  "is_playable": true
+}

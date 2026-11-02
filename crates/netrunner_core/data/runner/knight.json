@@ -1,0 +1,74 @@
+{
+  "id": "knight",
+  "title": "Knight",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "strength": 7,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "requirement": "EncounteringHostIce",
+      "text": "Interface → 2[credit]: Break 1 subroutine on host ice."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OpponentInstalled",
+          "filter": {
+            "All": [
+              "Ice",
+              {
+                "Not": {
+                  "Hosting": {
+                    "All": [
+                      {
+                        "CardType": "Program"
+                      },
+                      {
+                        "HasSubtype": "Caïssa"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "Placed": "NotNextToHost"
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "HostRigCardOnInstall": {
+              "card": 0,
+              "host": 0
+            }
+          }
+        }
+      },
+      "text": "[click]: Host this program on a piece of ice that is not hosting a Caïssa program."
+    }
+  ],
+  "built_from": 4043,
+  "is_playable": true
+}

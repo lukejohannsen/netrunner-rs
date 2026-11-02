@@ -794,6 +794,45 @@ pub enum CardFilter {
     /// about the card whose text it is, and Copycat's text is not the
     /// ice's.
     CopyOf(crate::dsl::MovedTo),
+    /// A Corp install hosting an installed Runner card the filter admits
+    /// (`state::InstalledRunnerCard::hosted_on_ice`) — the Caïssa
+    /// programs' "a piece of ice that is **not hosting a Caïssa program**",
+    /// under `Not`. Instance-level: what a piece of ice hosts is the
+    /// table's, and the filter is asked of each hosted card's definition.
+    /// Composition didn't work: `EffectRequirement::EncounteredIceHosts`
+    /// asks about the encountered ice, and a selection about every ice.
+    Hosting(Box<CardFilter>),
+    /// Where a piece of ice sits, on the table or beside the ice the
+    /// parking Runner card is hosted on (`IcePlace`) — Pawn's "the
+    /// outermost piece of ice protecting a central server" and "the next
+    /// inward piece of ice", and the other Caïssa programs' limits on where
+    /// their [click] ability may move them. Instance-level: positions are
+    /// the table's (CR 6.2.3). Composition didn't work: `NextToThis` is
+    /// about the install a selection acts as, and the Caïssa program is
+    /// the card that acts, not the ice it sits on.
+    Placed(IcePlace),
+}
+
+/// See `CardFilter::Placed`. The places a card in the pool prints. The
+/// limits beside the host (`Other…`, `NotNextToHost`, `SameServer…`)
+/// admit every piece of ice when the card is hosted on none, because each
+/// is printed as "if this program is hosted on ice, its [click] ability
+/// can only…"; `NextInwardFromHost` admits nothing then.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IcePlace {
+    /// The outermost piece of ice protecting its server.
+    Outermost,
+    /// The next piece of ice inward from the host, protecting its server
+    /// — Pawn.
+    NextInwardFromHost,
+    /// Ice protecting a remote server when the host protects a central
+    /// one, and a central one when it protects a remote — Bishop.
+    OtherKindOfServerThanHost,
+    /// Not the next piece of ice inward or outward from the host — Knight.
+    NotNextToHost,
+    /// Ice protecting the host's server, or in the host's position counted
+    /// from the innermost (CR 6.2.3) — Rook.
+    SameServerOrPositionAsHost,
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -971,6 +1010,8 @@ impl CardFilter {
                 | CardFilter::SamePositionAs(_)
                 | CardFilter::NextToThis
                 | CardFilter::CopyOf(_)
+                | CardFilter::Hosting(_)
+                | CardFilter::Placed(_)
         )
     }
 
@@ -1186,7 +1227,8 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::BeingEncountered => true,
         CardFilter::BeingApproached => true,
         CardFilter::SwappableIntoThis => true,
-        CardFilter::NextToThis | CardFilter::CopyOf(_) => matches!(card.card_type, CardType::Ice(_)),
+        CardFilter::NextToThis | CardFilter::CopyOf(_) | CardFilter::Placed(_) => matches!(card.card_type, CardType::Ice(_)),
+        CardFilter::Hosting(_) => true,
         CardFilter::PrintedCostAtMost(at_most) => match **at_most {
             crate::dsl::Amount::Fixed(n) => !matches!(card.card_type, CardType::Agenda | CardType::Identity) && card.cost <= n,
             _ => false,
