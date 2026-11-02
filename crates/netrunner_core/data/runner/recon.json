@@ -1,0 +1,44 @@
+{
+  "id": "recon",
+  "title": "Recon",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "LaterThisTurn": {
+                "when": "OnEncounter",
+                "this_run": true,
+                "effect": {
+                  "OfferPaidChoice": {
+                    "side": "Runner",
+                    "cost": "JackOut",
+                    "if_paid": {
+                      "Sequence": []
+                    },
+                    "if_declined": {
+                      "Sequence": []
+                    },
+                    "text": "You may jack out when you encounter the first piece of ice"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Make a run. You may jack out when you encounter the first piece of ice."
+    }
+  ],
+  "built_from": 4024,
+  "is_playable": true
+}

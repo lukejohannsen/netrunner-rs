@@ -16,7 +16,11 @@
                 "amount": {
                   "Fixed": 1
                 },
-                "by": "ProtectedRemotesWithRootCards"
+                "by": {
+                  "RemotesWithRootCards": {
+                    "protected": true
+                  }
+                }
               }
             },
             "effect": {

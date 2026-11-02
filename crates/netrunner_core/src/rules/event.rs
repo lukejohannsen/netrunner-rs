@@ -399,6 +399,13 @@ pub enum GameEvent {
         card: CardId,
         #[serde(default)]
         credits_paid: u32,
+        /// Whether the card came out of the heap — Exile: Streethawk's
+        /// "Whenever you install a program **from your heap**"
+        /// (`EventFilter::InstalledFromHeap`). Public: both players see
+        /// which zone a card leaves. The Corp's installs say where theirs
+        /// came from on `CardInstalled::from_hq`.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        from_heap: bool,
     },
     ProgramInstalled {
         side: Side,
@@ -406,6 +413,9 @@ pub enum GameEvent {
         memory_cost: u8,
         #[serde(default)]
         credits_paid: u32,
+        /// As `HardwareInstalled::from_heap`.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        from_heap: bool,
     },
     ResourceInstalled {
         side: Side,
@@ -417,6 +427,9 @@ pub enum GameEvent {
         /// `OnInstall` reads. Public: the payment was.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         x: Option<u32>,
+        /// As `HardwareInstalled::from_heap`.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        from_heap: bool,
     },
     /// `install` names the instance when the accessed card is a root
     /// install (`AccessState::pending_install`), so `Trigger::OnAccessed`

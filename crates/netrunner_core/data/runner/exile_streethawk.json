@@ -1,0 +1,36 @@
+{
+  "id": "exile_streethawk",
+  "title": "Exile: Streethawk",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 1,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Card": {
+              "CardType": "Program"
+            }
+          },
+          "InstalledFromHeap"
+        ]
+      },
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever you install a program from your heap, draw 1 card."
+    }
+  ],
+  "built_from": 3030,
+  "is_playable": true
+}

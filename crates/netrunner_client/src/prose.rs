@@ -109,7 +109,8 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::PassedIceSubroutinesResolved => "the number of subroutines that resolved on the passed ice".to_string(),
         Amount::UnbrokenSubroutinesThatEncounter => "the number of unbroken subroutines on the encountered ice".to_string(),
         Amount::RevealedBid(side) => format!("the credits {} revealed they had secretly spent", who(*side)),
-        Amount::ProtectedRemotesWithRootCards => "the number of remote servers with a card in the root and protected by ice".to_string(),
+        Amount::RemotesWithRootCards { protected: true } => "the number of remote servers with a card in the root and protected by ice".to_string(),
+        Amount::RemotesWithRootCards { protected: false } => "the number of remote servers with a card in the root".to_string(),
         Amount::RemainingAfterSelection(n) => format!("{n} less the cards chosen"),
         Amount::CardsSelected => "the cards chosen".to_string(),
         Amount::CardsSelectedPrintedCost => "the total cost of the cards chosen".to_string(),
@@ -915,6 +916,7 @@ fn describe_when(filter: &EventFilter) -> String {
         }
         EventFilter::InstalledFromHq(true) => "from HQ".to_string(),
         EventFilter::InstalledFromHq(false) => "from anywhere except HQ".to_string(),
+        EventFilter::InstalledFromHeap => "from the heap".to_string(),
         EventFilter::ServerKind(kind) => format!("on {}", match kind {
             netrunner_core::dsl::ServerKind::Remote => "a remote server",
             netrunner_core::dsl::ServerKind::Central => "a central server",

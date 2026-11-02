@@ -3014,13 +3014,20 @@ pub enum Amount {
     /// this server" is the sentence the next card prints. 0 for a card
     /// that is not a Corp install.
     IceProtectingThisServer,
-    /// Remote servers that have a card in the root and are protected by
-    /// ice — Flood the Market's "place 1 advancement counter on that card
-    /// for each remote server that has a card in its root and is protected
-    /// by ice". Any rez state, both halves, as the text does not say.
-    /// Composition had nothing to compose: `IceProtectingThisServer` counts
-    /// one server's ice, and no amount counts servers.
-    ProtectedRemotesWithRootCards,
+    /// Remote servers that have a card in the root, and with `protected`
+    /// only those protected by ice — Flood the Market's "place 1
+    /// advancement counter on that card for each remote server that has a
+    /// card in its root and is protected by ice", Diversified Portfolio's
+    /// "Gain 1[credit] for each remote server with a card in its root".
+    /// Any rez state, both halves, as the text does not say. Composition
+    /// had nothing to compose: `IceProtectingThisServer` counts one
+    /// server's ice, and no amount counts servers. It was
+    /// `ProtectedRemotesWithRootCards`, until Diversified Portfolio asked
+    /// the same count without the ice.
+    RemotesWithRootCards {
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        protected: bool,
+    },
     /// Pieces of ice protecting a server the card names — Tailgate's "for
     /// each piece of ice protecting HQ", priced from the grip, where the
     /// card is on no server for `IceProtectingThisServer` to read.

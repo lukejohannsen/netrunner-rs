@@ -55113,3 +55113,250 @@ mod engine_words_stage_11 {
         assert_eq!(tally.influence_spent, 2, "Corroder's second copy only");
     }
 }
+
+mod engine_words_stage_12 {
+    use super::*;
+    use crate::rules::RunPhase;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.next_install_id = 200;
+        state
+    }
+
+    fn ice(card: &str, server: ServerId, rezzed: bool, install: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn phase(state: &GameState) -> Option<RunPhase> {
+        state.active_run.as_ref().map(|run| run.phase)
+    }
+
+    /// Passes and continues until `done`, never answering anything parked.
+    fn pass_until(mut state: GameState, registry: &CardRegistry, done: impl Fn(&GameState) -> bool) -> GameState {
+        for _ in 0..64 {
+            if done(&state) {
+                return state;
+            }
+            let parked = state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.pending_payment.is_some();
+            assert!(!parked, "parked before it was done: {:?} {:?}", state.pending_decision, state.pending_paid_choice);
+            let action = match (&state.paid_ability_window, phase(&state)) {
+                (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+                (None, Some(RunPhase::Initiation | RunPhase::Movement | RunPhase::EncounterIce)) => PlayerAction::ContinueRun,
+                (None, Some(RunPhase::Success)) => PlayerAction::CompleteRun,
+                other => panic!("stuck at {other:?}"),
+            };
+            state = act(&state, registry, action);
+        }
+        panic!("never done");
+    }
+
+    fn corp_position(state: &GameState, install: u32) -> usize {
+        state.corp.installed.iter().position(|card| card.install_id == InstallId(install)).expect("installed")
+    }
+
+    /// "Whenever you install a program from your heap, draw 1 card" — and
+    /// a program from the grip is not one.
+    #[test]
+    fn exile_draws_for_a_program_installed_from_the_heap() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("exile_streethawk"));
+        state.runner.rig = vec![rig("clone_chip", 1)];
+        state.runner.heap = vec![id("corroder")];
+        state.runner.grip = vec![id("gordian_blade")];
+        state.runner.stack = vec![id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        let asked = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 });
+        let asked = act(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 });
+        let installed = act(&asked, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("corroder")), "Corroder out of the heap");
+        assert_eq!(installed.runner.grip.len(), 2, "draw 1 card");
+        let from_grip = act(&installed, &registry, PlayerAction::InstallProgram { card_id: id("gordian_blade"), trash_first: false, host: None });
+        assert_eq!(from_grip.runner.grip.len(), 1, "a program from the grip draws nothing");
+    }
+
+    /// Oversight AI rezzes the ice for nothing and sits on it until the ice
+    /// is fully broken, when the ice is trashed.
+    #[test]
+    fn oversight_ai_rezzes_its_host_and_trashes_it_once_fully_broken() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(5);
+        state.corp.installed = vec![ice("ice_wall", ServerId::Hq, false, 101), ice("enigma", ServerId::RnD, true, 102)];
+        state.corp.hq = vec![id("oversight_ai")];
+        let asked = act(&state, &registry, PlayerAction::PlayOperation { card_id: id("oversight_ai") });
+        assert!(apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: corp_position(&asked, 102) }).is_err(), "a rezzed ice is not rezzed again");
+        let picked = act(&asked, &registry, PlayerAction::ToggleCardSelection { position: corp_position(&asked, 101) });
+        let played = act(&picked, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(played.corp.installed[corp_position(&played, 101)].rezzed, "rez a piece of ice");
+        assert_eq!(played.corp.resources.credits, Credits(4), "ignoring all costs: only the operation's 1");
+        assert_eq!(played.corp.conditions.len(), 1);
+        assert_eq!(played.corp.conditions[0].host, InstallId(101));
+
+        let mut run = played;
+        run.phase = GamePhase::Action(Side::Runner);
+        run.runner.resources.clicks = Clicks(4);
+        run.runner.resources.credits = Credits(10);
+        run.runner.rig = vec![crate::rules::InstalledRunnerCard { base_strength: 2, ..rig("corroder", 900) }];
+        let started = act(&run, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let encountering = pass_until(started, &registry, |state| {
+            phase(state) == Some(RunPhase::EncounterIce) && state.paid_ability_window.as_ref().is_some_and(|window| window.active_priority == Side::Runner)
+        });
+        let broke = act(&encountering, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 1 });
+        assert!(broke.corp.installed.iter().all(|card| card.install_id != InstallId(101)), "trash host ice");
+        assert!(broke.corp.conditions.is_empty(), "the condition goes with it");
+    }
+
+    /// Bioroid Efficiency Research rezzes only bioroid ice, and on a full
+    /// break derezzes it and trashes itself.
+    #[test]
+    fn bioroid_efficiency_research_derezzes_its_host_and_goes() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(5);
+        state.corp.installed = vec![ice("eli_1_0", ServerId::Hq, false, 101), ice("ice_wall", ServerId::RnD, false, 102)];
+        state.corp.hq = vec![id("bioroid_efficiency_research")];
+        let asked = act(&state, &registry, PlayerAction::PlayOperation { card_id: id("bioroid_efficiency_research") });
+        assert!(apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: corp_position(&asked, 102) }).is_err(), "bioroid ice only");
+        let picked = act(&asked, &registry, PlayerAction::ToggleCardSelection { position: corp_position(&asked, 101) });
+        let played = act(&picked, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(played.corp.installed[corp_position(&played, 101)].rezzed);
+        assert_eq!(played.corp.resources.credits, Credits(2), "only the operation's 3");
+
+        let mut run = played;
+        run.phase = GamePhase::Action(Side::Runner);
+        run.runner.resources.clicks = Clicks(4);
+        run.runner.resources.credits = Credits(10);
+        run.runner.rig = vec![crate::rules::InstalledRunnerCard { base_strength: 4, ..rig("corroder", 900) }];
+        let started = act(&run, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let mut state = pass_until(started, &registry, |state| {
+            phase(state) == Some(RunPhase::EncounterIce) && state.paid_ability_window.as_ref().is_some_and(|window| window.active_priority == Side::Runner)
+        });
+        for _ in 0..2 {
+            while let Some(window) = state.paid_ability_window.as_ref().filter(|window| window.active_priority == Side::Corp) {
+                state = act(&state, &registry, PlayerAction::PassPriority { side: window.active_priority });
+            }
+            state = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 1 });
+        }
+        assert!(!state.corp.installed[corp_position(&state, 101)].rezzed, "derez host ice");
+        assert!(state.corp.conditions.is_empty(), "trash Bioroid Efficiency Research");
+        assert!(state.corp.archives.iter().any(|card| card.card == id("bioroid_efficiency_research")));
+    }
+
+    /// "If Curtain Wall is the outermost piece of ice protecting a server,
+    /// it has +4 strength."
+    #[test]
+    fn curtain_wall_is_stronger_only_outermost() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice("curtain_wall", ServerId::Hq, true, 101), ice("ice_wall", ServerId::Hq, true, 102)];
+        assert_eq!(crate::rules::continuous::installed_ice_strength(&state, &registry, &id("curtain_wall"), InstallId(101)), 10);
+        state.corp.installed.swap(0, 1);
+        assert_eq!(crate::rules::continuous::installed_ice_strength(&state, &registry, &id("curtain_wall"), InstallId(101)), 6, "no longer outermost");
+    }
+
+    /// "The trash cost of all installed cards is increased by 1": an
+    /// install, not a card in HQ.
+    #[test]
+    fn encryption_protocol_raises_installed_trash_costs() {
+        let registry = registry();
+        let mut state = base_state();
+        let pad = registry.get(&id("pad_campaign")).unwrap().clone();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(101), card: id("pad_campaign"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() }];
+        assert_eq!(crate::rules::continuous::trash_cost_delta(&state, &registry, &pad, Some(InstallId(101))), 0);
+        state.corp.installed.push(crate::rules::InstalledCard { install_id: InstallId(102), card: id("encryption_protocol"), server: ServerId::Remote(1), slot: InstallSlot::Root, rezzed: true, ..Default::default() });
+        assert_eq!(crate::rules::continuous::trash_cost_delta(&state, &registry, &pad, Some(InstallId(101))), 1);
+        assert_eq!(crate::rules::continuous::trash_cost_delta(&state, &registry, &pad, None), 0, "a card accessed in HQ is not installed");
+    }
+
+    /// "Gain 1[credit] for each remote server with a card in its root" —
+    /// ice alone is no root card.
+    #[test]
+    fn diversified_portfolio_counts_remotes_with_a_root() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(1);
+        let root = |install, server| crate::rules::InstalledCard { install_id: InstallId(install), card: id("pad_campaign"), server, slot: InstallSlot::Root, ..Default::default() };
+        state.corp.installed = vec![root(101, ServerId::Remote(0)), root(102, ServerId::Remote(1)), ice("ice_wall", ServerId::Remote(2), true, 103), root(104, ServerId::Hq)];
+        state.corp.hq = vec![id("diversified_portfolio")];
+        let played = act(&state, &registry, PlayerAction::PlayOperation { card_id: id("diversified_portfolio") });
+        assert_eq!(played.corp.resources.credits, Credits(2), "1 - 1 + 2");
+    }
+
+    /// Feint bypasses the first two pieces of ice and breaches nothing.
+    #[test]
+    fn feint_bypasses_two_pieces_of_ice_and_cannot_breach() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("ice_wall", ServerId::Hq, true, 101), ice("ice_wall", ServerId::Hq, true, 102), ice("ice_wall", ServerId::Hq, true, 103)];
+        state.corp.hq = vec![id("hedge_fund")];
+        state.runner.grip = vec![id("feint")];
+        let started = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("feint") });
+        let ran = pass_until(started, &registry, |state| state.active_run.is_none());
+        assert!(ran.last_completed_run.as_ref().is_some_and(|run| !run.successful), "Ice Wall's third ended the run");
+        let mut two = state.clone();
+        two.corp.installed.pop();
+        let started = act(&two, &registry, PlayerAction::PlayEvent { card_id: id("feint") });
+        let ran = pass_until(started, &registry, |state| state.active_run.is_none());
+        assert!(ran.last_completed_run.as_ref().is_some_and(|run| run.successful), "both bypassed");
+        assert!(ran.runner.scored_agendas.is_empty() && ran.corp.hq.len() == 1, "nothing accessed");
+    }
+
+    /// Recon offers a jack out as the first piece of ice is encountered.
+    #[test]
+    fn recon_may_jack_out_at_the_first_encounter() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("ice_wall", ServerId::Hq, true, 101), ice("ice_wall", ServerId::Hq, true, 102)];
+        state.runner.grip = vec![id("recon")];
+        let asked = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("recon") });
+        let chosen = act(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq });
+        let offered = pass_until(chosen, &registry, |state| state.pending_paid_choice.is_some());
+        assert_eq!(phase(&offered), Some(RunPhase::EncounterIce));
+        let out = act(&offered, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None });
+        assert!(out.active_run.is_none(), "jacked out");
+    }
+
+    /// Domestic Sleepers is worth a point once it has a counter, placed for
+    /// three clicks.
+    #[test]
+    fn domestic_sleepers_is_worth_a_point_with_a_counter() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda { install_id: InstallId(9), ..crate::rules::ScoredAgenda::plain(id("domestic_sleepers")) }];
+        assert_eq!(crate::rules::win::score(&state, &registry, Side::Corp), 0);
+        state.corp.resources.clicks = Clicks(3);
+        let placed = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(9), ability_index: 0 });
+        assert_eq!(placed.corp.resources.clicks, Clicks(0));
+        assert_eq!(crate::rules::win::score(&placed, &registry, Side::Corp), 1);
+    }
+
+    /// Frame Job forfeits a stolen agenda for a bad publicity.
+    #[test]
+    fn frame_job_trades_an_agenda_for_bad_publicity() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda { install_id: InstallId(9), ..crate::rules::ScoredAgenda::plain(id("hostile_takeover")) }];
+        state.runner.grip = vec![id("frame_job")];
+        let offered = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("frame_job") });
+        assert_eq!(offered.runner.resources.clicks, Clicks(2), "the play's click and the additional one");
+        let paid = act(&offered, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None });
+        assert!(paid.runner.scored_agendas.is_empty(), "forfeit 1 agenda");
+        assert_eq!(paid.corp.bad_publicity, state.corp.bad_publicity + 1);
+    }
+}

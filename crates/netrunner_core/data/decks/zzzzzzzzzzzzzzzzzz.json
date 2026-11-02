@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Cerebral Imaging: Infinite Frontiers, whose maximum hand size is its credit pool. Zzzz's list, its identity swapped. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 4. One Turing became a Minelayer, whose subroutine installs ice protecting its own server (Engine words, Stage 3).",
+  "description": "Not a published list: built so the sweeps reach Cerebral Imaging: Infinite Frontiers, whose maximum hand size is its credit pool. Zzzz's list, its identity swapped. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 4. One Turing became a Minelayer, whose subroutine installs ice protecting its own server (Engine words, Stage 3). Engine words Stage 12 brought two Bioroid Efficiency Research, an Encryption Protocol, a Domestic Sleepers and a Diversified Portfolio in for a Brain-Taping Warehouse, a Team Sponsorship, a Cybernetics Court, an Eliza's Toybox and a Peak Efficiency, so the sweep plays a condition that rezzes its host, a raised trash cost on every install and an agenda worth nothing until its own ability is used.",
   "style": [
     "glacier"
   ],
@@ -51,10 +51,6 @@
     },
     {
       "card": "black_level_clearance",
-      "count": 1
-    },
-    {
-      "card": "brain_taping_warehouse",
       "count": 1
     },
     {
@@ -114,14 +110,6 @@
       "count": 1
     },
     {
-      "card": "cybernetics_court",
-      "count": 1
-    },
-    {
-      "card": "team_sponsorship",
-      "count": 1
-    },
-    {
       "card": "product_placement",
       "count": 1
     },
@@ -139,14 +127,6 @@
     },
     {
       "card": "iq",
-      "count": 1
-    },
-    {
-      "card": "elizas_toybox",
-      "count": 1
-    },
-    {
-      "card": "peak_efficiency",
       "count": 1
     },
     {
@@ -183,6 +163,22 @@
     },
     {
       "card": "minelayer",
+      "count": 1
+    },
+    {
+      "card": "bioroid_efficiency_research",
+      "count": 2
+    },
+    {
+      "card": "encryption_protocol",
+      "count": 1
+    },
+    {
+      "card": "domestic_sleepers",
+      "count": 1
+    },
+    {
+      "card": "diversified_portfolio",
       "count": 1
     }
   ]

@@ -282,7 +282,6 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Upstalk* (`upstalk`): tranche F8 of the FFG plan.
 pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("domestic_sleepers", "Domestic Sleepers"),
     ("mutate", "Mutate"),
     ("bad_times", "Bad Times"),
     ("cyber_threat", "Cyber Threat"),
@@ -344,8 +343,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("inazuma", "Inazuma"),
     ("shiro", "Shiro"),
     ("plan_b", "Plan B"),
-    ("diversified_portfolio", "Diversified Portfolio"),
-    ("feint", "Feint"),
     ("unregistered_s_w_35", "Unregistered S&W '35"),
     ("window", "Window"),
     ("bug", "Bug"),
@@ -357,24 +354,20 @@ pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("next_design_guarding_the_net", "NEXT Design: Guarding the Net"),
     ("director_haas_pet_project", "Director Haas' Pet Project"),
     ("haas_arcology_ai", "Haas Arcology AI"),
-    ("bioroid_efficiency_research", "Bioroid Efficiency Research"),
     ("howler", "Howler"),
     ("awakening_center", "Awakening Center"),
     ("tyrs_hand", "Tyr's Hand"),
-    ("exile_streethawk", "Exile: Streethawk"),
     ("scavenge", "Scavenge"),
     ("cyber_cypher", "Cyber-Cypher"),
 ];
 
 /// *Opening Moves* (`opening_moves`): tranche F10 of the FFG plan.
 pub(crate) const OM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("frame_job", "Frame Job"),
     ("false_echo", "False Echo"),
 ];
 
 /// *Second Thoughts* (`second_thoughts`): tranche F10 of the FFG plan.
 pub(crate) const ST_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("recon", "Recon"),
 ];
 
 /// *Mala Tempora* (`mala_tempora`): tranche F10 of the FFG plan.
@@ -391,7 +384,6 @@ pub(crate) const MT_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const TC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("capstone", "Capstone"),
     ("starlight_crusade_funding", "Starlight Crusade Funding"),
-    ("curtain_wall", "Curtain Wall"),
 ];
 
 /// *Fear and Loathing* (`fear_and_loathing`): tranche F10 of the FFG plan.
@@ -414,7 +406,6 @@ pub(crate) const WLA_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Trace Amount* (`trace_amount`): tranche F11 of the FFG plan.
 pub(crate) const TA_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("encryption_protocol", "Encryption Protocol"),
     ("amazon_industrial_zone", "Amazon Industrial Zone"),
 ];
 
@@ -427,7 +418,6 @@ pub(crate) const CE_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *A Study in Static* (`a_study_in_static`): tranche F11 of the FFG plan.
 pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("net_police", "Net Police"),
-    ("oversight_ai", "Oversight AI"),
 ];
 
 /// *Humanity's Shadow* (`humanitys_shadow`): tranche F11 of the FFG plan.
@@ -458,5 +448,4 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
     ("sundew", "Sundew"),
     ("blue_sun_powering_the_future", "Blue Sun: Powering the Future"),
-    ("oversight_ai", "Oversight AI"),
 ];

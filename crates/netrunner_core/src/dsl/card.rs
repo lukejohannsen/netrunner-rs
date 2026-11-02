@@ -1577,6 +1577,8 @@ impl CardDefinition {
             // Only a Corp install's moment says where the card came
             // from (`listeners::Moment::from_hq`).
             EventFilter::InstalledFromHq(_) | EventFilter::InstalledIn(_) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
+            // …and only a Runner install's whether it left the heap.
+            EventFilter::InstalledFromHeap => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Runner,
             // Only an install is in a root or not.
             EventFilter::InRoot => triggered.trigger == Trigger::OnInstall,
             // Only a Corp card is in a root, and only the Corp installs
@@ -2254,8 +2256,10 @@ impl CardDefinition {
                 (ContinuousKind::RezCost(_), _) => return misfit("RezCost", "only an installed Corp card is rezzed"),
                 (ContinuousKind::AdditionalRezCost(_), Scope::CorpInstalled(_)) => {}
                 (ContinuousKind::AdditionalRezCost(_), _) => return misfit("AdditionalRezCost", "an additional cost to rez is about the Corp's installs"),
-                (ContinuousKind::TrashCost(_), Scope::This | Scope::RootOfThisServer(_) | Scope::Accessing(_)) => {}
-                (ContinuousKind::TrashCost(_), _) => return misfit("TrashCost", "a trash cost is this card's own, that of a card in its server's root, or that of a card being accessed"),
+                // Encryption Protocol's "all installed cards" is every Corp
+                // install: a Runner card has no trash cost to raise.
+                (ContinuousKind::TrashCost(_), Scope::This | Scope::RootOfThisServer(_) | Scope::Accessing(_) | Scope::CorpInstalled(_)) => {}
+                (ContinuousKind::TrashCost(_), _) => return misfit("TrashCost", "a trash cost is this card's own, that of a card in its server's root or among the Corp's installs, or that of a card being accessed"),
                 // Kill Switch's "while the Runner is accessing an agenda in
                 // R&D, they must reveal it": the reveal is asked of the card
                 // being accessed, as Demolisher's trash cost is.

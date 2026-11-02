@@ -1550,10 +1550,10 @@ mod tests {
         assert_eq!(install_cost_of(&state, &registry, &hardware), 3, "not a program");
         assert_eq!(install_cost_of(&state, &registry, &program), 1);
         assert_eq!(install_cost_of(&state, &registry, &program), 1, "asking spends nothing");
-        let installed = crate::rules::GameEvent::HardwareInstalled { side: Side::Runner, card: CardId("hardware".to_string()), credits_paid: 3 };
+        let installed = crate::rules::GameEvent::HardwareInstalled { side: Side::Runner, card: CardId("hardware".to_string()), credits_paid: 3, from_heap: false };
         crate::rules::turn_log::record(&mut state, &registry, &installed);
         assert_eq!(install_cost_of(&state, &registry, &program), 1, "a piece of hardware is not the turn's first program");
-        let installed = crate::rules::GameEvent::ProgramInstalled { side: Side::Runner, card: CardId("program".to_string()), memory_cost: 1, credits_paid: 1 };
+        let installed = crate::rules::GameEvent::ProgramInstalled { side: Side::Runner, card: CardId("program".to_string()), memory_cost: 1, credits_paid: 1, from_heap: false };
         crate::rules::turn_log::record(&mut state, &registry, &installed);
         assert_eq!(install_cost_of(&state, &registry, &program), 3, "the turn has had its first program");
     }
