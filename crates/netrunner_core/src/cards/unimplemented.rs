@@ -217,7 +217,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sync_everything_everywhere", "SYNC: Everything, Everywhere"),
     ("rebranding_team", "Rebranding Team"),
     ("tl_dr", "TL;DR"),
-    ("24_7_news_cycle", "24/7 News Cycle"),
     ("ad_blitz", "Ad Blitz"),
     ("media_blitz", "Media Blitz"),
     ("surveillance_sweep", "Surveillance Sweep"),
@@ -285,7 +284,6 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("domestic_sleepers", "Domestic Sleepers"),
     ("mutate", "Mutate"),
-    ("galahad", "Galahad"),
     ("bad_times", "Bad Times"),
     ("cyber_threat", "Cyber Threat"),
     ("nasir_meidan_cyber_explorer", "Nasir Meidan: Cyber Explorer"),
@@ -309,7 +307,6 @@ pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("kitsune", "Kitsune"),
     ("chronos_project", "Chronos Project"),
-    ("lancelot", "Lancelot"),
     ("blackat", "BlacKat"),
     ("order_of_sol", "Order of Sol"),
     ("hades_shard", "Hades Shard"),
@@ -328,15 +325,12 @@ pub(crate) const UAO_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *All That Remains* (`all_that_remains`): tranche F8 of the FFG plan.
 pub(crate) const ATR_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("bifrost_array", "Bifrost Array"),
-    ("merlin", "Merlin"),
     ("utopia_shard", "Utopia Shard"),
 ];
 
 /// *The Source* (`the_source`): tranche F8 of the FFG plan.
 pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("it_department", "IT Department"),
-    ("industrial_genomics_growing_solutions", "Industrial Genomics: Growing Solutions"),
     ("self_destruct", "Self-destruct"),
     ("incubator", "Incubator"),
     ("code_siphon", "Code Siphon"),
@@ -345,7 +339,6 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Honor and Profit* (`honor_and_profit`): tranche F8 of the FFG plan.
 pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("harmony_medtech_biomedical_pioneer", "Harmony Medtech: Biomedical Pioneer"),
     ("medical_breakthrough", "Medical Breakthrough"),
     ("shi_kyu", "Shi.Kyū"),
     ("inazuma", "Inazuma"),
@@ -361,7 +354,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Creation and Control* (`creation_and_control`): tranche F9 of the FFG plan.
 pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("custom_biotics_engineered_for_success", "Custom Biotics: Engineered for Success"),
     ("next_design_guarding_the_net", "NEXT Design: Guarding the Net"),
     ("director_haas_pet_project", "Director Haas' Pet Project"),
     ("haas_arcology_ai", "Haas Arcology AI"),
@@ -369,7 +361,6 @@ pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("howler", "Howler"),
     ("awakening_center", "Awakening Center"),
     ("tyrs_hand", "Tyr's Hand"),
-    ("the_professor_keeper_of_knowledge", "The Professor: Keeper of Knowledge"),
     ("exile_streethawk", "Exile: Streethawk"),
     ("scavenge", "Scavenge"),
     ("cyber_cypher", "Cyber-Cypher"),
@@ -378,21 +369,16 @@ pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Opening Moves* (`opening_moves`): tranche F10 of the FFG plan.
 pub(crate) const OM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("frame_job", "Frame Job"),
-    ("pawn", "Pawn"),
-    ("rook", "Rook"),
     ("false_echo", "False Echo"),
 ];
 
 /// *Second Thoughts* (`second_thoughts`): tranche F10 of the FFG plan.
 pub(crate) const ST_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("bishop", "Bishop"),
     ("recon", "Recon"),
 ];
 
 /// *Mala Tempora* (`mala_tempora`): tranche F10 of the FFG plan.
 pub(crate) const MT_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("deep_red", "Deep Red"),
-    ("knight", "Knight"),
     ("running_interference", "Running Interference"),
     ("raymond_flint", "Raymond Flint"),
     ("unorthodox_predictions", "Unorthodox Predictions"),

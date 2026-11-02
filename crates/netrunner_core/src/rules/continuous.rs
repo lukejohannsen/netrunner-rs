@@ -543,10 +543,15 @@ pub(crate) fn damage_done(state: &GameState, registry: &CardRegistry, side: Side
 /// meets it at the next checkpoint.
 pub fn points_to_win(state: &GameState, registry: &CardRegistry, side: Side) -> i32 {
     let threshold = i32::try_from(state.rules.winning_agenda_points).unwrap_or(i32::MAX);
-    threshold.saturating_add(sum(state, registry, Target::Player(side), |kind| match kind {
-        ContinuousKind::AgendaPointsToWin(number) => Some(number),
-        _ => None,
-    }))
+    fn points(kind: &ContinuousKind) -> Option<&Number> {
+        match kind {
+            ContinuousKind::AgendaPointsToWin(number) => Some(number),
+            _ => None,
+        }
+    }
+    // The other player's cards too, as a hand size is asked: Harmony
+    // Medtech's "each player needs 1 fewer".
+    threshold.saturating_add(sum(state, registry, Target::Player(side), points)).saturating_add(sum(state, registry, Target::Bound(side), points))
 }
 
 /// The Runner's link right now: what their identity prints and what their

@@ -1053,6 +1053,15 @@ pub enum DeckRule {
     /// each faction may send this many different titles, and the copies
     /// are the copy limit's to count.
     AgendasFromEachFaction(u32),
+    /// "You cannot include Jinteki cards in this deck." — Custom Biotics:
+    /// Engineered for Success. A card of that faction is refused
+    /// (`DeckValidationError::FactionNotAllowed`), influence or not.
+    NoCardsOfFaction(crate::card::Faction),
+    /// "The first copy of each program in this deck does not count against
+    /// your influence limit." — The Professor: Keeper of Knowledge. Each
+    /// title of the type spends influence for its copies after the first
+    /// (`deck::influence_in`).
+    FirstCopyOfEachFree(CardType),
 }
 
 /// The condition under which a card's influence is waived
@@ -2196,7 +2205,7 @@ impl CardDefinition {
                 // is the one it protects (Rime's "each piece of ice
                 // protecting this server").
                 (_, Scope::IceProtectingThisServer(_))
-                    if self.card_type != CardType::Upgrade && self.card_type != CardType::Asset && !self.installs_on_ice && !matches!(self.card_type, CardType::Ice(_)) =>
+                    if self.card_type != CardType::Upgrade && self.card_type != CardType::Asset && !self.installs_on_ice && !self.subtypes.contains(&CardSubtype::Trojan) && !matches!(self.card_type, CardType::Ice(_)) =>
                 {
                     return misfit("IceProtectingThisServer", "only an asset or an upgrade is in a server's root, only a Trojan is hosted on its ice, and only ice protects it");
                 }
@@ -2219,6 +2228,9 @@ impl CardDefinition {
                     return misfit("HandSize", "a maximum hand size is a player's: the card's `Controller`, or the other player named by side (`Player`)");
                 }
                 (ContinuousKind::AgendaPointsToWin(_), Scope::Controller) => {}
+                // Harmony Medtech's "**each player** needs 1 fewer": the
+                // other player named, as `HandSize` names them.
+                (ContinuousKind::AgendaPointsToWin(_), Scope::Player(side)) if *side != self.side => {}
                 (ContinuousKind::AgendaPointsToWin(_), _) => {
                     return misfit("AgendaPointsToWin", "the points a player needs to win are theirs, so they apply to the card's `Controller`");
                 }

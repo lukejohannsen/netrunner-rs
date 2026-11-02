@@ -1,0 +1,87 @@
+{
+  "id": "lancelot",
+  "title": "Lancelot",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 2,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "HasSubtype": "Grail"
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": true,
+            "shuffle_after": false,
+            "then": {
+              "Sequence": [
+                {
+                  "CopiedByPromptingIce": {
+                    "lent": true
+                  }
+                },
+                {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnHq",
+                    "filter": {
+                      "All": [
+                        {
+                          "HasSubtype": "Grail"
+                        },
+                        {
+                          "Not": "Revealed"
+                        }
+                      ]
+                    },
+                    "min": 0,
+                    "max": 1,
+                    "reveal": true,
+                    "shuffle_after": false,
+                    "then": {
+                      "CopiedByPromptingIce": {
+                        "lent": true
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, you may reveal up to 2 pieces of grail ice in HQ. For the remainder of this run, this ice gains the subroutines of each revealed piece of ice in the order of your choice."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trash 1 installed program.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "CardType": "Program"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    }
+  ],
+  "built_from": 6051,
+  "is_playable": true
+}

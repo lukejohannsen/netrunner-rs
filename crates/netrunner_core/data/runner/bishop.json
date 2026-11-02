@@ -1,0 +1,69 @@
+{
+  "id": "bishop",
+  "title": "Bishop",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 1,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": -2
+        }
+      },
+      "applies_to": "Host",
+      "text": "Host ice gets -2 strength."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OpponentInstalled",
+          "filter": {
+            "All": [
+              "Ice",
+              {
+                "Not": {
+                  "Hosting": {
+                    "All": [
+                      {
+                        "CardType": "Program"
+                      },
+                      {
+                        "HasSubtype": "Caïssa"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "Placed": "OtherKindOfServerThanHost"
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "HostRigCardOnInstall": {
+              "card": 0,
+              "host": 0
+            }
+          }
+        }
+      },
+      "text": "[click]: Host this program on a piece of ice that is not hosting a Caïssa program."
+    }
+  ],
+  "built_from": 4021,
+  "is_playable": true
+}

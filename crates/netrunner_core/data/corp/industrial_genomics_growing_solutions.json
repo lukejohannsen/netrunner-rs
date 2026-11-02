@@ -1,0 +1,25 @@
+{
+  "id": "industrial_genomics_growing_solutions",
+  "title": "Industrial Genomics: Growing Solutions",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "TrashCost": {
+          "per": 1,
+          "of": "FacedownCardsInArchives"
+        }
+      },
+      "applies_to": {
+        "Accessing": "Any"
+      },
+      "text": "The trash cost of each card is increased by 1 for each facedown card in Archives."
+    }
+  ],
+  "built_from": 6105,
+  "is_playable": true
+}

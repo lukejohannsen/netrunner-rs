@@ -1,0 +1,72 @@
+{
+  "id": "deep_red",
+  "title": "Deep Red",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "MemoryOnlyFor": {
+          "amount": {
+            "per": 3
+          },
+          "only": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              {
+                "HasSubtype": "Caïssa"
+              }
+            ]
+          }
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+3[mu] Use the MU on Deep Red only for Caïssa programs."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            {
+              "CardType": "Program"
+            },
+            {
+              "HasSubtype": "Caïssa"
+            }
+          ]
+        }
+      },
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "ResolveItsAbility": "Click"
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may trigger its [click] ability without spending [click]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you install a Caïssa program, you may trigger its [click] ability without spending [click]."
+    }
+  ],
+  "built_from": 4042,
+  "is_playable": true
+}

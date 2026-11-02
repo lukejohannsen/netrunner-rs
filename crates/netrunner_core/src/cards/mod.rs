@@ -85,6 +85,12 @@ mod sg_starter_identity_tests {
             if text.contains("Your deck may include up to 2 different agenda cards from each Corp faction.") {
                 printed.push(DeckRule::AgendasFromEachFaction(2));
             }
+            if text.contains("You cannot include Jinteki cards in this deck.") {
+                printed.push(DeckRule::NoCardsOfFaction(crate::card::Faction::Jinteki));
+            }
+            if text.contains("The first copy of each program in this deck does not count against your influence limit.") {
+                printed.push(DeckRule::FirstCopyOfEachFree(crate::dsl::CardType::Program));
+            }
             assert_eq!(card.deck_rules, printed, "{}", card.id.0);
             if let Some(entry) = catalog.get(&card.id) {
                 assert_eq!(card.unlimited_influence, entry.influence_limit.is_none(), "{}: the catalog's influence_limit", card.id.0);

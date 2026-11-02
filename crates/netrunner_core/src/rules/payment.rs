@@ -776,6 +776,30 @@ fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: 
         // condition, any install's costs, since the choice does not say
         // which card it scores.
         PlayerAction::ResolvePendingChoice { .. } | PlayerAction::ToggleCardSelection { .. } | PlayerAction::ConfirmCardSelection => {
+            // Another card's printed text resolved by this one's is
+            // whatever that card prints, and which card is known only once
+            // the choice is answered, so any such continuation could ask:
+            // an operation played paying its additional costs (Consulting
+            // Visit playing 24/7 News Cycle, whose forfeit asks which of
+            // two agendas — the default index matchup sweep's debug
+            // assertion, once Stage 11 put both in one deck), or a printed
+            // ability resolved again (`Effect::ResolveItsAbility`: Bifrost
+            // Array, 24/7 News Cycle, Deep Red).
+            let resolves_another = |effect: &crate::dsl::Effect| {
+                let mut found = false;
+                effect.for_each_effect(&mut |effect| {
+                    found |= matches!(effect, crate::dsl::Effect::ResolveItsAbility(_) | crate::dsl::Effect::PlayOperation { ignoring_additional_costs: false, .. })
+                });
+                found
+            };
+            let another = match (action, &state.pending_decision) {
+                (PlayerAction::ResolvePendingChoice { .. }, Some(crate::rules::PendingDecision::ChooseEffect { options, .. })) => options.iter().any(resolves_another),
+                (PlayerAction::ToggleCardSelection { .. } | PlayerAction::ConfirmCardSelection, Some(crate::rules::PendingDecision::ChooseCards { then: Some(then), .. })) => resolves_another(then),
+                _ => false,
+            };
+            if another {
+                return true;
+            }
             let any_scores = |effect: &crate::dsl::Effect| {
                 let mut found = false;
                 effect.for_each_effect(&mut |effect| found |= effect.scores());

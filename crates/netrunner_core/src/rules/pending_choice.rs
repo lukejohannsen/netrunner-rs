@@ -548,6 +548,10 @@ fn instance_matches_filter(
             let (Some(this), Some(that)) = (protecting.iter().position(|id| Some(*id) == source), protecting.iter().position(|id| *id == c.install_id)) else { return false };
             this.abs_diff(that) == 1
         }),
+        CardFilter::Hosting(hosted) => corp_install.is_some_and(|c| {
+            state.runner.rig.iter().filter(|card| card.hosted_on_ice == Some(c.install_id)).any(|card| registry.get(&card.card).is_some_and(|definition| card_matches_filter(definition, hosted)))
+        }),
+        CardFilter::Placed(place) => corp_install.is_some_and(|c| c.slot == InstallSlot::Ice && ice_is_placed(state, *place, c, source)),
         // The ice at that place now, read against the table: another
         // install of the same card.
         CardFilter::CopyOf(crate::dsl::MovedTo::Ice { server, position }) => corp_install.is_some_and(|c| {
@@ -676,6 +680,13 @@ fn instance_matches_filter(
         }
         CardFilter::All(filters) => {
             filters.iter().all(|filter| instance_matches_filter(state, registry, chooser, zone, position, filter, source))
+        }
+        // One alternative must hold whole, at the definition and at the
+        // copy: Pawn's "a central server" is three `InServer`s, and with
+        // the copy's half passed unasked every piece of ice was in one.
+        CardFilter::AnyOf(filters) => {
+            let card = zone_card_ids(state, chooser, zone, source).get(position).and_then(|card| registry.get(card));
+            filters.iter().any(|filter| card.is_none_or(|card| card_matches_filter(card, filter)) && instance_matches_filter(state, registry, chooser, zone, position, filter, source))
         }
         // "An installed card you can advance": the definition said it can
         // be, and the copy may still say not now (Tyrant unrezzed).
@@ -2455,6 +2466,37 @@ pub(crate) fn resolve_choose_server(
     Ok(events)
 }
 
+/// `CardFilter::Placed`: whether the piece of ice `ice` sits at `place`,
+/// on the table or beside the ice the parking Runner card `source` is
+/// hosted on. Positions are `corp.installed`'s outermost-first order of
+/// one server's ice.
+fn ice_is_placed(state: &GameState, place: crate::dsl::IcePlace, ice: &crate::rules::state::InstalledCard, source: Option<InstallId>) -> bool {
+    use crate::dsl::IcePlace;
+    let protecting = |server: crate::rules::run::ServerId| -> Vec<InstallId> {
+        state.corp.installed.iter().filter(|other| other.server == server && other.slot == InstallSlot::Ice).map(|other| other.install_id).collect()
+    };
+    let here = protecting(ice.server);
+    let index = here.iter().position(|id| *id == ice.install_id);
+    if place == IcePlace::Outermost {
+        return index == Some(0);
+    }
+    let host = source.and_then(|source| state.find_rig_install(source)).and_then(|card| card.hosted_on_ice).and_then(|host| state.corp.installed.iter().find(|other| other.install_id == host && other.slot == InstallSlot::Ice));
+    let Some(host) = host else { return place != IcePlace::NextInwardFromHost };
+    let there = protecting(host.server);
+    let host_index = there.iter().position(|id| *id == host.install_id);
+    let neighbours = host.server == ice.server && matches!((host_index, index), (Some(a), Some(b)) if a.abs_diff(b) == 1);
+    match place {
+        IcePlace::Outermost => unreachable!("answered above"),
+        IcePlace::NextInwardFromHost => host.server == ice.server && matches!((host_index, index), (Some(a), Some(b)) if b == a + 1),
+        IcePlace::OtherKindOfServerThanHost => crate::dsl::ServerKind::Central.admits(host.server) != crate::dsl::ServerKind::Central.admits(ice.server),
+        IcePlace::NotNextToHost => !neighbours,
+        IcePlace::SameServerOrPositionAsHost => {
+            let from_innermost = |list: &[InstallId], at: Option<usize>| at.map(|at| list.len() - 1 - at);
+            host.server == ice.server || (from_innermost(&there, host_index).is_some() && from_innermost(&there, host_index) == from_innermost(&here, index))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3024,3 +3066,4 @@ mod tests {
         assert_eq!(state.runner.rig[0].install_id, InstallId(1), "the copy at position 1 (id 2) was trashed");
     }
 }
+

@@ -162,6 +162,16 @@ pub enum CardTarget {
     Accessed(CardId),
 }
 
+/// Which ability `Effect::ResolveItsAbility` resolves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ItsAbility {
+    /// The agenda's "when you score" triggers (`Trigger::OnAgendaScored`
+    /// about itself).
+    WhenScored,
+    /// The ability whose whole cost is one [click].
+    Click,
+}
+
 /// Where `Effect::HostCardOnThisCard` takes the card from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HostedCardOrigin {
@@ -1614,7 +1624,32 @@ pub enum Effect {
     /// rather than printed. Composition didn't work: `GainSubroutine` and
     /// `GainIceSubtype` write what the card file names, and these are
     /// read off another card as the choice is made.
-    CopiedByPromptingIce,
+    ///
+    /// **`lent`** is the Grail ice's word (Galahad, Lancelot, Merlin):
+    /// "you may reveal up to 2 pieces of grail ice in HQ. For the remainder
+    /// of this run, this ice gains the subroutines of each revealed piece
+    /// of ice in the order of your choice". The acting card is a card in
+    /// HQ, revealed as it lends; only its subroutines are gained, after the
+    /// prompting ice's others (CR 9.8.3e), in the order the lending is
+    /// resolved — one selection after another, each the order chosen.
+    CopiedByPromptingIce {
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        lent: bool,
+    },
+    /// Resolves an ability printed on the acting card as if it had been
+    /// triggered or used, paying nothing (`ItsAbility`): Bifrost Array's
+    /// "trigger the “when scored” ability of another agenda … in your
+    /// score area" and 24/7 News Cycle's "Resolve the “when scored” ability
+    /// on an agenda in your score area", each inside the `then` of the
+    /// choice of the agenda; Deep Red's "Whenever you install a Caïssa
+    /// program, you may trigger its [click] ability without spending
+    /// [click]", heard as the install (`acts_on_subject`). The ability
+    /// resolves as its own card: a scored agenda as the copy in the score
+    /// area, a program as its install. A requirement the ability prints is
+    /// asked; a cost is not paid. Composition didn't work: every effect
+    /// writes what its own card does, and these resolve another card's
+    /// text, which no card file can name.
+    ResolveItsAbility(ItsAbility),
     /// The acting install — a piece of ice, reached through
     /// `TriggeredEffect::acts_on_subject` — gains `subroutine`, before or
     /// after its other subroutines, for `duration`:
@@ -4584,7 +4619,8 @@ impl Effect {
             | Effect::WinTheGame
             | Effect::TurnHostedFaceup
             | Effect::GainSubroutine { .. }
-            | Effect::CopiedByPromptingIce
+            | Effect::CopiedByPromptingIce { .. }
+            | Effect::ResolveItsAbility(_)
             | Effect::GainIceSubtype { .. }
             | Effect::LookAtTopOfDeck { .. }
             | Effect::HostRigCardOnInstall { .. }

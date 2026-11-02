@@ -1,0 +1,79 @@
+{
+  "id": "merlin",
+  "title": "Merlin",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 6,
+  "strength": 4,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "HasSubtype": "Grail"
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": true,
+            "shuffle_after": false,
+            "then": {
+              "Sequence": [
+                {
+                  "CopiedByPromptingIce": {
+                    "lent": true
+                  }
+                },
+                {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnHq",
+                    "filter": {
+                      "All": [
+                        {
+                          "HasSubtype": "Grail"
+                        },
+                        {
+                          "Not": "Revealed"
+                        }
+                      ]
+                    },
+                    "min": 0,
+                    "max": 1,
+                    "reveal": true,
+                    "shuffle_after": false,
+                    "then": {
+                      "CopiedByPromptingIce": {
+                        "lent": true
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, you may reveal up to 2 pieces of grail ice in HQ. For the remainder of this run, this ice gains the subroutines of each revealed piece of ice in the order of your choice."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 2 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          2
+        ]
+      }
+    }
+  ],
+  "built_from": 6091,
+  "is_playable": true
+}

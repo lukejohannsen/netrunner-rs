@@ -74,6 +74,11 @@ pub enum DeckValidationError {
     #[error("the deck holds {count} different {faction:?} agendas; its identity allows {max} from each Corp faction")]
     TooManyAgendasFromFaction { faction: Faction, count: u32, max: u32 },
 
+    /// A card of a faction the identity refuses (`DeckRule::
+    /// NoCardsOfFaction`, Custom Biotics).
+    #[error("card {card:?} is {faction:?}, which its identity does not allow in the deck")]
+    FactionNotAllowed { card: CardId, faction: Faction },
+
     #[error("card {card:?} is banned in {format:?}")]
     BannedCardIncluded { card: CardId, format: NsgFormat },
 
@@ -141,7 +146,7 @@ pub fn tally_deck(deck: &Decklist, registry: &CardRegistry) -> Result<DeckTally,
     let mut points = 0u32;
     for (card_id, &count) in &deck.cards {
         let card = registry.get(card_id).ok_or_else(|| DeckValidationError::CardNotFound(card_id.clone()))?;
-        influence_spent += influence_per_copy_in(card, identity, deck, registry) * count;
+        influence_spent += influence_in(card, identity, deck, registry, count);
         if card.card_type == CardType::Agenda {
             points += card.agenda_points.unwrap_or(0) * count;
         }
@@ -186,6 +191,16 @@ pub fn influence_per_copy_in(card: &CardDefinition, identity: &CardDefinition, d
         return 0;
     }
     influence_per_copy(card, identity)
+}
+
+/// What `count` copies of `card` spend in `deck`: `influence_per_copy_in`
+/// for each, less the first copy of a type the identity waives (`DeckRule::
+/// FirstCopyOfEachFree`, The Professor's programs). The tally and the
+/// validator ask this, so they cannot disagree.
+pub fn influence_in(card: &CardDefinition, identity: &CardDefinition, deck: &Decklist, registry: &CardRegistry, count: u32) -> u32 {
+    let first_free = identity.deck_rules.iter().any(|rule| matches!(rule, DeckRule::FirstCopyOfEachFree(card_type) if *card_type == card.card_type));
+    let paid = if first_free { count.saturating_sub(1) } else { count };
+    influence_per_copy_in(card, identity, deck, registry) * paid
 }
 
 fn waived(condition: &crate::dsl::FreeInfluence, card: &CardDefinition, deck: &Decklist, registry: &CardRegistry) -> bool {
@@ -288,6 +303,9 @@ pub fn validate_deck_with_rules(
         if card.card_type == CardType::Identity {
             return Err(DeckValidationError::IdentityInDeck(card_id.clone()));
         }
+        if let Some(faction) = card.faction.filter(|faction| identity.deck_rules.contains(&DeckRule::NoCardsOfFaction(*faction))) {
+            return Err(DeckValidationError::FactionNotAllowed { card: card_id.clone(), faction });
+        }
         if card.card_type == CardType::Agenda {
             let faction = card.faction.unwrap_or(Faction::NeutralCorp);
             if faction != identity_faction && !is_neutral(faction) {
@@ -312,7 +330,7 @@ pub fn validate_deck_with_rules(
         // Once per distinct card, whatever the count.
         restriction_spent = restriction_spent.saturating_add(rules.restriction_points.get(card_id).copied().unwrap_or(0));
 
-        influence_spent += influence_per_copy_in(card, identity, deck, registry) * count;
+        influence_spent += influence_in(card, identity, deck, registry, count);
         if card.card_type == CardType::Agenda {
             agenda_points += card.agenda_points.unwrap_or(0) * count;
         }

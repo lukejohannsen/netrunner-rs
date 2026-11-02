@@ -1,0 +1,61 @@
+{
+  "id": "bifrost_array",
+  "title": "Bifrost Array",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnScoreArea",
+                  "filter": {
+                    "All": [
+                      {
+                        "CardType": "Agenda"
+                      },
+                      {
+                        "Not": {
+                          "AmongCards": [
+                            "bifrost_array"
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "ResolveItsAbility": "WhenScored"
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may trigger the \"when scored\" ability of another agenda that is not a copy of Bifrost Array in your score area",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When you score Bifrost Array, you may trigger the \"when scored\" ability of another agenda that is not a copy of Bifrost Array in your score area."
+    }
+  ],
+  "built_from": 6081,
+  "is_playable": true
+}
