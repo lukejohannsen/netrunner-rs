@@ -645,7 +645,7 @@ mod tests {
         // turn went on building, not what was built.
         assert_eq!(spend(&PlayerAction::InstallProgram { card_id: card(), trash_first: false, host: None }), Some(Spend::Install));
         assert_eq!(
-            spend(&PlayerAction::InstallCard { card_id: card(), zone: TargetZone::Hq, slot: InstallSlot::Ice, trash_first: false }),
+            spend(&PlayerAction::InstallCard { card_id: card(), zone: TargetZone::Hq, slot: InstallSlot::Ice, trash_first: false, host: None }),
             Some(Spend::Install)
         );
 

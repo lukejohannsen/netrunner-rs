@@ -790,6 +790,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::MoveThisIceInnermostAndEncounter => "move this ice to the innermost position protecting the approached server, and the Runner encounters it".to_string(),
         Effect::PlayOperation { .. } => "play an operation".to_string(),
         Effect::ResolveSubroutineOfSelectedIce => "resolve a subroutine of the chosen ice".to_string(),
+        Effect::DeclareSubroutineNext(index) => format!("put subroutine {} next in the order they resolve", index + 1),
         Effect::LoseAbilities { until, identities: true, .. } => format!("each player's identity loses all abilities {}", duration(until)),
         Effect::LoseAbilities { until, attacked_root: false, .. } => format!("it loses all abilities {}", duration(until)),
         Effect::LoseAbilities { until, attacked_root: true, .. } => format!("cards in the root of the attacked server lose all abilities {}", duration(until)),
@@ -1185,6 +1186,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::TrashedWhenAccessed => "the Runner must trash it when they access it installed, if able".to_string(),
         ContinuousKind::MayHost => "may be installed there".to_string(),
         ContinuousKind::CannotBeDeclaredSuccessful => "cannot be declared successful".to_string(),
+        ContinuousKind::OrdersSubroutines => "chooses the order unbroken subroutines resolve in".to_string(),
         ContinuousKind::AccessOthersAtMost(n) => format!("accesses at most {} other than this card", plural(*n, "card", "cards")),
         ContinuousKind::BreakLimit { at_most, except_using: None } => {
             format!("at most {} of its printed subroutines can be broken each encounter", at_most)

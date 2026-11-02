@@ -54,6 +54,22 @@ pub enum PlayerAction {
         slot: InstallSlot,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         trash_first: bool,
+        /// The Corp card this one is installed onto (CR 1.13.6a: "a card
+        /// that can host other cards may allow cards to be installed onto
+        /// it … as part of an install"), in its server's root — Full
+        /// Immersion RecStudio's "can host up to 2 assets and/or agendas".
+        /// `zone` is the host's server and `slot` its root, both checked;
+        /// it trashes nothing first, because a hosted card is no card in
+        /// the root for the one agenda or asset a remote holds
+        /// (`install_trash`). Offered where the host's text permits it
+        /// (`ContinuousKind::MayHost` about `InstallingOntoThis`) and refused
+        /// with `RulesError::CannotInstallOnto` otherwise. A field rather
+        /// than a variant, as the Runner's installs have one: it is the
+        /// same install action to another place, so every reader of an
+        /// install already reads it; an `InstallId` because two copies of
+        /// a host are two places.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        host: Option<InstallId>,
     },
     /// Flip an already-installed card face-up. Corp-only. No click cost (rez is
     /// not a click action). Pays the card's registry `cost` in credits via
@@ -627,7 +643,7 @@ mod tests {
         let all = vec![
             PlayerAction::GainCreditClick { side: Side::Corp },
             PlayerAction::DrawCardClick { side: Side::Corp },
-            PlayerAction::InstallCard { card_id: card(), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false },
+            PlayerAction::InstallCard { card_id: card(), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false, host: None },
             PlayerAction::RezIce { ice: install },
             PlayerAction::InitiateRun { server: ServerId::Hq },
             PlayerAction::ContinueRun,

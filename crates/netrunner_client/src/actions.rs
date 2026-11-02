@@ -768,7 +768,10 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
     match action {
         PlayerAction::GainCreditClick { side } => format!("Gain 1 credit ({side:?})"),
         PlayerAction::DrawCardClick { .. } => "Draw a card".to_string(),
-        PlayerAction::InstallCard { card_id, zone, slot, trash_first } => {
+        // Onto a Corp card (Full Immersion RecStudio), named as the
+        // Runner's installs onto a host are.
+        PlayerAction::InstallCard { card_id, host: Some(host), .. } => format!("Install {} onto {}", title(card_id), install_label(host)),
+        PlayerAction::InstallCard { card_id, zone, slot, trash_first, host: None } => {
             let first = match (trash_first, slot) {
                 (false, _) => "",
                 (true, InstallSlot::Ice) => ", trashing ice there first",
@@ -1021,7 +1024,10 @@ fn describe_logged_action(action: &PublicAction, registry: &CardRegistry, view: 
 pub fn describe_public_action(action: &PublicAction, registry: &CardRegistry, view: Option<&ClientView>) -> String {
     match action {
         PublicAction::Visible(action) => describe_action(action, registry, view),
-        PublicAction::Concealed(ConcealedAction::InstallCard { zone, slot }) => {
+        PublicAction::Concealed(ConcealedAction::InstallCard { host: Some(host), .. }) => {
+            format!("Install a card onto {}", install_label(host, registry, view))
+        }
+        PublicAction::Concealed(ConcealedAction::InstallCard { zone, slot, host: None }) => {
             format!("Install a card {}", install_place(*zone, *slot, view))
         }
         PublicAction::Concealed(ConcealedAction::DiscardCard) => "Discard a card".to_string(),
@@ -1054,7 +1060,11 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
             Side::Corp => "Spend 1 click to draw the top card of R&D into HQ.".to_string(),
             Side::Runner => "Spend 1 click to draw the top card of your stack into your grip.".to_string(),
         },
-        PlayerAction::InstallCard { card_id, zone, slot, trash_first } => {
+        PlayerAction::InstallCard { card_id, host: Some(_), .. } => format!(
+            "Spend 1 click to install {} face down onto a card that can host it, in that card's server. It is installed there like a card in the root: it can be advanced, rezzed and scored, and a run on that server accesses it.",
+            title(card_id)
+        ),
+        PlayerAction::InstallCard { card_id, zone, slot, trash_first, host: None } => {
             let what = match slot {
                 InstallSlot::Ice => "as ice protecting",
                 InstallSlot::Root => "face down in the root of",
@@ -1192,7 +1202,7 @@ mod tests {
     fn a_concealed_action_is_described_without_naming_any_card() {
         let registry = CardRegistry::new();
         let concealed = [
-            ConcealedAction::InstallCard { zone: ServerId::Remote(0), slot: InstallSlot::Root },
+            ConcealedAction::InstallCard { zone: ServerId::Remote(0), slot: InstallSlot::Root, host: None },
             ConcealedAction::DiscardCard,
             ConcealedAction::PassAccessedCard,
             ConcealedAction::PayAccessTrigger,
@@ -1203,7 +1213,7 @@ mod tests {
             assert!(label.contains("card"), "{action:?} → {label}");
         }
         assert_eq!(
-            describe_public_action(&PublicAction::Concealed(ConcealedAction::InstallCard { zone: ServerId::Remote(0), slot: InstallSlot::Ice }), &registry, None),
+            describe_public_action(&PublicAction::Concealed(ConcealedAction::InstallCard { zone: ServerId::Remote(0), slot: InstallSlot::Ice, host: None }), &registry, None),
             "Install a card protecting Remote 0"
         );
     }
@@ -1357,6 +1367,7 @@ mod tests {
         let clicked = PublicAction::Concealed(ConcealedAction::InstallCard {
             zone: ServerId::Remote(0),
             slot: InstallSlot::Ice,
+            host: None,
         });
         assert_eq!(narrate_event(&event, &clicked, &registry, Some(&view)), None);
 
@@ -1751,7 +1762,7 @@ mod tests {
         let actions = vec![
             PlayerAction::GainCreditClick { side: Side::Corp },
             PlayerAction::DrawCardClick { side: Side::Runner },
-            PlayerAction::InstallCard { card_id: card(), zone: ServerId::Remote(1), slot: InstallSlot::Ice, trash_first: false },
+            PlayerAction::InstallCard { card_id: card(), zone: ServerId::Remote(1), slot: InstallSlot::Ice, trash_first: false, host: None },
             PlayerAction::RezIce { ice: install },
             PlayerAction::InitiateRun { server: ServerId::Hq },
             PlayerAction::ContinueRun,

@@ -205,9 +205,12 @@ mod tests {
     ///
     /// 4797 → 6333 for the card names past the first 512 (Red Sand Stage
     /// 1, when the Corp's pool reached 522), appended.
+    ///
+    /// 6333 → 6845 for a Corp card installed onto another (Engine words
+    /// Stage 19, Full Immersion RecStudio), appended.
     #[test]
     fn action_space_size_constant_is_pinned() {
-        assert_eq!(ACTION_SPACE_SIZE, 6333);
+        assert_eq!(ACTION_SPACE_SIZE, 6845);
     }
 
     /// Pinned for the same reason as `ACTION_SPACE_SIZE`: it is the model's

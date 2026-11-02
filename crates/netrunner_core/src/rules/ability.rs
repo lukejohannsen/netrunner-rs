@@ -3698,6 +3698,18 @@ pub fn evaluate_effect(
             evaluate_effect(state, &Effect::PresentChoice { chooser: Side::Corp, options, texts }, ctx, registry)
         }
 
+        Effect::DeclareSubroutineNext(index) => {
+            let run = state.active_run.as_mut().filter(|run| run.phase == RunPhase::EncounterIce).ok_or(RulesError::NotInEncounter)?;
+            let pending = run.ice.get(run.position).and_then(|ice| ice.subroutines.get(*index)).is_some_and(|subroutine| subroutine.status == SubroutineStatus::Pending);
+            if !pending {
+                return Err(RulesError::InvalidSubroutineIndex(*index));
+            }
+            if !run.this_encounter.order.contains(index) {
+                run.this_encounter.order.push(*index);
+            }
+            Ok(Vec::new())
+        }
+
         Effect::ModifyHandSize { side, by, until } => {
             let source = acting_card.cloned().ok_or(RulesError::UnresolvedCardTarget)?;
             let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
@@ -3855,7 +3867,8 @@ fn acting_side(acting_card: Option<&CardId>, registry: &CardRegistry) -> Side {
 }
 
 /// Fires every still-`Pending` subroutine on the ICE currently being
-/// encountered, lowest index first, stopping once none are left (or the
+/// encountered, lowest index first — or in the order the Runner declared
+/// (Street Magic, `declare_subroutine_order`) — stopping once none are left (or the
 /// run/game ends out from under the loop — e.g. an `Effect::EndTheRun`
 /// subroutine partway through). "Nothing left to resolve" is this
 /// function's normal terminal condition, not a failure: it only returns
@@ -3893,11 +3906,22 @@ pub fn resolve_unbroken_subroutines(
                 return None;
             }
             let ice = run.ice.get(run.position)?;
-            let index = ice.subroutines.iter().position(|s| s.status == SubroutineStatus::Pending)?;
+            // What the Runner declared first (Street Magic, CR 9.8.7d),
+            // then anything left out of it in its printed place.
+            let pending = |index: &usize| ice.subroutines.get(*index).is_some_and(|s| s.status == SubroutineStatus::Pending);
+            let index = run.this_encounter.order.iter().copied().find(pending).or_else(|| ice.subroutines.iter().position(|s| s.status == SubroutineStatus::Pending))?;
             Some((index, ice.install_id))
         }) else {
             break;
         };
+        // The Runner declares the order before the first subroutine of the
+        // encounter resolves, one pick at a time while two or more are
+        // undeclared (the last takes the last place); each pick is a
+        // choice parked for them, which comes back here.
+        if declare_subroutine_order(state, registry)? {
+            crate::rules::pending_choice::mark_parked_resume_subroutines(state);
+            break;
+        }
 
         let (card_id, effect) = run::transition_subroutine(state, registry, index, SubroutineStatus::Resolved)?;
         // Pass the ICE itself as `acting_card` — needed for a subroutine
@@ -3930,6 +3954,46 @@ pub fn resolve_unbroken_subroutines(
     }
 
     Ok(events)
+}
+
+/// Parks the Runner's next pick of the order the encountered ice's
+/// unbroken subroutines resolve in, and says whether it did — Street
+/// Magic's "Unbroken subroutines resolve in the order of your choice" (CR
+/// 9.8.7d: "If this ability is active when step 6.9.3c is reached for the
+/// first time in an encounter, the Runner declares an order for the
+/// unbroken subroutines … The new order is determined before any
+/// subroutines are resolved"). Asked only while no subroutine has resolved
+/// this encounter and two or more pending ones are undeclared; the pick is
+/// a `PresentChoice` of `Effect::DeclareSubroutineNext`, one per
+/// undeclared subroutine beside its printed text, made as the card that
+/// says so. A `PresentChoice` rather than a decision of its own, because
+/// every client, mask and bot already reads one, and a choice among
+/// printed texts is what this is: a new `PlayerAction` and `ActionSpace`
+/// segment for one card was the alternative.
+fn declare_subroutine_order(state: &mut GameState, registry: &CardRegistry) -> Result<bool, RulesError> {
+    let Some(run) = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce) else { return Ok(false) };
+    let Some(ice) = run.ice.get(run.position) else { return Ok(false) };
+    if ice.subroutines.iter().any(|s| s.status == SubroutineStatus::Resolved) {
+        return Ok(false);
+    }
+    let undeclared: Vec<(usize, String)> = ice
+        .subroutines
+        .iter()
+        .enumerate()
+        .filter(|(index, s)| s.status == SubroutineStatus::Pending && !run.this_encounter.order.contains(index))
+        .map(|(index, s)| (index, s.definition.text.clone()))
+        .collect();
+    if undeclared.len() < 2 {
+        return Ok(false);
+    }
+    let Some((card, install)) = continuous::subroutine_orderer(state, registry) else { return Ok(false) };
+    let (options, texts) = undeclared.into_iter().map(|(index, text)| (Effect::DeclareSubroutineNext(index), text)).unzip();
+    let mut ctx = match install {
+        Some(install) => ResolutionContext::for_install(install, &card),
+        None => ResolutionContext::for_card(Some(&card)),
+    };
+    evaluate_effect(state, &Effect::PresentChoice { chooser: Side::Runner, options, texts }, &mut ctx, registry)?;
+    Ok(state.pending_decision.is_some())
 }
 
 /// Fires every `TriggeredEffect` on `card_id`'s `CardRegistry` definition

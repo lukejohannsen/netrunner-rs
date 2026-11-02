@@ -171,7 +171,6 @@ pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Kala Ghoda* (`kala_ghoda`): tranche F6 of the FFG plan.
 pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("ramujan_reliant_550_bmi", "Ramujan-reliant 550 BMI"),
-    ("street_magic", "Street Magic"),
     ("maya", "Maya"),
     ("panchatantra", "Panchatantra"),
 ];
@@ -206,7 +205,6 @@ pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("rigged_results", "Rigged Results"),
     ("harishchandra_ent_where_youre_the_star", "Harishchandra Ent.: Where You're the Star"),
-    ("full_immersion_recstudio", "Full Immersion RecStudio"),
 ];
 
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.
@@ -281,7 +279,6 @@ pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("heinlein_grid", "Heinlein Grid"),
     ("sealed_vault", "Sealed Vault"),
     ("eden_fragment", "Eden Fragment"),
-    ("will_o_the_wisp", "Will-o'-the-Wisp"),
     ("net_celebrity", "Net Celebrity"),
 ];
 

@@ -751,6 +751,14 @@ pub enum CardFilter {
     /// break but the moment it happened (`Trigger::OnIceFullyBroken`), and
     /// the breach asks after the run has passed every piece.
     FullyBrokenDuringThisRun,
+    /// A Runner install whose ability broke at least one subroutine during
+    /// the run in progress (`RunState::broke_with`) — Will-o'-the-Wisp's
+    /// "1 installed icebreaker that was used to break at least 1 subroutine
+    /// during this run", asked as the run succeeds. Instance-level, a
+    /// handle, as `UsedDuringLastRun` is. Composition didn't work:
+    /// `UsedDuringLastRun` reads a run that has ended and counts a pump as
+    /// a use, and nothing else remembered a break past its encounter.
+    BrokeASubroutineDuringThisRun,
     /// A Corp install rezzed during the run in progress (`RunState::
     /// rezzed`) — Nasir Meidan's "a piece of ice after an approach during
     /// which that ice was rezzed", on the encounter. Instance-level, a
@@ -996,6 +1004,7 @@ impl CardFilter {
                 | CardFilter::RezzedDuringLastRun
                 | CardFilter::UsedDuringLastRun
                 | CardFilter::FullyBrokenDuringThisRun
+                | CardFilter::BrokeASubroutineDuringThisRun
                 | CardFilter::RezzedDuringThisRun
                 | CardFilter::RezzedThisTurn
                 | CardFilter::InAttackedServer
@@ -1235,6 +1244,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::RezzedDuringLastRun => true,
         CardFilter::UsedDuringLastRun => true,
         CardFilter::FullyBrokenDuringThisRun => true,
+        CardFilter::BrokeASubroutineDuringThisRun => true,
         CardFilter::RezzedDuringThisRun => true,
         CardFilter::BeingEncountered => true,
         CardFilter::BeingApproached => true,

@@ -1,0 +1,60 @@
+{
+  "id": "will_o_the_wisp",
+  "title": "Will-o'-the-Wisp",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 4,
+  "trash_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "TrashCard": "ThisCard"
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OpponentInstalled",
+                      "filter": {
+                        "All": [
+                          {
+                            "HasSubtype": "Icebreaker"
+                          },
+                          "BrokeASubroutineDuringThisRun"
+                        ]
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "AddToDeck": "Bottom"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "trash this upgrade. If you do, choose 1 installed icebreaker that was used to break at least 1 subroutine during this run",
+              ""
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 6032,
+  "is_playable": true
+}

@@ -1,0 +1,17 @@
+{
+  "id": "street_magic",
+  "title": "Street Magic",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "continuous": [
+    {
+      "kind": "OrdersSubroutines",
+      "applies_to": "Controller",
+      "text": "Unbroken subroutines resolve in the order of your choice."
+    }
+  ],
+  "triggers": [],
+  "built_from": 10003,
+  "is_playable": true
+}

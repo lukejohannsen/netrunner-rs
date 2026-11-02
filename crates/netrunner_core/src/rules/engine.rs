@@ -382,8 +382,8 @@ fn apply_action_once(
     let resolved = match action {
         PlayerAction::GainCreditClick { side } => gain_credit_click(state, registry, side),
         PlayerAction::DrawCardClick { side } => draw_card_click(state, registry, side),
-        PlayerAction::InstallCard { card_id, zone, slot, trash_first } => {
-            install_card(state, registry, card_id, zone, slot, trash_first)
+        PlayerAction::InstallCard { card_id, zone, slot, trash_first, host } => {
+            install_card(state, registry, card_id, zone, slot, trash_first, host)
         }
         PlayerAction::RezIce { ice } => rez_ice(state, registry, ice),
         PlayerAction::InitiateRun { server } => initiate_run(state, registry, server),
@@ -898,10 +898,20 @@ fn install_card(
     zone: TargetZone,
     slot: InstallSlot,
     trash_first: bool,
+    host: Option<InstallId>,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Corp;
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
+    // Onto a Corp card that may host it (CR 1.13.6a), in that card's server
+    // and root — never trashing first, since it is no card in the root.
+    if let Some(host) = host {
+        let card_def = registry.get(&card_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+        let at_host = state.find_corp_install(host).is_some_and(|place| place.server == zone && place.slot == InstallSlot::Root);
+        if trash_first || slot != InstallSlot::Root || !at_host || !continuous::may_install_onto(state, registry, card_def, host) {
+            return Err(RulesError::CannotInstallOnto { card: card_id, host });
+        }
+    }
     let mut next = state.clone();
     spend_click(&mut next, side)?;
 
@@ -917,7 +927,7 @@ fn install_card(
     next.corp.hq.remove(position);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(place_corp_card(&mut next, registry, card_id, zone, slot, true, 0, trash_first, true, 0, None)?);
+    events.extend(place_corp_card(&mut next, registry, card_id, zone, slot, true, 0, trash_first, true, 0, host)?);
     Ok((next, events))
 }
 
@@ -4322,7 +4332,7 @@ mod tests {
             PlayerAction::InstallCard {
                 card_id: card_id.clone(),
                 zone: ServerId::Hq,
-                slot: InstallSlot::Ice, trash_first: false,
+                slot: InstallSlot::Ice, trash_first: false, host: None,
             },
         )
         .expect("action should succeed");
@@ -4390,7 +4400,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallCard { card_id: card_id.clone(), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false },
+            PlayerAction::InstallCard { card_id: card_id.clone(), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false, host: None },
         )
         .expect("third ICE on HQ costs 2");
         assert_eq!(next.corp.resources.credits, Credits(3), "two ICE already on HQ; the one on R&D does not count");
@@ -4432,7 +4442,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallCard { card_id: doctor.clone(), zone: ServerId::Remote(1), slot: InstallSlot::Root, trash_first: false },
+            PlayerAction::InstallCard { card_id: doctor.clone(), zone: ServerId::Remote(1), slot: InstallSlot::Root, trash_first: false, host: None },
         )
         .unwrap();
         // A facedown card is not active, so the second copy sits beside the
@@ -4484,7 +4494,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallCard { card_id: agenda.clone(), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false },
+            PlayerAction::InstallCard { card_id: agenda.clone(), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: None },
         )
         .expect("installing over is legal");
 
@@ -4501,7 +4511,7 @@ mod tests {
         let (next, _) = apply_action(
             &next,
             &registry,
-            PlayerAction::InstallCard { card_id: agenda.clone(), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false },
+            PlayerAction::InstallCard { card_id: agenda.clone(), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: None },
         )
         .expect("a second copy over the first");
         assert_eq!(next.corp.archives.last().map(|a| a.facedown), Some(true));
@@ -4510,7 +4520,7 @@ mod tests {
         let (next, events) = apply_action(
             &next,
             &registry,
-            PlayerAction::InstallCard { card_id: upgrade.clone(), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false },
+            PlayerAction::InstallCard { card_id: upgrade.clone(), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: None },
         )
         .expect("upgrades stack");
         assert!(!events.iter().any(|e| matches!(e, GameEvent::CardTrashed { .. })));
@@ -4529,7 +4539,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallCard { card_id, zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false },
+            PlayerAction::InstallCard { card_id, zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: None },
         )
         .expect("a broke Corp can still install an asset");
         assert_eq!(next.corp.resources.credits, Credits(0));
@@ -4544,7 +4554,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::InstallCard { card_id: card_id.clone(), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false },
+            PlayerAction::InstallCard { card_id: card_id.clone(), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false, host: None },
         );
 
         assert_eq!(result, Err(RulesError::CardNotFoundInRegistry(card_id)));
@@ -4569,7 +4579,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false },
+            PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false, host: None },
         );
 
         assert_eq!(
@@ -4585,7 +4595,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false },
+            PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false, host: None },
         );
 
         assert_eq!(
@@ -4607,7 +4617,7 @@ mod tests {
             PlayerAction::InstallCard {
                 card_id: card_id.clone(),
                 zone: ServerId::Hq,
-                slot: InstallSlot::Ice, trash_first: false,
+                slot: InstallSlot::Ice, trash_first: false, host: None,
             },
         );
 
@@ -4624,7 +4634,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false },
+            PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false, host: None },
         );
 
         assert_eq!(
@@ -7583,7 +7593,7 @@ mod tests {
         let mut corp = corp_state(3, 5);
         corp.corp.hq = vec![card("agenda"), card("ice")];
         let install = |card_id: &str, zone: ServerId, slot: InstallSlot| {
-            apply_action(&corp, &registry, PlayerAction::InstallCard { card_id: card(card_id), zone, slot, trash_first: false })
+            apply_action(&corp, &registry, PlayerAction::InstallCard { card_id: card(card_id), zone, slot, trash_first: false, host: None })
         };
         assert_eq!(
             install("agenda", ServerId::Remote(0), InstallSlot::Ice).err(),

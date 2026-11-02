@@ -1265,7 +1265,7 @@ mod tests {
         state.corp.installed.extend((0..n).map(|i| ice(100 + i, ServerId::Hq)));
         state.next_install_id = 200;
         let install =
-            PlayerAction::InstallCard { card_id: CardId("wall".to_string()), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: true };
+            PlayerAction::InstallCard { card_id: CardId("wall".to_string()), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: true, host: None };
         let parked = apply_action(&state, registry, install).expect("the install parks").0;
         assert!(parked.pending_payment.is_some(), "the premise: the first pick is asked");
         (state, parked)

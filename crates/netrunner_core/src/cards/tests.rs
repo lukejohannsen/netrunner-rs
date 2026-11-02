@@ -127,7 +127,7 @@ fn haas_bioroid_engineering_the_future_gains_one_credit_on_first_install_but_not
     let (state, events) = apply_action(
         &state,
         &registry,
-        PlayerAction::InstallCard { card_id: CardId("pad_campaign".to_string()), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false },
+        PlayerAction::InstallCard { card_id: CardId("pad_campaign".to_string()), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: None },
     )
     .expect("first install should succeed");
     // Started at 10, installing an asset is free, gained 1 from the identity bonus.
@@ -138,7 +138,7 @@ fn haas_bioroid_engineering_the_future_gains_one_credit_on_first_install_but_not
     let (state, _) = apply_action(
         &state,
         &registry,
-        PlayerAction::InstallCard { card_id: CardId("pad_campaign".to_string()), zone: ServerId::Remote(1), slot: InstallSlot::Root, trash_first: false },
+        PlayerAction::InstallCard { card_id: CardId("pad_campaign".to_string()), zone: ServerId::Remote(1), slot: InstallSlot::Root, trash_first: false, host: None },
     )
     .expect("second install should succeed");
     // The second PAD Campaign is free too, and there is no further bonus this turn.
@@ -175,7 +175,7 @@ fn haas_bioroid_engineering_the_future_hears_an_install_made_by_a_cards_text() {
     let (state, _) = apply_action(
         &state,
         &registry,
-        PlayerAction::InstallCard { card_id: CardId("pad_campaign".to_string()), zone: ServerId::Remote(1), slot: InstallSlot::Root, trash_first: false },
+        PlayerAction::InstallCard { card_id: CardId("pad_campaign".to_string()), zone: ServerId::Remote(1), slot: InstallSlot::Root, trash_first: false, host: None },
     )
     .expect("the second install, by the basic action");
     assert_eq!(state.corp.resources.credits, Credits(11), "and so the basic action's is the second, and earns nothing");
@@ -343,7 +343,7 @@ fn pad_campaign_gains_one_credit_at_the_start_of_the_corps_next_turn() {
         PlayerAction::InstallCard {
             card_id: CardId("pad_campaign".to_string()),
             zone: ServerId::Remote(0),
-            slot: InstallSlot::Root, trash_first: false,
+            slot: InstallSlot::Root, trash_first: false, host: None,
         },
     )
     .expect("install pad campaign");
@@ -1403,8 +1403,8 @@ mod system_gateway {
         state.corp.resources.credits = Credits(1);
         state.corp.hq = vec![CardId("ice_wall".to_string())];
         state.corp.installed = vec![ice_installed("enigma", ServerId::Hq, false), ice_installed("palisade", ServerId::Hq, true)];
-        let plain = PlayerAction::InstallCard { card_id: CardId("ice_wall".to_string()), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false };
-        let trashing = PlayerAction::InstallCard { card_id: CardId("ice_wall".to_string()), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: true };
+        let plain = PlayerAction::InstallCard { card_id: CardId("ice_wall".to_string()), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false, host: None };
+        let trashing = PlayerAction::InstallCard { card_id: CardId("ice_wall".to_string()), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: true, host: None };
         let legal = crate::rules::legal_actions(&state, &registry);
         assert!(!legal.contains(&plain), "two ice there: 2[c], with 1");
         assert!(legal.contains(&trashing), "trashing one first makes it 1[c]");
@@ -1438,14 +1438,14 @@ mod system_gateway {
         let mut skunkworks = corp_root("manegarm_skunkworks", ServerId::Remote(0));
         skunkworks.rezzed = false;
         state.corp.installed = vec![corp_root("pad_campaign", ServerId::Remote(0)), skunkworks];
-        let plain = PlayerAction::InstallCard { card_id: CardId("hostile_takeover".to_string()), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false };
+        let plain = PlayerAction::InstallCard { card_id: CardId("hostile_takeover".to_string()), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: None };
 
         let (after, _) = apply_action(&state, &registry, plain).expect("plain");
         let root: Vec<&str> = after.corp.installed.iter().map(|c| c.card.0.as_str()).collect();
         assert_eq!(root, vec!["manegarm_skunkworks", "hostile_takeover"]);
         assert_eq!(after.corp.archives, vec![crate::rules::ArchivedCard::faceup(CardId("pad_campaign".to_string()))], "rezzed, so faceup");
 
-        let trashing = PlayerAction::InstallCard { card_id: CardId("hostile_takeover".to_string()), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: true };
+        let trashing = PlayerAction::InstallCard { card_id: CardId("hostile_takeover".to_string()), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: true, host: None };
         let (after, _) = apply_action(&state, &registry, trashing).expect("the upgrade too");
         assert!(after.pending_payment.is_none(), "one card it may choose, so nothing to ask");
         let root: Vec<&str> = after.corp.installed.iter().map(|c| c.card.0.as_str()).collect();
@@ -1466,7 +1466,7 @@ mod system_gateway {
         let registry = sg_registry();
         let mut state = base_state();
         state.corp.hq = vec![CardId("ice_wall".to_string())];
-        let on_nothing = PlayerAction::InstallCard { card_id: CardId("ice_wall".to_string()), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: true };
+        let on_nothing = PlayerAction::InstallCard { card_id: CardId("ice_wall".to_string()), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: true, host: None };
         assert_eq!(apply_action(&state, &registry, on_nothing.clone()), Err(RulesError::NothingToTrashFirst { card: CardId("ice_wall".to_string()) }));
         assert!(!crate::rules::legal_actions(&state, &registry).contains(&on_nothing));
 
@@ -3561,7 +3561,7 @@ mod system_gateway {
             PlayerAction::InstallCard {
                 card_id: CardId("regolith_mining_license".to_string()),
                 zone: ServerId::Remote(0),
-                slot: InstallSlot::Root, trash_first: false,
+                slot: InstallSlot::Root, trash_first: false, host: None,
             },
         )
         .expect("install regolith mining license");
@@ -3620,7 +3620,7 @@ mod system_gateway {
             PlayerAction::InstallCard {
                 card_id: CardId("nico_campaign".to_string()),
                 zone: ServerId::Remote(0),
-                slot: InstallSlot::Root, trash_first: false,
+                slot: InstallSlot::Root, trash_first: false, host: None,
             },
         )
         .expect("install nico campaign");
@@ -4782,7 +4782,7 @@ mod system_gateway {
         let (mut state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallCard { card_id: CardId("palisade".to_string()), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false },
+            PlayerAction::InstallCard { card_id: CardId("palisade".to_string()), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false, host: None },
         )
         .expect("install palisade onto HQ");
         assert_eq!(state.corp.resources.credits, Credits(9), "1[c]: one piece of ICE already protects HQ");
@@ -4965,7 +4965,7 @@ mod system_gateway {
             PlayerAction::InstallCard {
                 card_id: CardId("hostile_takeover".to_string()),
                 zone: ServerId::Remote(1),
-                slot: InstallSlot::Root, trash_first: false,
+                slot: InstallSlot::Root, trash_first: false, host: None,
             },
         )
         .expect("install hostile takeover");
@@ -5150,7 +5150,7 @@ mod system_gateway {
             PlayerAction::InstallCard {
                 card_id: CardId("hostile_takeover".to_string()),
                 zone: ServerId::Remote(0),
-                slot: InstallSlot::Root, trash_first: false,
+                slot: InstallSlot::Root, trash_first: false, host: None,
             },
         )
         .expect("install hostile takeover");
@@ -8924,13 +8924,13 @@ mod system_gateway {
         // A second region in the same root trashes the first as part of the
         // install (CR 3.6.5d, 8.5.6a), facedown because it was never rezzed.
         // It was refused until Rules Conformance B.
-        let second_here = PlayerAction::InstallCard { card_id: CardId("mahkota_langit_grid".to_string()), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false };
+        let second_here = PlayerAction::InstallCard { card_id: CardId("mahkota_langit_grid".to_string()), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: None };
         assert!(crate::rules::legal_actions(&state, &registry).contains(&second_here));
         let (after, _) = apply_action(&state, &registry, second_here).expect("the old region goes");
         assert_eq!(after.corp.installed.len(), 1);
         assert_ne!(after.corp.installed[0].install_id, state.corp.installed[0].install_id, "the one in the root is the new one");
         assert_eq!(after.corp.archives, vec![crate::rules::ArchivedCard::facedown(CardId("mahkota_langit_grid".to_string()))]);
-        apply_action(&state, &registry, PlayerAction::InstallCard { card_id: CardId("mahkota_langit_grid".to_string()), zone: ServerId::Remote(1), slot: InstallSlot::Root, trash_first: false }).expect("another server is fine");
+        apply_action(&state, &registry, PlayerAction::InstallCard { card_id: CardId("mahkota_langit_grid".to_string()), zone: ServerId::Remote(1), slot: InstallSlot::Root, trash_first: false, host: None }).expect("another server is fine");
 
         // Rez: the load, then the hosted credits pay for an asset in the root
         // and for ice protecting the server, but not for an upgrade.
@@ -11594,7 +11594,7 @@ mod vantage_point {
         let registry = registry();
         let mut state = base_state();
         state.corp.hq = vec![id("the_red_room")];
-        let remote = PlayerAction::InstallCard { card_id: id("the_red_room"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false };
+        let remote = PlayerAction::InstallCard { card_id: id("the_red_room"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: None };
         assert!(apply_action(&state, &registry, remote.clone()).is_err(), "not a remote");
         assert!(!crate::rules::legal_actions(&state, &registry).contains(&remote));
 
@@ -12866,7 +12866,7 @@ mod vantage_point {
         state.corp.hq = vec![id("sacrifice_zone_expansion")];
         state.corp.installed = vec![root_at("hostile_takeover", 0)];
         let other = state.corp.installed[0].install_id;
-        let install = PlayerAction::InstallCard { card_id: id("sacrifice_zone_expansion"), zone: ServerId::Remote(1), slot: InstallSlot::Root, trash_first: false };
+        let install = PlayerAction::InstallCard { card_id: id("sacrifice_zone_expansion"), zone: ServerId::Remote(1), slot: InstallSlot::Root, trash_first: false, host: None };
         let (state, _) = apply_action(&state, &registry, install).expect("install");
         let zone = state.corp.installed.iter().find(|c| c.card.0 == "sacrifice_zone_expansion").expect("installed").clone();
         assert!(zone.rezzed, "faceup");
@@ -14536,7 +14536,7 @@ mod rebellion_without_rehearsal {
         let three = close_all_windows(three, &registry).0;
         assert!(apply_action(&three, &registry, use_it.clone()).is_err(), "once per turn");
 
-        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false })
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: None })
             .expect("install from HQ");
         assert_eq!(installed.this_turn.installed_from_hq(), 1);
         let installed = close_all_windows(installed, &registry).0;
@@ -14563,7 +14563,7 @@ mod rebellion_without_rehearsal {
         let mut state = base_state();
         state.corp.hq = vec![id("stoke_the_embers")];
         state.corp.installed = vec![ice_at_hq("ice_wall")];
-        let (from_hq, _) = apply_action(&state, &registry, PlayerAction::InstallCard { card_id: id("stoke_the_embers"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false })
+        let (from_hq, _) = apply_action(&state, &registry, PlayerAction::InstallCard { card_id: id("stoke_the_embers"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: None })
             .expect("install from HQ");
         assert!(from_hq.pending_paid_choice.is_none(), "from HQ: nothing to reveal");
 
@@ -16229,7 +16229,7 @@ mod the_automata_initiative {
         let mut state = base_state();
         state.corp.installed = rezzed.corp.installed.clone();
         state.corp.hq = vec![id("ice_wall")];
-        let install = PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false };
+        let install = PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false, host: None };
         let (state, _) = apply_action(&state, &registry, install).expect("install a second piece of ice on HQ");
         assert_eq!((hosted(&state), state.corp.resources.credits), (Some(1), Credits(10)), "the 1[credit] install cost from the harvester");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: harvester, ability_index: 0 }).expect("trash it");
@@ -17328,7 +17328,7 @@ mod the_automata_initiative {
         state.runner.stack = ["sure_gamble", "diesel"].map(id).to_vec();
         state.corp.hq = ["ice_wall", "pad_campaign", "pad_campaign"].map(id).to_vec();
         let install = |state: &GameState, card: &str, zone: ServerId, slot: InstallSlot| {
-            apply_action(state, &registry, PlayerAction::InstallCard { card_id: id(card), zone, slot, trash_first: false }).expect("install").0
+            apply_action(state, &registry, PlayerAction::InstallCard { card_id: id(card), zone, slot, trash_first: false, host: None }).expect("install").0
         };
         let iced = install(&state, "ice_wall", ServerId::Hq, InstallSlot::Ice);
         assert!(iced.pending_paid_choice.is_none(), "ice is not installed in a root");
@@ -17995,7 +17995,7 @@ mod the_automata_initiative {
     }
 
     fn install(card: &str, server: ServerId, slot: InstallSlot) -> PlayerAction {
-        PlayerAction::InstallCard { card_id: id(card), zone: server, slot, trash_first: false }
+        PlayerAction::InstallCard { card_id: id(card), zone: server, slot, trash_first: false, host: None }
     }
 
     #[test]
@@ -19581,7 +19581,7 @@ mod parhelion {
         state.corp.resources.credits = Credits(0);
         state.corp.installed = vec![at("yakov_erikovich_avdakov", 80, 0, true), at("nanisivik_grid", 81, 0, false)];
         state.corp.hq = vec![id("nanisivik_grid")];
-        let install = PlayerAction::InstallCard { card_id: id("nanisivik_grid"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false };
+        let install = PlayerAction::InstallCard { card_id: id("nanisivik_grid"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: None };
         let (installed, _) = apply_action(&state, &registry, install).expect("install a second region");
         assert_eq!(installed.corp.installed.iter().filter(|card| card.card == id("nanisivik_grid")).count(), 1, "the first region is trashed");
         assert_eq!(installed.corp.resources.credits, Credits(0));
@@ -22629,7 +22629,7 @@ mod midnight_sun {
         let (installed, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false },
+            PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: None },
         )
         .expect("install over it");
         assert!(installed.corp.archives.iter().any(|card| card.card == id("regolith_mining_license")));
@@ -23899,7 +23899,7 @@ mod uprising {
     }
 
     fn corp_installs(state: &GameState, registry: &CardRegistry, card: &str, server: ServerId, slot: InstallSlot) -> GameState {
-        let action = PlayerAction::InstallCard { card_id: id(card), zone: server, slot, trash_first: false };
+        let action = PlayerAction::InstallCard { card_id: id(card), zone: server, slot, trash_first: false, host: None };
         close_all_windows(apply_action(state, registry, action).expect("install").0, registry).0
     }
 
@@ -26970,7 +26970,7 @@ mod downfall {
         let act = |state: &GameState, action: PlayerAction| pass_until_settled(apply_action(state, &registry, action).expect("act").0, &registry).0;
         let one = act(&state, PlayerAction::GainCreditClick { side: Side::Corp });
         let two = act(&one, PlayerAction::DrawCardClick { side: Side::Corp });
-        let three = act(&two, PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false });
+        let three = act(&two, PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false, host: None });
         assert!(choosing(&three), "three different actions: gain 1[credit] or take another");
         let credit = choose(&three, &registry, 0);
         assert_eq!(credit.corp.resources.credits, Credits(three.corp.resources.credits.0 + 1));
@@ -27743,7 +27743,7 @@ mod reprints {
     // ---- Stage 4: trigger words — a server created, a score locked by another card ----
 
     fn install_corp(state: &GameState, registry: &CardRegistry, card: &str, zone: ServerId, slot: InstallSlot) -> (GameState, Vec<GameEvent>) {
-        let (state, events) = apply_action(state, registry, PlayerAction::InstallCard { card_id: id(card), zone, slot, trash_first: false }).expect("install");
+        let (state, events) = apply_action(state, registry, PlayerAction::InstallCard { card_id: id(card), zone, slot, trash_first: false, host: None }).expect("install");
         (close_all_windows(state, registry).0, events)
     }
 
@@ -29598,7 +29598,7 @@ mod reprints {
         let mut state = base_state();
         let hand = crate::rules::continuous::hand_size(&state, &registry, Side::Corp);
         state.corp.hq = vec![id("research_station"), id("research_station")];
-        assert!(apply_action(&state, &registry, PlayerAction::InstallCard { card_id: id("research_station"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false }).is_err(), "only in the root of HQ");
+        assert!(apply_action(&state, &registry, PlayerAction::InstallCard { card_id: id("research_station"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: None }).is_err(), "only in the root of HQ");
         let (installed, _) = install_corp(&state, &registry, "research_station", ServerId::Hq, InstallSlot::Root);
         let mut installed = installed;
         installed.corp.installed[0].rezzed = true;
@@ -31423,7 +31423,7 @@ mod reign_and_reverie_stage_2 {
         corp.corp.resources.clicks = Clicks(3);
         corp.corp.hq = vec![id("pad_campaign"), id("pad_campaign")];
         let install = |state: &GameState, server: ServerId| {
-            let action = PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: server, slot: InstallSlot::Root, trash_first: false };
+            let action = PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: server, slot: InstallSlot::Root, trash_first: false, host: None };
             close_all_windows(apply_action(state, &registry, action).expect("install").0, &registry).0
         };
         let created = install(&corp, ServerId::Remote(0));
@@ -34335,7 +34335,7 @@ mod kitara_stage_6b {
         let mut state = base_state();
         state.runner.identity = Some(id("419_amoral_scammer"));
         state.corp.hq = vec![id("pad_campaign"), id("pad_campaign")];
-        let install = |remote| PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: ServerId::Remote(remote), slot: InstallSlot::Root, trash_first: false };
+        let install = |remote| PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: ServerId::Remote(remote), slot: InstallSlot::Root, trash_first: false, host: None };
         let (asked, _) = apply_action(&state, &registry, install(0)).expect("install");
         let (asked, _) = close_all_windows(asked, &registry);
         assert!(asked.pending_decision.is_some(), "the Runner may try: {:?}", crate::rules::legal_actions(&asked, &registry));
@@ -35497,7 +35497,7 @@ mod kitara_stage_13a {
     }
 
     fn install(card: &str, server: ServerId, slot: InstallSlot) -> PlayerAction {
-        PlayerAction::InstallCard { card_id: id(card), zone: server, slot, trash_first: false }
+        PlayerAction::InstallCard { card_id: id(card), zone: server, slot, trash_first: false, host: None }
     }
 
     fn asa_turn(hq: &[&str]) -> GameState {
@@ -39380,7 +39380,7 @@ mod red_sand_stage_14 {
         state.corp.resources.credits = Credits(10);
         state.corp.hq = vec![id("ice_wall"), id("ice_wall"), id("ice_wall")];
         state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("network_exchange"), install_id: InstallId(900), ..Default::default() }];
-        let install = |zone| PlayerAction::InstallCard { card_id: id("ice_wall"), zone, slot: InstallSlot::Ice, trash_first: false };
+        let install = |zone| PlayerAction::InstallCard { card_id: id("ice_wall"), zone, slot: InstallSlot::Ice, trash_first: false, host: None };
         let (state, _) = apply_action(&state, &registry, install(ServerId::Hq)).expect("innermost");
         assert_eq!(state.corp.resources.credits, Credits(10), "nothing protects HQ: innermost, no increase");
         let (state, _) = apply_action(&state, &registry, install(ServerId::Hq)).expect("outward of it");
@@ -43505,9 +43505,9 @@ mod flashpoint_stage_13 {
         state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(11), card: id("estelle_moon"), server: ServerId::Remote(0), rezzed: true, ..Default::default() }];
         state.corp.hq = vec![id("pad_campaign"), id("ice_wall"), id("hedge_fund")];
         state.corp.r_and_d = vec![id("enigma"), id("hedge_fund")];
-        let (asset, _) = apply_action(&state, &registry, PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: ServerId::Remote(1), slot: InstallSlot::Root, trash_first: false }).expect("an asset in a new remote");
+        let (asset, _) = apply_action(&state, &registry, PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: ServerId::Remote(1), slot: InstallSlot::Root, trash_first: false, host: None }).expect("an asset in a new remote");
         let asset = close_all_windows(asset, &registry).0;
-        let (ice, _) = apply_action(&asset, &registry, PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false }).expect("ice on HQ");
+        let (ice, _) = apply_action(&asset, &registry, PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false, host: None }).expect("ice on HQ");
         let ice = close_all_windows(ice, &registry).0;
         assert_eq!(ice.corp.installed.iter().find(|card| card.install_id == InstallId(11)).map(|card| card.counters), Some(1), "only the remote root");
         let credits = ice.corp.resources.credits;
@@ -51701,7 +51701,7 @@ mod sansan_stage_25 {
         let ice = |install: u32, server: ServerId| crate::rules::InstalledCard { install_id: InstallId(install), card: id("ice_wall"), server, slot: InstallSlot::Ice, ..Default::default() };
         let team = crate::rules::InstalledCard { install_id: fixture_install_id("dedicated_technician_team"), card: id("dedicated_technician_team"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, counters: 2, ..Default::default() };
         state.corp.installed = vec![ice(81, ServerId::Remote(0)), ice(82, ServerId::Remote(0)), ice(83, ServerId::RnD), ice(84, ServerId::RnD), team];
-        let to = |server| PlayerAction::InstallCard { card_id: id("ice_wall"), zone: server, slot: InstallSlot::Ice, trash_first: false };
+        let to = |server| PlayerAction::InstallCard { card_id: id("ice_wall"), zone: server, slot: InstallSlot::Ice, trash_first: false, host: None };
         let legal = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
         assert!(legal.contains(&to(ServerId::Remote(0))), "2[c] the team pays");
         assert!(!legal.contains(&to(ServerId::RnD)), "2[c] it does not pay, and the Corp has 1");
@@ -53195,7 +53195,7 @@ mod engine_words_stage_2 {
             corp_card("ice_wall", ServerId::Hq, InstallSlot::Ice, true),
         ];
         let (state, _) = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: fixture_install_id("hostile_takeover") }).expect("advance");
-        let ice_on_hq = PlayerAction::InstallCard { card_id: id("enigma"), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false };
+        let ice_on_hq = PlayerAction::InstallCard { card_id: id("enigma"), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false, host: None };
         let (mut state, _) = apply_action(&state, &registry, ice_on_hq).expect("the second ice on HQ costs 1, paid from The Root");
         assert_eq!(state.corp.installed[0].counters, 1);
         state.corp.resources.credits = Credits(1);
@@ -53836,7 +53836,7 @@ mod engine_words_stage_6 {
         let mut state = base_state();
         state.runner.in_play = vec![played("unscheduled_maintenance")];
         state.corp.hq = vec![id("ice_wall"), id("enigma"), id("pad_campaign")];
-        let install = |card: &str, slot: InstallSlot, zone: ServerId| PlayerAction::InstallCard { card_id: id(card), zone, slot, trash_first: false };
+        let install = |card: &str, slot: InstallSlot, zone: ServerId| PlayerAction::InstallCard { card_id: id(card), zone, slot, trash_first: false, host: None };
         let (one, _) = apply_action(&state, &registry, install("ice_wall", InstallSlot::Ice, ServerId::Hq)).expect("the first piece of ice");
         let (one, _) = close_all_windows(one, &registry);
         assert!(matches!(apply_action(&one, &registry, install("enigma", InstallSlot::Ice, ServerId::RnD)), Err(RulesError::IceInstallProhibited)));
@@ -55704,7 +55704,7 @@ mod engine_words_stage_14 {
         }
         assert!(apply_action(&full, &registry, PlayerAction::ActivateAbility { target: InstallId(101), ability_index: 0 }).is_err(), "up to 3 assets");
 
-        let (over, _) = act(&hosted, &registry, PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false });
+        let (over, _) = act(&hosted, &registry, PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: None });
         let left: Vec<&crate::rules::InstalledCard> = over.corp.installed.iter().filter(|card| card.server == ServerId::Remote(0)).collect();
         assert_eq!(left.len(), 1, "Worlds Plaza trashed under the new asset, and its asset with it");
         assert_eq!(left[0].host, None);
@@ -56529,5 +56529,244 @@ mod engine_words_stage_18 {
         assert!(hosted.runner.rig[0].hosted_cards.contains(&id("hedge_fund")));
         assert_eq!(accessed(&hosted), 1, "only Ice Wall was accessed");
         assert!(matches!(access_phase(&hosted), Some(AccessPhase::PendingChoice { card_id, .. }) if *card_id == id("ice_wall")));
+    }
+}
+
+mod engine_words_stage_19 {
+    use super::*;
+    use crate::rules::{PendingDecision, RunPhase};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.corp.resources.credits = Credits(10);
+        state.next_install_id = 200;
+        state
+    }
+
+    fn ice(card: &str, server: ServerId, install: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    fn rig(card: &str, install: u32, strength: i32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), base_strength: strength, ..Default::default() }
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn phase(state: &GameState) -> Option<RunPhase> {
+        state.active_run.as_ref().map(|run| run.phase)
+    }
+
+    /// Passes and continues until `done` or something is parked.
+    fn pass_until(mut state: GameState, registry: &CardRegistry, done: impl Fn(&GameState) -> bool) -> GameState {
+        for _ in 0..64 {
+            let parked = state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.pending_payment.is_some();
+            if done(&state) || parked || state.active_run.is_none() {
+                return state;
+            }
+            let action = match (&state.paid_ability_window, phase(&state)) {
+                (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+                (None, Some(RunPhase::Initiation | RunPhase::Movement | RunPhase::EncounterIce | RunPhase::ApproachIce)) => PlayerAction::ContinueRun,
+                (None, Some(RunPhase::Success)) => PlayerAction::CompleteRun,
+                other => panic!("stuck at {other:?}"),
+            };
+            state = act(&state, registry, action);
+        }
+        panic!("never done");
+    }
+
+    fn encountering(state: &GameState) -> bool {
+        phase(state) == Some(RunPhase::EncounterIce) && state.paid_ability_window.as_ref().is_some_and(|window| window.active_priority == Side::Runner)
+    }
+
+    fn choice_texts(state: &GameState) -> Vec<String> {
+        match &state.pending_decision {
+            Some(PendingDecision::ChooseEffect { chooser: Side::Runner, option_texts, .. }) => option_texts.clone(),
+            other => panic!("no choice for the Runner: {other:?}"),
+        }
+    }
+
+    fn enigma_run(street_magic: bool) -> (CardRegistry, GameState) {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("enigma", ServerId::Hq, 101)];
+        if street_magic {
+            state.runner.rig = vec![rig("street_magic", 900, 0)];
+        }
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let met = pass_until(started, &registry, encountering);
+        assert!(encountering(&met), "encountering Enigma");
+        // The encounter's window closes, and the subroutines resolve.
+        let resolving = pass_until(met, &registry, |_| false);
+        (registry, resolving)
+    }
+
+    /// "Unbroken subroutines resolve in the order of your choice." The
+    /// Runner declares the order before any resolves (CR 9.8.7d): "End the
+    /// run" first, and Enigma's "The Runner loses 1 click" never resolves.
+    #[test]
+    fn street_magic_lets_the_runner_resolve_end_the_run_first() {
+        let (registry, asked) = enigma_run(true);
+        let enigma = registry.get(&id("enigma")).expect("enigma");
+        let printed: Vec<String> = enigma.subroutines.iter().map(|sub| sub.text.clone()).collect();
+        assert_eq!(choice_texts(&asked), printed, "each unbroken subroutine, by its printed text");
+        assert_eq!(asked.runner.resources.clicks, Clicks(3), "nothing resolved before the order is declared");
+
+        let ended = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 });
+        assert!(ended.pending_decision.is_none(), "the last one takes the last place");
+        assert!(ended.active_run.is_none(), "the run ended");
+        assert_eq!(ended.runner.resources.clicks, Clicks(3), "the click was never lost");
+    }
+
+    /// Declared in the printed order, both resolve as they would without
+    /// Street Magic; without it, nobody is asked.
+    #[test]
+    fn street_magic_in_the_printed_order_resolves_both_and_without_it_nobody_is_asked() {
+        let (registry, asked) = enigma_run(true);
+        let both = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        assert!(both.active_run.is_none(), "ended by the second");
+        assert_eq!(both.runner.resources.clicks, Clicks(2), "the click lost first");
+
+        let (_, plain) = enigma_run(false);
+        assert!(plain.pending_decision.is_none(), "no order to declare");
+        assert!(plain.active_run.is_none());
+        assert_eq!(plain.runner.resources.clicks, Clicks(2));
+    }
+
+    /// A subroutine broken is not in the order: with one left unbroken
+    /// there is nothing to declare.
+    #[test]
+    fn street_magic_asks_nothing_of_a_single_unbroken_subroutine() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("enigma", ServerId::Hq, 101)];
+        state.runner.rig = vec![rig("street_magic", 900, 0), rig("gordian_blade", 901, 2)];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let met = pass_until(started, &registry, encountering);
+        let broke = act(&met, &registry, PlayerAction::ActivateAbility { target: InstallId(901), ability_index: 1 });
+        let ended = pass_until(broke, &registry, |_| false);
+        assert!(ended.pending_decision.is_none(), "one subroutine is no order");
+        assert!(ended.active_run.is_none(), "its End the run resolved");
+    }
+
+    /// "Whenever the Runner makes a successful run on this server, you may
+    /// trash this upgrade. If you do, choose 1 installed icebreaker that was
+    /// used to break at least 1 subroutine during this run. The Runner adds
+    /// that icebreaker to the bottom of the stack."
+    #[test]
+    fn will_o_the_wisp_sends_back_an_icebreaker_that_broke_a_subroutine() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.stack = vec![id("sure_gamble")];
+        state.corp.installed = vec![
+            ice("ice_wall", ServerId::Hq, 101),
+            crate::rules::InstalledCard { install_id: InstallId(102), card: id("will_o_the_wisp"), server: ServerId::Hq, slot: InstallSlot::Root, rezzed: true, ..Default::default() },
+        ];
+        state.runner.rig = vec![rig("corroder", 900, 2), rig("gordian_blade", 901, 2)];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let met = pass_until(started, &registry, encountering);
+        // Gordian Blade is used — pumped — but breaks nothing.
+        let pumped = act(&met, &registry, PlayerAction::ActivateAbility { target: InstallId(901), ability_index: 0 });
+        let pumped = pass_until(pumped, &registry, encountering);
+        assert_eq!(pumped.active_run.as_ref().map(|run| run.broke_with.clone()), Some(Vec::new()), "a pump is no break");
+        let broke = act(&pumped, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 1 });
+        assert_eq!(broke.active_run.as_ref().map(|run| run.broke_with.clone()), Some(vec![InstallId(900)]));
+
+        let asked = pass_until(broke, &registry, |_| false);
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseEffect { chooser: Side::Corp, .. })), "the Corp may trash it");
+        let choosing = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        assert!(!choosing.corp.installed.iter().any(|card| card.card == id("will_o_the_wisp")), "trashed");
+        assert!(apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position: 1 }).is_err(), "Gordian Blade broke nothing");
+        let picked = act(&choosing, &registry, PlayerAction::ToggleCardSelection { position: 0 });
+        let sent = act(&picked, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(!sent.runner.rig.iter().any(|card| card.card == id("corroder")), "uninstalled");
+        assert_eq!(sent.runner.stack.first(), Some(&id("corroder")), "at the bottom of the stack");
+        assert!(sent.runner.rig.iter().any(|card| card.card == id("gordian_blade")));
+    }
+
+    fn corp_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(10);
+        state.corp.resources.credits = Credits(10);
+        state.next_install_id = 200;
+        state
+    }
+
+    fn studio(rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(101), card: id("full_immersion_recstudio"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed, ..Default::default() }
+    }
+
+    fn onto(card: &str) -> PlayerAction {
+        PlayerAction::InstallCard { card_id: id(card), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: Some(InstallId(101)) }
+    }
+
+    /// "Full Immersion RecStudio can host up to 2 assets and/or agendas."
+    /// Installed onto it by the install action (CR 1.13.6a), in its
+    /// server, trashing nothing; a third is not offered, nor is ice.
+    #[test]
+    fn full_immersion_recstudio_hosts_up_to_two_assets_or_agendas() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.installed = vec![studio(true)];
+        state.corp.hq = vec![id("hostile_takeover"), id("pad_campaign"), id("pad_campaign"), id("ice_wall")];
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        assert!(offered.contains(&onto("hostile_takeover")) && offered.contains(&onto("pad_campaign")));
+        assert!(!offered.contains(&onto("ice_wall")), "ice is not an asset or an agenda");
+        assert!(apply_action(&state, &registry, onto("ice_wall")).is_err());
+
+        let one = act(&state, &registry, onto("hostile_takeover"));
+        assert_eq!(one.corp.resources.clicks, Clicks(9), "the install action's click");
+        let hosted = one.corp.installed.iter().find(|card| card.card == id("hostile_takeover")).expect("installed");
+        assert_eq!((hosted.server, hosted.slot, hosted.host), (ServerId::Remote(0), InstallSlot::Root, Some(InstallId(101))));
+        assert!(one.corp.installed.iter().any(|card| card.install_id == InstallId(101)), "the studio is not trashed under it");
+        let two = act(&one, &registry, onto("pad_campaign"));
+        assert!(!crate::rules::legal_actions_for(&two, &registry, Side::Corp).contains(&onto("pad_campaign")), "up to 2");
+        assert!(apply_action(&two, &registry, onto("pad_campaign")).is_err());
+
+        // A hosted install has its own slots in the action space.
+        let index = crate::rules::ActionSpace::index_of(&one, &onto("pad_campaign")).expect("encoded");
+        assert_eq!(crate::rules::ActionSpace::action_at(&one, index), Some(onto("pad_campaign")));
+        // The Runner sees where it went, never what.
+        let masked = crate::rules::mask_action_for_player(&onto("pad_campaign"), Side::Corp, Side::Runner);
+        assert_eq!(
+            masked,
+            crate::rules::PublicAction::Concealed(crate::rules::ConcealedAction::InstallCard { zone: ServerId::Remote(0), slot: InstallSlot::Root, host: Some(InstallId(101)) })
+        );
+
+        // Unrezzed, its text is not active and it hosts nothing.
+        let mut down = state.clone();
+        down.corp.installed = vec![studio(false)];
+        assert!(apply_action(&down, &registry, onto("pad_campaign")).is_err());
+    }
+
+    /// "The trash cost of Full Immersion RecStudio is increased by 3 for
+    /// each card hosted on it." A hosted agenda is advanced and scored
+    /// where it sits.
+    #[test]
+    fn full_immersion_recstudio_costs_more_to_trash_and_its_agenda_is_scored_there() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.installed = vec![studio(true)];
+        state.corp.hq = vec![id("hostile_takeover"), id("pad_campaign")];
+        let definition = registry.get(&id("full_immersion_recstudio")).expect("the studio");
+        assert_eq!(crate::rules::continuous::trash_cost_delta(&state, &registry, definition, Some(InstallId(101))), 0);
+        let two = act(&act(&state, &registry, onto("hostile_takeover")), &registry, onto("pad_campaign"));
+        assert_eq!(crate::rules::continuous::trash_cost_delta(&two, &registry, definition, Some(InstallId(101))), 6, "3 for each of 2");
+
+        let agenda = two.corp.installed.iter().find(|card| card.card == id("hostile_takeover")).expect("hosted").install_id;
+        let advanced = act(&act(&two, &registry, PlayerAction::AdvanceCard { target: agenda }), &registry, PlayerAction::AdvanceCard { target: agenda });
+        let scored = act(&advanced, &registry, PlayerAction::ScoreAgenda { target: agenda });
+        assert!(scored.corp.scored_agendas.iter().any(|scored| scored.card == id("hostile_takeover")), "scored off the studio");
+        assert_eq!(crate::rules::continuous::trash_cost_delta(&scored, &registry, definition, Some(InstallId(101))), 3, "one left hosted");
     }
 }

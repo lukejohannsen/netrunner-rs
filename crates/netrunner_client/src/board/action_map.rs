@@ -437,6 +437,9 @@ fn targets_of(action: &PlayerAction, view: &ClientView) -> Vec<Target> {
         }
         PlayerAction::DrawCardClick { side: Side::Corp } => vec![Target::Server(ServerId::RnD)],
         PlayerAction::DrawCardClick { side: Side::Runner } => vec![Target::Pile(Pile::Stack)],
+        // Onto a Corp card (Full Immersion RecStudio): the host is the
+        // place, as a Trojan's ice is.
+        PlayerAction::InstallCard { card_id, host: Some(host), .. } => vec![Target::HandCard(card_id.clone()), Target::Install(*host)],
         PlayerAction::InstallCard { card_id, zone, .. } => vec![Target::HandCard(card_id.clone()), Target::Server(*zone)],
         PlayerAction::InstallProgramOnIce { card_id, host, .. } => vec![Target::HandCard(card_id.clone()), Target::Install(*host)],
         PlayerAction::InstallResource { card_id, host: Some(host) }
@@ -1078,7 +1081,7 @@ mod tests {
                 SessionStep::Awaiting { side, view } => {
                     let map = ActionMap::build(&view, &registry);
                     let install = view.legal_actions.iter().find_map(|action| match action {
-                        PlayerAction::InstallCard { card_id, zone, .. } => Some((card_id.clone(), *zone)),
+                        PlayerAction::InstallCard { card_id, zone, host: None, .. } => Some((card_id.clone(), *zone)),
                         _ => None,
                     });
                     if let Some((card, zone)) = install {
