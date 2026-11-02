@@ -755,9 +755,13 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             };
             format!("{what} {}", duration(until))
         }
-        Effect::ImposeAdditionalCost { on, cost, until, this_install } => {
+        Effect::ImposeAdditionalCost { on, cost, until, this_install, approached_ice } => {
             if on.contains(&netrunner_core::dsl::CostedStep::Rez) {
-                let which = if *this_install { "that ice" } else { "each piece of ice" };
+                let which = match (*approached_ice, *this_install) {
+                    (true, _) => "the ice being approached",
+                    (false, true) => "that ice",
+                    (false, false) => "each piece of ice",
+                };
                 return format!("the Corp must {} as an additional cost to rez {which} {}", describe_cost(cost), duration(until));
             }
             let steps: Vec<&str> = on

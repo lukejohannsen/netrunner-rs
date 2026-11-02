@@ -724,6 +724,16 @@ pub struct IceFacts {
     /// delayed ability and never "the first time each turn".
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rezzed: bool,
+    /// "The first **unrezzed** piece of ice approached" — Bribery: `rezzed`
+    /// turned round, read off the run as the approach is heard. Its own
+    /// fact because a `false` in a filter is "either", never "not".
+    ///
+    /// **It shares a column bit with `after_fully_breaking`**: that is a
+    /// pass's fact and this an approach's (`stated_by`), and the turn
+    /// counts an approach by its server (`rezzed`'s reason), so within any
+    /// row of the log the bit means one fact.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unrezzed: bool,
 }
 
 impl IceFacts {
@@ -739,6 +749,7 @@ impl IceFacts {
             && (!self.innermost || moment.innermost)
             && (!self.advanced || moment.advanced)
             && (!self.rezzed || moment.rezzed)
+            && (!self.unrezzed || moment.unrezzed)
     }
 
     /// The facts `trigger`'s moment states; a filter may ask no others,
@@ -750,14 +761,14 @@ impl IceFacts {
             // Hippo's "fully break the outermost piece of ice".
             Trigger::OnIceFullyBroken => IceFacts { outermost: true, ..IceFacts::default() },
             Trigger::OnEncounterEnded => IceFacts { advanced: true, ..IceFacts::default() },
-            Trigger::OnIceApproached => IceFacts { rezzed: true, ..IceFacts::default() },
+            Trigger::OnIceApproached => IceFacts { rezzed: true, unrezzed: true, ..IceFacts::default() },
             _ => IceFacts::default(),
         }
     }
 
     /// How many columns of the turn log the facts take: five bits, the
-    /// sixth to the tenth sharing one each (`rezzed_bioroid`, `ap`,
-    /// `innermost`, `advanced`, `rezzed`).
+    /// sixth to the eleventh sharing one each (`rezzed_bioroid`, `ap`,
+    /// `innermost`, `advanced`, `rezzed`, `unrezzed`).
     pub const COLUMNS: usize = 32;
 
     /// The facts as a number, 0..`COLUMNS` — a column of the turn log's row
@@ -765,19 +776,19 @@ impl IceFacts {
     /// the same bit, which no one trigger states both of.
     pub fn bits(self) -> usize {
         usize::from(self.outermost || self.advanced || self.rezzed)
-            | usize::from(self.after_fully_breaking) << 1
+            | usize::from(self.after_fully_breaking || self.unrezzed) << 1
             | usize::from(self.at_most_zero_strength || self.rezzed_bioroid) << 2
             | usize::from(self.rezzed_code_gate_or_sentry || self.ap) << 3
             | usize::from(self.printed_subroutine || self.innermost) << 4
     }
 
-    /// Every combination of the ten, the sixth to the tenth in the top
-    /// bits of the index.
-    pub const ALL: [IceFacts; 1024] = {
-        let none = IceFacts { outermost: false, after_fully_breaking: false, at_most_zero_strength: false, rezzed_code_gate_or_sentry: false, printed_subroutine: false, rezzed_bioroid: false, ap: false, innermost: false, advanced: false, rezzed: false };
-        let mut all = [none; 1024];
+    /// Every combination of the eleven, the sixth to the eleventh in the
+    /// top bits of the index.
+    pub const ALL: [IceFacts; 2048] = {
+        let none = IceFacts { outermost: false, after_fully_breaking: false, at_most_zero_strength: false, rezzed_code_gate_or_sentry: false, printed_subroutine: false, rezzed_bioroid: false, ap: false, innermost: false, advanced: false, rezzed: false, unrezzed: false };
+        let mut all = [none; 2048];
         let mut bits = 0;
-        while bits < 1024 {
+        while bits < 2048 {
             all[bits] = IceFacts {
                 outermost: bits & 1 != 0,
                 after_fully_breaking: bits & 2 != 0,
@@ -789,6 +800,7 @@ impl IceFacts {
                 innermost: bits & 128 != 0,
                 advanced: bits & 256 != 0,
                 rezzed: bits & 512 != 0,
+                unrezzed: bits & 1024 != 0,
             };
             bits += 1;
         }
@@ -1199,6 +1211,19 @@ impl EventFilter {
         match self {
             EventFilter::Card(filter) => EventFilter::Card(filter.with_chosen_name(card)),
             EventFilter::All(parts) => EventFilter::All(parts.into_iter().map(|part| part.with_chosen_name(card)).collect()),
+            other => other,
+        }
+    }
+
+    /// `CardFilter::ChosenThisWay` written over as the installs a selection
+    /// chose, in a filter on the card a moment is about — Social
+    /// Engineering's "If the Corp rezzes **that piece of ice** this turn",
+    /// a `LaterThisTurn` made in its selection's `then`
+    /// (`Effect::with_chosen_installs`).
+    pub fn with_chosen_installs(self, installs: &[crate::rules::InstallId]) -> EventFilter {
+        match self {
+            EventFilter::Card(filter) => EventFilter::Card(filter.with_chosen_installs(installs)),
+            EventFilter::All(parts) => EventFilter::All(parts.into_iter().map(|part| part.with_chosen_installs(installs)).collect()),
             other => other,
         }
     }

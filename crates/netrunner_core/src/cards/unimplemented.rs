@@ -185,7 +185,6 @@ pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Democracy and Dogma* (`democracy_and_dogma`): tranche F6 of the FFG plan.
 pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("political_graffiti", "Political Graffiti"),
-    ("councilman", "Councilman"),
 ];
 
 /// *Salsette Island* (`salsette_island`): tranche F6 of the FFG plan.
@@ -276,7 +275,6 @@ pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mutate", "Mutate"),
     ("bad_times", "Bad Times"),
     ("cyber_threat", "Cyber Threat"),
-    ("social_engineering", "Social Engineering"),
     ("eden_shard", "Eden Shard"),
 ];
 
@@ -306,7 +304,6 @@ pub(crate) const UAO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("blue_sun_powering_the_future", "Blue Sun: Powering the Future"),
     ("inject", "Inject"),
     ("autoscripter", "Autoscripter"),
-    ("trade_in", "Trade-In"),
     ("angel_arena", "Angel Arena"),
 ];
 
@@ -320,7 +317,6 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("it_department", "IT Department"),
     ("self_destruct", "Self-destruct"),
     ("incubator", "Incubator"),
-    ("bribery", "Bribery"),
 ];
 
 /// *Honor and Profit* (`honor_and_profit`): tranche F8 of the FFG plan.
@@ -342,7 +338,6 @@ pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("howler", "Howler"),
     ("awakening_center", "Awakening Center"),
     ("tyrs_hand", "Tyr's Hand"),
-    ("scavenge", "Scavenge"),
 ];
 
 /// *Opening Moves* (`opening_moves`): tranche F10 of the FFG plan.
