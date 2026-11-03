@@ -3,20 +3,12 @@
   "name": "Zzzzzzz",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Hayley Kaplan: Universal Scholar, Breaker Bay's Shaper identity, who may install a second card of the same type the first time each turn she installs one. Zymogen's list, its identity swapped. Comet (SanSan Stage 31) for one Supercorridor, which dead_reckoning and zymogen keep. Lunar Stage 1 (FFG F8): Refractor, Leprechaun, Collective Consciousness, Astrolabe, Cybsoft MacroDrive and Ghost Runner for two Orcas, two Reclaims and two Levy Advanced Research Labs, which Dead Reckoning and Zymogen keep. Lunar Stage 3 (FFG F8): LLDS Energy Regulator for one Cybertrooper Talut, which Dead Reckoning and Zymogen keep. Creation and Control Stages 3 and 4 (FFG F9) swapped in Borrowed Satellite, Cloak, Sahasrara, Ice Analyzer, Dagger, Inti, Clone Chip, Feedback Filter, Freelance Coding Contract and Levy AR Lab Access for Laguna Velasco District, Flux Capacitor, Coalescence, Paule's Café, an Egret, Propeller, LLDS Memory Diamond, Brain Chip, Into the Depths and Careful Planning, which Dead Reckoning and Zymogen keep. Spin Stages 5 to 7 (FFG F10) swapped in Torch, CyberSolutions Mem Chip, Lockpick and Power Nap for Hyperbaric, Supercorridor, Egret and Algo Trading, which Dead Reckoning and Zymogen keep. Genesis (F11) swaps in Quality Time. The FFG pool's composable leftovers swap in Sage, Alpha and Omega. Code Siphon came in for a Dai V in Engine words Stage 14, to reach a breach of R&D replaced by a program installed from the stack. Engine words Stage 24 (FFG): a Replicator for its Ubax, which two other decks keep.",
+  "description": "Not a published list: built so the sweeps reach Hayley Kaplan: Universal Scholar, Breaker Bay's Shaper identity, who may install a second card of the same type the first time each turn she installs one. Zymogen's list, its identity swapped. Comet (SanSan Stage 31) for one Supercorridor, which dead_reckoning and zymogen keep. Lunar Stage 1 (FFG F8): Refractor, Leprechaun, Collective Consciousness, Astrolabe, Cybsoft MacroDrive and Ghost Runner for two Orcas, two Reclaims and two Levy Advanced Research Labs, which Dead Reckoning and Zymogen keep. Lunar Stage 3 (FFG F8): LLDS Energy Regulator for one Cybertrooper Talut, which Dead Reckoning and Zymogen keep. Creation and Control Stages 3 and 4 (FFG F9) swapped in Borrowed Satellite, Cloak, Sahasrara, Ice Analyzer, Dagger, Inti, Clone Chip, Feedback Filter, Freelance Coding Contract and Levy AR Lab Access for Laguna Velasco District, Flux Capacitor, Coalescence, Paule's Café, an Egret, Propeller, LLDS Memory Diamond, Brain Chip, Into the Depths and Careful Planning, which Dead Reckoning and Zymogen keep. Spin Stages 5 to 7 (FFG F10) swapped in Torch, CyberSolutions Mem Chip, Lockpick and Power Nap for Hyperbaric, Supercorridor, Egret and Algo Trading, which Dead Reckoning and Zymogen keep. Genesis (F11) swaps in Quality Time. The FFG pool's composable leftovers swap in Sage, Alpha and Omega. Code Siphon came in for a Dai V in Engine words Stage 14, to reach a breach of R&D replaced by a program installed from the stack. Engine words Stage 24 (FFG): a Replicator for its Ubax, which two other decks keep. Engine words Stage 25 (FFG): a Paintbrush for its Daeg, First Net-Cat; an Order of Sol for its Cybertrooper Talut.",
   "style": [
     "rig"
   ],
   "identity": "hayley_kaplan_universal_scholar",
   "cards": [
-    {
-      "card": "daeg_first_net_cat",
-      "count": 1
-    },
-    {
-      "card": "cybertrooper_talut",
-      "count": 1
-    },
     {
       "card": "minds_eye",
       "count": 1
@@ -179,6 +171,14 @@
     },
     {
       "card": "replicator",
+      "count": 1
+    },
+    {
+      "card": "paintbrush",
+      "count": 1
+    },
+    {
+      "card": "order_of_sol",
       "count": 1
     }
   ]

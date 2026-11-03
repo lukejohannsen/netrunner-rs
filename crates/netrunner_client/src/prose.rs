@@ -318,6 +318,7 @@ fn duration(d: &EffectDuration) -> &'static str {
         EffectDuration::UntilChosenAgain => "until you choose again",
         EffectDuration::NextEncounter => "during the next encounter this run",
         EffectDuration::UntilNextEncounter => "until the next encounter this run",
+        EffectDuration::NextRunThisTurn => "until the end of the next run this turn",
     }
 }
 
@@ -370,6 +371,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 EffectDuration::UntilChosenAgain => "the time until you choose again",
                 EffectDuration::NextEncounter => "the next encounter this run",
                 EffectDuration::UntilNextEncounter => "the time until the next encounter this run",
+                EffectDuration::NextRunThisTurn => "the next run this turn",
             };
             format!("{which} {sign}{delta} strength for the remainder of {until}")
         }
@@ -439,6 +441,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::AllottedClicksNextTurn(side, n) => {
             format!("{} gets {}{} allotted {} next turn", who(*side), if *n < 0 { "−" } else { "+" }, n.unsigned_abs(), if n.unsigned_abs() == 1 { "click" } else { "clicks" })
         }
+        Effect::ModifyMemoryLimit { by, .. } => format!("the Runner gets {}{}[mu] memory limit", if *by < 0 { "−" } else { "+" }, by.unsigned_abs()),
         Effect::ModifyHandSize { side, by, .. } => format!("{} gets {}{} maximum hand size", who(*side), if *by < 0 { "−" } else { "+" }, by.unsigned_abs()),
         Effect::LowerEncounteredIceStrengthTo { to, .. } => format!("the strength of the ice you are encountering is lowered to {to}"),
         Effect::InitiateRun(server) => format!("run {}", describe_server(*server)),
@@ -693,6 +696,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 netrunner_core::dsl::EffectDuration::UntilChosenAgain => "as long as it is not chosen again",
                 netrunner_core::dsl::EffectDuration::NextEncounter => "the next encounter this run",
                 netrunner_core::dsl::EffectDuration::UntilNextEncounter => "the time until the next encounter this run",
+                netrunner_core::dsl::EffectDuration::NextRunThisTurn => "the next run this turn",
             };
             format!("{which} gains {copies}\u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }
@@ -702,6 +706,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::CopiedByPromptingIce { lent: true } => "reveal it; for the remainder of this run, the choosing ice gains its subroutines after its others".to_string(),
         Effect::ResolveItsAbility(netrunner_core::dsl::ItsAbility::WhenScored) => "resolve its \"when scored\" ability".to_string(),
         Effect::ResolveItsAbility(netrunner_core::dsl::ItsAbility::Click) => "trigger its [click] ability without spending [click]".to_string(),
+        Effect::GainIceSubtype { subtype, for_the_next_run: true, .. } => {
+            format!("that ice gains {} until the end of the next run this turn", crate::board::facts::ice_type_words(&[*subtype]))
+        }
         Effect::GainIceSubtype { subtype, for_the_turn: true, .. } => {
             format!("that ice gains {} until the end of the turn", crate::board::facts::ice_type_words(&[*subtype]))
         }
@@ -1178,6 +1185,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::Tags(number) => format!("is considered to have {} tags", signed(number)),
         ContinuousKind::BadPublicity(number) => format!("is considered to have {} bad publicity", signed(number)),
         ContinuousKind::InstallCost(number) => format!("costs {} to install", signed(number)),
+        ContinuousKind::IgnoreInstallCost => "is installed ignoring its install cost".to_string(),
         ContinuousKind::RezCost(number) => format!("costs {} to rez", signed(number)),
         ContinuousKind::TrashCost(number) => format!("costs {} to trash", signed(number)),
         ContinuousKind::PlayCost(number) => format!("costs {} to play", signed(number)),

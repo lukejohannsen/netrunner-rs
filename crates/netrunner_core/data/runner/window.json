@@ -1,0 +1,33 @@
+{
+  "id": "window",
+  "title": "Window",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnStack",
+          "filter": {
+            "BottomOfZone": 1
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnGrip"
+        }
+      },
+      "text": "[click]: Draw 1 card from the bottom of your stack."
+    }
+  ],
+  "built_from": 5040,
+  "is_playable": true
+}

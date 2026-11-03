@@ -1,0 +1,115 @@
+{
+  "id": "inject",
+  "title": "Inject",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "TopOfDeck": {
+            "deck": "Runner",
+            "count": 4,
+            "reveal": true
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OwnStack",
+                "count": 1,
+                "filter": {
+                  "All": [
+                    {
+                      "TopOfZone": 4
+                    },
+                    {
+                      "CardType": "Program"
+                    }
+                  ]
+                }
+              }
+            },
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnStack",
+                "filter": {
+                  "All": [
+                    {
+                      "TopOfZone": 4
+                    },
+                    {
+                      "CardType": "Program"
+                    }
+                  ]
+                },
+                "min": 0,
+                "max": 0,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OwnHeap",
+                "count": {
+                  "Fixed": 4
+                },
+                "then": {
+                  "Sequence": [
+                    {
+                      "GainCreditsAmount": [
+                        "Runner",
+                        "CardsSelected"
+                      ]
+                    },
+                    {
+                      "PromptChooseCards": {
+                        "side": "Runner",
+                        "source": "OwnStack",
+                        "filter": {
+                          "TopOf": {
+                            "RemainingAfterSelection": 4
+                          }
+                        },
+                        "min": 0,
+                        "max": 0,
+                        "reveal": false,
+                        "shuffle_after": false,
+                        "destination": "OwnGrip",
+                        "count": {
+                          "RemainingAfterSelection": 4
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "otherwise": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnStack",
+                "filter": {
+                  "TopOfZone": 4
+                },
+                "min": 0,
+                "max": 0,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OwnGrip",
+                "count": {
+                  "Fixed": 4
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Reveal the top 4 cards of your stack and trash all programs revealed. Gain 1[credit] for each program trashed, and add the rest of the revealed cards to your grip."
+    }
+  ],
+  "built_from": 6073,
+  "is_playable": true
+}

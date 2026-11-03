@@ -264,27 +264,22 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Upstalk* (`upstalk`): tranche F8 of the FFG plan.
 pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mutate", "Mutate"),
-    ("bad_times", "Bad Times"),
 ];
 
 /// *The Spaces Between* (`the_spaces_between`): tranche F8 of the FFG plan.
 pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("enhanced_login_protocol", "Enhanced Login Protocol"),
-    ("heinlein_grid", "Heinlein Grid"),
     ("sealed_vault", "Sealed Vault"),
-    ("eden_fragment", "Eden Fragment"),
     ("net_celebrity", "Net Celebrity"),
 ];
 
 /// *First Contact* (`first_contact`): tranche F8 of the FFG plan.
 pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("order_of_sol", "Order of Sol"),
 ];
 
 /// *Up and Over* (`up_and_over`): tranche F8 of the FFG plan.
 pub(crate) const UAO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("labyrinthine_servers", "Labyrinthine Servers"),
-    ("inject", "Inject"),
     ("autoscripter", "Autoscripter"),
 ];
 
@@ -303,7 +298,6 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("shi_kyu", "Shi.Kyū"),
     ("plan_b", "Plan B"),
-    ("window", "Window"),
     ("bug", "Bug"),
 ];
 
@@ -331,7 +325,6 @@ pub(crate) const MT_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *True Colors* (`true_colors`): tranche F10 of the FFG plan.
 pub(crate) const TC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("capstone", "Capstone"),
 ];
 
 /// *Fear and Loathing* (`fear_and_loathing`): tranche F10 of the FFG plan.
@@ -343,7 +336,6 @@ pub(crate) const FAL_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Double Time* (`double_time`): tranche F10 of the FFG plan.
 pub(crate) const DT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
-    ("paintbrush", "Paintbrush"),
 ];
 
 /// *What Lies Ahead* (`what_lies_ahead`): tranche F11 of the FFG plan.

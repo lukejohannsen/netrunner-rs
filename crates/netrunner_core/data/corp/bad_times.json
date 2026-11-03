@@ -1,0 +1,25 @@
+{
+  "id": "bad_times",
+  "title": "Bad Times",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 4,
+  "play_requirement": "IsTagged",
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "ModifyMemoryLimit": {
+            "by": -2,
+            "until": "Turn"
+          }
+        }
+      ],
+      "text": "The Runner's memory limit is reduced by 2 until the end of the turn."
+    }
+  ],
+  "built_from": 6012,
+  "is_playable": true
+}

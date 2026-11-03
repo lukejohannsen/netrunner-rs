@@ -90,7 +90,7 @@ pub(crate) fn memory_balance_with(state: &GameState, registry: &CardRegistry, in
             amount.min(for_these)
         })
         .sum();
-    RUNNER_BASE_MEMORY_UNITS as i32 + continuous::memory(state, registry) + set_aside - spent
+    RUNNER_BASE_MEMORY_UNITS as i32 + continuous::memory(state, registry) + crate::rules::lingering::memory(state) + set_aside - spent
 }
 
 /// Memory units the Runner has free — [`memory_balance`] clamped at zero,
