@@ -6270,7 +6270,7 @@ pub fn check_requirement(
             Ok(())
         }
         EffectRequirement::OddAdvancementTokens => {
-            let odd = acting_corp_install(state, ctx).is_some_and(|install| install.advancement_tokens % 2 == 1);
+            let odd = acting_corp_install(state, ctx).is_some_and(|install| (install.advancement_tokens + considered_advancement_of(state, registry, ctx)) % 2 == 1);
             if odd { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::ThisCardCountersAtLeast(amount) => {
@@ -6635,6 +6635,13 @@ fn advancement_tokens_of(state: &GameState, ctx: &ResolutionContext<'_>) -> Opti
         .or_else(|| scored_with(ctx))
 }
 
+/// The advancement counters the acting install is considered to have
+/// beyond its own (`continuous::considered_advancement`), while it is on
+/// the table.
+fn considered_advancement_of(state: &GameState, registry: &CardRegistry, ctx: &ResolutionContext<'_>) -> u32 {
+    acting_corp_install(state, ctx).map_or(0, |installed| continuous::considered_advancement(state, registry, installed.install_id))
+}
+
 /// The advancement counters an agenda was scored with, for a trigger of
 /// that score (CR 1.17.8: its last known number, the counters having gone
 /// back to the bank as it moved) — Project Atlas's "for each hosted
@@ -6995,7 +7002,9 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             Some(position) => crate::rules::pending_choice::virus_on(&state.runner.rig[position], registry),
             None => counters_of(state, ctx).unwrap_or(0),
         },
-        Amount::HostedAdvancementTokens => advancement_tokens_of(state, ctx).unwrap_or(0),
+        // Satellite Grid's "considered to have 1 additional advancement
+        // token", on a piece of ice still on the table.
+        Amount::HostedAdvancementTokens => advancement_tokens_of(state, ctx).unwrap_or(0) + considered_advancement_of(state, registry, ctx),
         // A host its own cost took off the table still counts what it set
         // aside (`RunnerState::set_aside_by_host`): Bookmark's "[trash]: Add
         // all hosted cards to your grip".

@@ -584,6 +584,17 @@ pub enum ContinuousKind {
     /// expose of it does nothing. Composition didn't work, for the reason
     /// `CannotBeBypassed` gives.
     CannotBeExposed,
+    /// This piece of ice is considered to have this many more advancement
+    /// counters than it has — Satellite Grid's "Each piece of ice
+    /// protecting this server is considered to have 1 additional
+    /// advancement token on it" (`IceProtectingThisServer`). Read where an
+    /// amount counts the ice's own advancement counters
+    /// (`Amount::HostedAdvancementTokens`, so the strength its counters
+    /// give it) and where a requirement asks whether they are odd
+    /// (`continuous::considered_advancement`); never by a cost, which
+    /// removes real counters. Composition didn't work: every count of a
+    /// card's advancement read the install and nothing the table said.
+    AdditionalAdvancement(u32),
     /// The Corp cannot trash more than this many installed Runner cards
     /// with this ice during each encounter — Sorocaban Blade. Once it has,
     /// a selection this ice's text makes to trash an installed Runner card
@@ -795,6 +806,15 @@ pub enum Scope {
     /// said by any active card, since the server is named rather than the
     /// card's own. Only `RunCost` is about it.
     Runs(crate::dsl::ServerKind),
+    /// Each run the basic action to run makes, against any server —
+    /// Enhanced Login Protocol's "As an additional cost to take **the
+    /// basic action to run** a server for the first time each turn". Asked
+    /// about `continuous::Target::Run` with `basic`, which only
+    /// `engine::initiate_run` sets, so a run a card's text makes (Dirty
+    /// Laundry's) is not about it. Only `RunCost` is about it, as `Runs` is.
+    /// Composition didn't work: `Runs` is about every run on a kind of
+    /// server, however it was begun.
+    RunsByTheBasicAction,
     /// Each run against the server this card is installed in — Flagship's
     /// "Runs against this server" and "During each run against this
     /// server". A run is not a card, so this is asked about

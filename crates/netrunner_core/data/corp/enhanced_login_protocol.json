@@ -1,0 +1,22 @@
+{
+  "id": "enhanced_login_protocol",
+  "title": "Enhanced Login Protocol",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "RunCost": {
+          "Clicks": 1
+        }
+      },
+      "applies_to": "RunsByTheBasicAction",
+      "first_each_turn": true,
+      "text": "As an additional cost to take the basic action to run a server for the first time each turn, the Runner must spend [click]."
+    }
+  ],
+  "triggers": [],
+  "built_from": 6022,
+  "is_playable": true
+}

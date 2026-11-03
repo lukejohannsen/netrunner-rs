@@ -161,8 +161,8 @@ mod run_precondition_tests {
 /// What running `server` costs beside the click, all at once (CR
 /// 1.16.10b), or `None` — Earth Station: SEA Headquarters' 1[credit] to run
 /// HQ (`continuous::run_costs`).
-fn run_cost(state: &GameState, registry: &CardRegistry, server: ServerId) -> Option<crate::dsl::Cost> {
-    match crate::rules::continuous::run_costs(state, registry, server).as_slice() {
+fn run_cost(state: &GameState, registry: &CardRegistry, server: ServerId, basic: bool) -> Option<crate::dsl::Cost> {
+    match crate::rules::continuous::run_costs_of(state, registry, server, basic).as_slice() {
         [] => None,
         [one] => Some(one.clone()),
         many => Some(crate::dsl::Cost::AllOf(many.to_vec())),
@@ -177,7 +177,15 @@ fn run_cost(state: &GameState, registry: &CardRegistry, server: ServerId) -> Opt
 /// (Transfer of Wealth against Earth Station, a deadlock the 256-seed
 /// sweep found).
 pub(crate) fn may_pay_run_cost(state: &GameState, registry: &CardRegistry, server: ServerId) -> bool {
-    run_cost(state, registry, server).is_none_or(|cost| {
+    may_pay_run_cost_of(state, registry, server, false)
+}
+
+/// [`may_pay_run_cost`] for the basic action to run (`basic`) or a run a
+/// card's text makes, which Enhanced Login Protocol does not price. The
+/// card offers are the crate's callers; the basic action is refused by
+/// `start_run` and so never offered, since the action list probes it.
+fn may_pay_run_cost_of(state: &GameState, registry: &CardRegistry, server: ServerId, basic: bool) -> bool {
+    run_cost(state, registry, server, basic).is_none_or(|cost| {
         let ctx = crate::rules::ability::ResolutionContext::for_card(None);
         crate::rules::ability::cost_is_affordable(state, registry, Side::Runner, &cost, crate::rules::payment::Purpose::Other, &ctx)
     })
@@ -188,17 +196,24 @@ pub(crate) fn may_pay_run_cost(state: &GameState, registry: &CardRegistry, serve
 /// put ahead of `RunInitiated` and to dispatch after it
 /// (`ability::dispatch_cost_events`, the payer's half of the Payment Rule).
 pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<Vec<GameEvent>, RulesError> {
-    start_run_paying(state, registry, server, true)
+    start_run_paying(state, registry, server, true, false)
+}
+
+/// `start_run` for the basic action to run (`engine::initiate_run`), which
+/// also pays what is said of that action alone
+/// (`Scope::RunsByTheBasicAction`, Enhanced Login Protocol).
+pub fn start_run_by_the_basic_action(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<Vec<GameEvent>, RulesError> {
+    start_run_paying(state, registry, server, true, true)
 }
 
 /// `start_run`, "ignoring any additional costs to run" (Always Have a
 /// Backup Plan's second run): no run cost is paid as the server is
 /// announced, and none refuses the run.
 pub fn start_run_ignoring_costs(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<Vec<GameEvent>, RulesError> {
-    start_run_paying(state, registry, server, false)
+    start_run_paying(state, registry, server, false, false)
 }
 
-fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: ServerId, pay_run_costs: bool) -> Result<Vec<GameEvent>, RulesError> {
+fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: ServerId, pay_run_costs: bool, basic: bool) -> Result<Vec<GameEvent>, RulesError> {
     // A run a card's text starts as the Runner's turn begins — Alarm
     // Clock's "When your turn begins, you may run HQ" (CR 5.7.1d, before
     // the action phase) — is run in the action phase's shape, which is the
@@ -231,10 +246,10 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
     // announced as the attacked server" (CR 6.3.2b) — before the run's bad
     // publicity credits exist (6.3.3), which cannot pay them. All at once
     // (1.16.10b), and a run that cannot pay is not made.
-    let paid = match run_cost(state, registry, server).filter(|_| pay_run_costs) {
+    let paid = match run_cost(state, registry, server, basic).filter(|_| pay_run_costs) {
         None => Vec::new(),
         Some(cost) => {
-            if !may_pay_run_cost(state, registry, server) {
+            if !may_pay_run_cost_of(state, registry, server, basic) {
                 return Err(RulesError::CannotAffordRunCost { server });
             }
             crate::rules::ability::pay_cost(state, registry, Side::Runner, &cost, crate::rules::payment::Purpose::Other, None)?

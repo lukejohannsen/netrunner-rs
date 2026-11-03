@@ -61,8 +61,10 @@ pub(crate) enum Target<'a> {
     /// basic action (Sebastião Souza Pessoa's additional cost).
     Trashing { card: &'a CardDefinition, install: InstallId },
     /// The run against `server`: whether it may be declared successful,
-    /// how many cards it may access.
-    Run { server: ServerId },
+    /// how many cards it may access. `basic` when it is the basic action to
+    /// run that is priced (`Scope::RunsByTheBasicAction`): every other
+    /// question about a run is the same however it was begun.
+    Run { server: ServerId, basic: bool },
     /// An agenda the Runner would steal from `from`: what
     /// `Scope::StealingFromThisServer` asks about without an access in
     /// progress (`may_steal_from`), the server the steal is from.
@@ -227,7 +229,7 @@ fn first_this_turn(state: &GameState, source: &Source<'_>, effect: &ContinuousEf
         (Scope::Ice(filter), ContinuousKind::RezCost(_)) => turn_log::Occurrences::ice_rezzes(filter, source.side),
         // Service Outage's "as an additional cost to run for the first
         // time during their turn": priced before the run is announced.
-        (Scope::Runs(_), ContinuousKind::RunCost(_)) => turn_log::Occurrences::runs(source.side),
+        (Scope::Runs(_) | Scope::RunsByTheBasicAction, ContinuousKind::RunCost(_)) => turn_log::Occurrences::runs(source.side),
         // Chronos Protocol's "the first net damage the Runner suffers
         // each turn": asked as the damage is done, before it is counted.
         (Scope::Controller, kind @ ContinuousKind::ChoosesDamageTrash(_)) => turn_log::Occurrences::damage(kind),
@@ -329,8 +331,9 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
                 && crate::rules::pending_choice::copy_matches(state, filter, Some(*install))
         }
         (Scope::Rig(filter), Target::Rig { card, .. }) => card_matches_filter(card, filter),
-        (Scope::RunsOnThisServer, Target::Run { server }) => source.server == Some(*server),
-        (Scope::Runs(kind), Target::Run { server }) => kind.admits(*server),
+        (Scope::RunsOnThisServer, Target::Run { server, .. }) => source.server == Some(*server),
+        (Scope::Runs(kind), Target::Run { server, .. }) => kind.admits(*server),
+        (Scope::RunsByTheBasicAction, Target::Run { basic, .. }) => *basic,
         (Scope::Player(side), Target::Bound(bound)) => side == bound,
         _ => false,
     }
@@ -360,7 +363,7 @@ pub(crate) fn any(state: &GameState, registry: &CardRegistry, target: Target<'_>
 /// nothing used during it said this one cannot (`Prohibition::
 /// DeclaredSuccessful`, Transport Monopoly).
 pub(crate) fn may_be_declared_successful(state: &GameState, registry: &CardRegistry, server: ServerId) -> bool {
-    !any(state, registry, Target::Run { server }, |kind| matches!(kind, ContinuousKind::CannotBeDeclaredSuccessful))
+    !any(state, registry, Target::Run { server, basic: false }, |kind| matches!(kind, ContinuousKind::CannotBeDeclaredSuccessful))
         && !cannot(state, registry, Prohibition::DeclaredSuccessful)
 }
 
@@ -372,7 +375,7 @@ pub(crate) fn may_be_declared_successful(state: &GameState, registry: &CardRegis
 /// and a card's offer of servers to run put, so they cannot disagree.
 pub(crate) fn run_prohibited_on(state: &GameState, registry: &CardRegistry, server: ServerId) -> bool {
     lingering::prohibits_server(state, Prohibition::Run, server)
-        || any(state, registry, Target::Run { server }, |kind| *kind == ContinuousKind::Cannot(Prohibition::Run))
+        || any(state, registry, Target::Run { server, basic: false }, |kind| *kind == ContinuousKind::Cannot(Prohibition::Run))
 }
 
 /// The most remote servers the Corp may have (A Teia: IP Recovery), or
@@ -487,7 +490,7 @@ pub(crate) fn runner_draw_limit(state: &GameState, registry: &CardRegistry) -> O
 /// limit and has no install (CR 9.12.5).
 pub(crate) fn access_limits(state: &GameState, registry: &CardRegistry, server: ServerId) -> Vec<(u32, CardId, Option<InstallId>)> {
     let mut limits = Vec::new();
-    for_each_applying(state, registry, Target::Run { server }, |kind| matches!(kind, ContinuousKind::AccessOthersAtMost(_)), |effect, source, _| {
+    for_each_applying(state, registry, Target::Run { server, basic: false }, |kind| matches!(kind, ContinuousKind::AccessOthersAtMost(_)), |effect, source, _| {
         if let ContinuousKind::AccessOthersAtMost(count) = effect.kind {
             limits.push((count, source.card.clone(), source.install));
         }
@@ -736,7 +739,7 @@ pub fn installed_ice_strength(state: &GameState, registry: &CardRegistry, card: 
 /// only about the run.
 pub fn trace_base_delta(state: &GameState, registry: &CardRegistry, starter: Option<InstallId>) -> i32 {
     let ice = starter.and_then(|install| Target::corp_install(state, registry, install)).map_or(0, |target| sum(state, registry, target, trace_base));
-    let run = state.active_run.as_ref().map_or(0, |run| sum(state, registry, Target::Run { server: run.server }, trace_base));
+    let run = state.active_run.as_ref().map_or(0, |run| sum(state, registry, Target::Run { server: run.server, basic: false }, trace_base));
     ice + run
 }
 
@@ -924,8 +927,12 @@ pub(crate) fn may_trash(state: &GameState, registry: &CardRegistry, install: Ins
 
 /// Whether the Runner may steal the agenda `card` they are accessing
 /// (`ContinuousKind::CannotBeStolen`, Old Hollywood Grid), beside the
-/// player's prohibition `cannot_about` asks.
+/// player's prohibition `cannot_about` asks, and a steal alone forbidden
+/// (`Prohibition::Steal`, Lakshmi Smartfabrics' "copies of that agenda").
 pub(crate) fn may_steal(state: &GameState, registry: &CardRegistry, card: &CardId) -> bool {
+    if lingering::prohibits_about(state, Prohibition::Steal, card) {
+        return false;
+    }
     let Some(definition) = registry.get(card) else { return true };
     let scored_copy = state.runner.scored_agendas.iter().any(|scored| scored.card == *card);
     !any(state, registry, Target::Card(definition), |kind| matches!(kind, ContinuousKind::CannotBeStolen { except_with_a_scored_copy } if !(*except_with_a_scored_copy && scored_copy)))
@@ -938,6 +945,9 @@ pub(crate) fn may_steal(state: &GameState, registry: &CardRegistry, card: &CardI
 /// steps (the 256-seed view sweep, seed 251) — Magistrate Revontulet's
 /// seed 120 again, through a rule the steal price does not carry.
 pub fn may_steal_from(state: &GameState, registry: &CardRegistry, card: &CardId, server: ServerId) -> bool {
+    if lingering::prohibits_about(state, Prohibition::Steal, card) {
+        return false;
+    }
     let Some(definition) = registry.get(card) else { return true };
     let scored_copy = state.runner.scored_agendas.iter().any(|scored| scored.card == *card);
     !any(state, registry, Target::Stealing { card: definition, from: server }, |kind| {
@@ -949,6 +959,21 @@ pub fn may_steal_from(state: &GameState, registry: &CardRegistry, card: &CardId,
 /// (`ContinuousKind::CannotBeBypassed`, Underway Grid).
 pub(crate) fn may_bypass(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
     Target::corp_install(state, registry, install).is_none_or(|target| !any(state, registry, target, |kind| *kind == ContinuousKind::CannotBeBypassed))
+}
+
+/// How many advancement counters beyond its own the Corp install
+/// `install` is considered to have (`ContinuousKind::AdditionalAdvancement`,
+/// Satellite Grid), as the table stands. Only ice is reached: the one scope
+/// the kind is said with is `IceProtectingThisServer`.
+pub(crate) fn considered_advancement(state: &GameState, registry: &CardRegistry, install: InstallId) -> u32 {
+    let Some(target) = Target::corp_install(state, registry, install) else { return 0 };
+    let mut more = 0;
+    for_each_applying(state, registry, target, |kind| matches!(kind, ContinuousKind::AdditionalAdvancement(_)), |effect, _, _| {
+        if let ContinuousKind::AdditionalAdvancement(by) = effect.kind {
+            more += by;
+        }
+    });
+    more
 }
 
 /// Whether the installed Corp card `install` may be exposed
@@ -1234,8 +1259,8 @@ pub(crate) fn steal_costs_added(state: &GameState, registry: &CardRegistry, card
     costs
 }
 
-/// The additional costs to run `server` (CR 6.3.2b: Earth Station: SEA
-/// Headquarters), in the order their cards are asked, paid together as the
+/// The additional costs to take the basic action to run `server` (CR
+/// 6.3.2b: Earth Station: SEA Headquarters), in the order their cards are asked, paid together as the
 /// server is announced (`run::start_run`).
 ///
 /// A count in one is read here, as the card that prints it — Cold Site
@@ -1243,6 +1268,13 @@ pub(crate) fn steal_costs_added(state: &GameState, registry: &CardRegistry, card
 /// upgrade's counters — and paid as the number it came to, since the
 /// payment has no card to read it as.
 pub fn run_costs(state: &GameState, registry: &CardRegistry, server: ServerId) -> Vec<Cost> {
+    run_costs_of(state, registry, server, true)
+}
+
+/// [`run_costs`] for a run the basic action makes (`basic`) or one a
+/// card's text makes, which Enhanced Login Protocol's
+/// `Scope::RunsByTheBasicAction` does not price.
+pub(crate) fn run_costs_of(state: &GameState, registry: &CardRegistry, server: ServerId, basic: bool) -> Vec<Cost> {
     fn fixed(cost: &Cost, ctx: &ability::ResolutionContext<'_>, state: &GameState, registry: &CardRegistry) -> Cost {
         match cost {
             Cost::CreditsAmount(amount) => Cost::Credits(ability::resolve_amount(amount, ctx, state, registry)),
@@ -1252,7 +1284,7 @@ pub fn run_costs(state: &GameState, registry: &CardRegistry, server: ServerId) -
         }
     }
     let mut costs = Vec::new();
-    for_each_applying(state, registry, Target::Run { server }, |kind| matches!(kind, ContinuousKind::RunCost(_)), |effect, _, ctx| {
+    for_each_applying(state, registry, Target::Run { server, basic }, |kind| matches!(kind, ContinuousKind::RunCost(_)), |effect, _, ctx| {
         if let ContinuousKind::RunCost(cost) = &effect.kind {
             costs.push(fixed(cost, ctx, state, registry));
         }
