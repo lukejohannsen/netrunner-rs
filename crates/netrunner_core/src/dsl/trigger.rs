@@ -1104,7 +1104,14 @@ pub enum EventFilter {
     /// which no card in the pool can reach but by installing Oberth into a
     /// server already advanced in this turn. Composition didn't work: a
     /// `Card` filter naming this server is finer than any column the turn
-    /// keeps.
+    /// keeps. On the Corp's `OnInstall` it is an install into the server
+    /// (Amazon Industrial Zone's "whenever you install a piece of ice
+    /// **protecting this server**", `All` with `Card(Ice)`), read off the
+    /// install as it now stands, as the advance is; only an advance has a
+    /// first time counted here, so `validate` keeps `first_each_turn` off
+    /// the install's (Stage 24). Composition didn't work for the install
+    /// either: `InRootOfThisServer` refuses ice, and `ProtectingThisServer`
+    /// is the pass's word, about the ice a moment names.
     InOrProtectingThisServer,
     /// The piece of ice the moment is about protects the listener's own
     /// server — K.P. Lynn's "whenever the Runner passes all of the ice

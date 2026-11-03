@@ -1,0 +1,80 @@
+{
+  "id": "angel_arena",
+  "title": "Angel Arena",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "unique": true,
+  "counter_kind": "Power",
+  "additional_install_cost": {
+    "CreditsX": {}
+  },
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": "ChosenNumber"
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ],
+      "text": "Place X power counters on Angel Arena when it is installed. When there are no power counters left on Angel Arena, trash it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "TopOfDeck": {
+              "deck": "Runner",
+              "count": 1,
+              "reveal": true
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Runner",
+              "source": "OwnStack",
+              "filter": {
+                "TopOfZone": 1
+              },
+              "min": 0,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "BottomOfOwnDeck"
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "ThisCardCountersAtMost": 0
+              },
+              "effect": {
+                "TrashCard": "ThisCard"
+              }
+            }
+          }
+        ]
+      },
+      "text": "Hosted power counter: Reveal the top card of your stack. You may add that card to the bottom of your stack."
+    }
+  ],
+  "built_from": 6080,
+  "is_playable": true
+}

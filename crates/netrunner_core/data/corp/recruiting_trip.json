@@ -1,0 +1,41 @@
+{
+  "id": "recruiting_trip",
+  "title": "Recruiting Trip",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "additional_play_cost": {
+    "CreditsX": {}
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": {
+              "All": [
+                {
+                  "HasSubtype": "Sysop"
+                },
+                "DifferentNames"
+              ]
+            },
+            "min": 0,
+            "max": 0,
+            "reveal": true,
+            "shuffle_after": true,
+            "destination": "OwnHq",
+            "up_to": "ChosenNumber"
+          }
+        }
+      ],
+      "text": "Search R&D for up to X different sysops (by title), reveal them, and add them to HQ. Shuffle R&D."
+    }
+  ],
+  "built_from": 8035,
+  "is_playable": true
+}

@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Weyland Consortium: Because We Built It, whose recurring credit pays only to advance ice. Yield Curve's list, its identity swapped: its Hortum and Tyrant are ice the credit can advance. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words, Stage 2. One Research Station became a Simone Diego, whose credits advance cards in her server (Engine words, Stage 3). Lycan, Chimera and Mother Goddess, for the Red Tapes, the Bailiffs and the Assassin, are ice whose type is the table's: a morph's advancement tokens, a rez's choice, every other rezzed ice's. Engine words Stage 12 brought two Oversight AIs and two Curtain Walls in for the Drudge Works and Hostile Architectures, so the sweep rezzes ice for nothing under a condition and reads a strength off the ice's place. Worlds Plaza came in for an Elizabeth Mills in Engine words Stage 14, to reach assets hosted on an asset. Engine words Stage 23 swapped one of its Punitive Counterstrike, which two other decks keep, for a Power Shutdown, a mill whose count bounds the program or hardware the Runner trashes.",
+  "description": "Not a published list: built so the sweeps reach Weyland Consortium: Because We Built It, whose recurring credit pays only to advance ice. Yield Curve's list, its identity swapped: its Hortum and Tyrant are ice the credit can advance. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words, Stage 2. One Research Station became a Simone Diego, whose credits advance cards in her server (Engine words, Stage 3). Lycan, Chimera and Mother Goddess, for the Red Tapes, the Bailiffs and the Assassin, are ice whose type is the table's: a morph's advancement tokens, a rez's choice, every other rezzed ice's. Engine words Stage 12 brought two Oversight AIs and two Curtain Walls in for the Drudge Works and Hostile Architectures, so the sweep rezzes ice for nothing under a condition and reads a strength off the ice's place. Worlds Plaza came in for an Elizabeth Mills in Engine words Stage 14, to reach assets hosted on an asset. Engine words Stage 23 swapped one of its Punitive Counterstrike, which two other decks keep, for a Power Shutdown, a mill whose count bounds the program or hardware the Runner trashes. Engine words Stage 24 (FFG): an Amazon Industrial Zone for its GRNDL Refinery, which two keep.",
   "style": [
     "traps"
   ],
@@ -36,10 +36,6 @@
     {
       "card": "hortum",
       "count": 2
-    },
-    {
-      "card": "grndl_refinery",
-      "count": 1
     },
     {
       "card": "broad_daylight",
@@ -115,6 +111,10 @@
     },
     {
       "card": "power_shutdown",
+      "count": 1
+    },
+    {
+      "card": "amazon_industrial_zone",
       "count": 1
     }
   ]

@@ -1,0 +1,84 @@
+{
+  "id": "unregistered_s_w_35",
+  "title": "Unregistered S&W '35",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 2
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnWhen": {
+              "trigger": "OnSuccessfulRun",
+              "when": {
+                "Server": [
+                  "Hq"
+                ]
+              }
+            }
+          },
+          1
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OpponentInstalled",
+          "filter": {
+            "All": [
+              "Rezzed",
+              {
+                "Not": "Ice"
+              },
+              {
+                "Not": {
+                  "InServer": "Hq"
+                }
+              },
+              {
+                "Not": {
+                  "InServer": "RnD"
+                }
+              },
+              {
+                "Not": {
+                  "InServer": "Archives"
+                }
+              },
+              {
+                "AnyOf": [
+                  {
+                    "HasSubtype": "Bioroid"
+                  },
+                  {
+                    "HasSubtype": "Clone"
+                  },
+                  {
+                    "HasSubtype": "Executive"
+                  },
+                  {
+                    "HasSubtype": "Sysop"
+                  }
+                ]
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      },
+      "text": "[click][click]: Trash 1 rezzed bioroid, clone, executive, or sysop in the root of a remote server."
+    }
+  ],
+  "built_from": 5039,
+  "is_playable": true
+}

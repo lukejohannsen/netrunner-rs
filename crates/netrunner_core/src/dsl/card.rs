@@ -1636,9 +1636,10 @@ impl CardDefinition {
             // Only a Corp card is in a root, and only the Corp installs
             // into one.
             EventFilter::InRootOfThisServer => matches!(triggered.trigger, Trigger::OnInstall | Trigger::OnAdvancementCounterPlaced) && self.side == crate::rules::Side::Corp,
-            // Only an advance is counted on the root's copies, and only a
-            // Corp card is in a server.
-            EventFilter::InOrProtectingThisServer => triggered.trigger == Trigger::OnAdvance && self.side == crate::rules::Side::Corp,
+            // An advance of a card in the server, or an install into it
+            // (Amazon Industrial Zone's "a piece of ice protecting this
+            // server", beside `Card(Ice)`); only a Corp card is in a server.
+            EventFilter::InOrProtectingThisServer => matches!(triggered.trigger, Trigger::OnAdvance | Trigger::OnInstall) && self.side == crate::rules::Side::Corp,
             // Only a pass names the ice passed, and only a Corp card is in
             // a server.
             EventFilter::ProtectingThisServer => triggered.trigger == Trigger::OnIcePassed && self.side == crate::rules::Side::Corp,
@@ -2447,9 +2448,11 @@ impl CardDefinition {
                 (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_) | ContinuousKind::CannotBeBrokenUsing(_) | ContinuousKind::StrengthCannotBeLowered | ContinuousKind::CannotHost | ContinuousKind::InsteadOfPassing(_), _) => {
                     return misfit("BreakLimit", "what may be broken on or trashed with a piece of ice during its encounter is said by the ice of itself (`This`)");
                 }
-                (ContinuousKind::CannotBeTrashedBy(by), Scope::This) if *by != self.side && !matches!(self.card_type, CardType::Agenda | CardType::Operation | CardType::Event | CardType::Identity) => {}
+                // Either player: Architect's "**Players** cannot trash this
+                // ice" is two entries, one naming its own controller.
+                (ContinuousKind::CannotBeTrashedBy(_), Scope::This) if !matches!(self.card_type, CardType::Agenda | CardType::Operation | CardType::Event | CardType::Identity) => {}
                 (ContinuousKind::CannotBeTrashedBy(_), _) => {
-                    return misfit("CannotBeTrashedBy", "an installed card says of itself (`This`) that the other player cannot trash it");
+                    return misfit("CannotBeTrashedBy", "an installed card says of itself (`This`) that a player cannot trash it");
                 }
                 (ContinuousKind::CannotBeBypassed, Scope::IceProtectingThisServer(_)) if matches!(self.card_type, CardType::Upgrade) => {}
                 (ContinuousKind::CannotBeBypassed, Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}

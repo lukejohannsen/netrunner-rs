@@ -1,0 +1,51 @@
+{
+  "id": "amazon_industrial_zone",
+  "title": "Amazon Industrial Zone",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 4,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "Any",
+      "when": {
+        "All": [
+          "InOrProtectingThisServer",
+          {
+            "Card": "Ice"
+          }
+        ]
+      },
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "RezInstalled": {
+                  "install": 0,
+                  "pay_cost": true,
+                  "discount": {
+                    "Fixed": 3
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may immediately rez it, lowering its rez cost by 3",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you install a piece of ice protecting this server, you may immediately rez it, lowering its rez cost by 3."
+    }
+  ],
+  "built_from": 2038,
+  "is_playable": true
+}

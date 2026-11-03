@@ -1,0 +1,47 @@
+{
+  "id": "haas_arcology_ai",
+  "title": "Haas Arcology AI",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 1,
+  "advancement_requirement": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "Advance"
+      },
+      "applies_to": "This",
+      "while": {
+        "ActingCardMatches": "Rezzed"
+      },
+      "text": "You can advance this asset if it is unrezzed."
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveAdvancementCounters": 1
+          }
+        ]
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "GainClicks": [
+          "Corp",
+          2
+        ]
+      },
+      "text": "Once per turn → [click], hosted advancement counter: Gain [click][click]."
+    }
+  ],
+  "built_from": 3011,
+  "is_playable": true
+}

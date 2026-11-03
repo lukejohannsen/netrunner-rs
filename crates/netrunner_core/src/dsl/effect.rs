@@ -4570,7 +4570,10 @@ impl Effect {
             Effect::AddCounters(a) => Effect::AddCounters(amount(a)),
             Effect::PlaceAdvancementCounters(a) => Effect::PlaceAdvancementCounters(amount(a)),
             Effect::RezInstalled { install, pay_cost, discount } => Effect::RezInstalled { install, pay_cost, discount: amount(discount) },
-            Effect::Mill { deck, amount: a, then } => Effect::Mill { deck, amount: amount(a), then },
+            // Its `then` is about the cards milled (`TrashedThisWay`), and
+            // has no number of its own, so the chosen one rides in: a
+            // `ChosenNumber` there was left unwritten until Stage 24.
+            Effect::Mill { deck, amount: a, then } => Effect::Mill { deck, amount: amount(a), then: then.map(boxed) },
             Effect::DealDamageAmount(kind, a) => Effect::DealDamageAmount(kind, amount(a)),
             Effect::AddAdditionalAccessAmount { server, amount: a } => Effect::AddAdditionalAccessAmount { server, amount: amount(a) },
             Effect::BoostStrengthAmount { amount: a, duration } => Effect::BoostStrengthAmount { amount: amount(a), duration },
