@@ -57641,3 +57641,276 @@ mod engine_words_stage_23 {
         assert_eq!(state.corp.installed[0].counters, 1, "Kate's 1[link]");
     }
 }
+
+mod engine_words_stage_24 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn installed(card: &str, install: u32, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    /// Passes every open window until something is parked, or none is open.
+    fn until_parked(mut state: GameState, registry: &CardRegistry) -> GameState {
+        loop {
+            let parked = state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.active_trace.is_some();
+            match &state.paid_ability_window {
+                Some(window) if !parked => state = act(&state, registry, PlayerAction::PassPriority { side: window.active_priority }),
+                _ => return state,
+            }
+        }
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<PlayerAction> {
+        crate::rules::legal_actions_for(state, registry, side).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect()
+    }
+
+    /// Toggles every position the parked selection offers, then confirms.
+    fn select_all(mut state: GameState, registry: &CardRegistry, side: Side) -> GameState {
+        let mut toggled = Vec::new();
+        loop {
+            let next = toggles(&state, registry, side).into_iter().find(|action| !toggled.contains(action));
+            match next {
+                Some(toggle) => {
+                    state = act(&state, registry, toggle.clone());
+                    toggled.push(toggle);
+                }
+                None => return act(&state, registry, PlayerAction::ConfirmCardSelection),
+            }
+        }
+    }
+
+    /// A run on HQ, up to the Corp's rez of the unrezzed piece of ice
+    /// `ice` as it is approached.
+    fn rez_on_approach(state: &GameState, registry: &CardRegistry, ice: InstallId) -> GameState {
+        let running = act(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let (mut at_ice, _) = crate::rules::test_support::continue_run(&running, registry).expect("approach the ice");
+        while let Some(window) = at_ice.paid_ability_window.as_ref().filter(|window| window.active_priority != Side::Corp) {
+            at_ice = act(&at_ice, registry, PlayerAction::PassPriority { side: window.active_priority });
+        }
+        act(&at_ice, registry, PlayerAction::RezIce { ice })
+    }
+
+    /// "The first time you rez a piece of ice each turn, you may search R&D
+    /// for another copy of that ice, reveal it, and add it to HQ. Shuffle
+    /// R&D."
+    #[test]
+    fn the_foundry_adds_another_copy_of_the_first_ice_rezzed_each_turn_to_hq() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.identity = Some(id("the_foundry_refining_the_process"));
+        state.corp.installed = vec![installed("ice_wall", 60, ServerId::Hq, InstallSlot::Ice, false)];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        let rezzed = until_parked(rez_on_approach(&state, &registry, InstallId(60)), &registry);
+        assert_eq!(toggles(&rezzed, &registry, Side::Corp).len(), 1, "the other Ice Wall, and nothing else");
+        let done = select_all(rezzed, &registry, Side::Corp);
+        assert_eq!(done.corp.hq, vec![id("ice_wall")]);
+        assert_eq!(done.corp.r_and_d.len(), 2);
+        assert!(!done.corp.r_and_d.contains(&id("ice_wall")));
+    }
+
+    /// "Whenever you install a piece of hardware (including Replicator), you
+    /// may search your stack for another copy of that hardware, reveal it,
+    /// and add it your grip."
+    #[test]
+    fn replicator_fetches_another_copy_of_the_hardware_installed_and_of_itself() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("replicator")];
+        state.runner.stack = vec![id("sure_gamble"), id("replicator"), id("akamatsu_mem_chip")];
+        let installed = until_parked(act(&state, &registry, PlayerAction::InstallHardware { card_id: id("replicator"), host: None }), &registry);
+        assert_eq!(toggles(&installed, &registry, Side::Runner).len(), 1, "the other Replicator");
+        let done = select_all(installed, &registry, Side::Runner);
+        assert_eq!(done.runner.grip, vec![id("replicator")]);
+        assert_eq!(done.runner.stack.len(), 2);
+
+        let installed = until_parked(act(&done, &registry, PlayerAction::InstallHardware { card_id: id("replicator"), host: None }), &registry);
+        assert!(toggles(&installed, &registry, Side::Runner).is_empty(), "no third copy, and the chip is not a copy");
+    }
+
+    /// "Whenever you install a piece of ice protecting this server, you may
+    /// immediately rez it, lowering its rez cost by 3."
+    #[test]
+    fn amazon_industrial_zone_rezzes_ice_installed_on_its_server_for_three_less() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![installed("amazon_industrial_zone", 60, ServerId::Remote(0), InstallSlot::Root, true)];
+        state.corp.hq = vec![id("rototurret"), id("enigma")];
+        let install = |card: &str, zone: ServerId| PlayerAction::InstallCard { card_id: id(card), zone, slot: InstallSlot::Ice, trash_first: false, host: None };
+        let asked = until_parked(act(&state, &registry, install("rototurret", ServerId::Remote(0))), &registry);
+        assert!(asked.pending_decision.is_some(), "you may rez it");
+        let done = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        let rototurret = done.corp.installed.iter().find(|card| card.card == id("rototurret")).expect("installed");
+        assert!(rototurret.rezzed);
+        assert_eq!(done.corp.resources.credits, Credits(9), "4, less 3");
+
+        let elsewhere = until_parked(act(&done, &registry, install("enigma", ServerId::Hq)), &registry);
+        assert!(elsewhere.pending_decision.is_none(), "another server's ice is not asked about");
+    }
+
+    /// "When your turn begins, you may add 1 rezzed card to HQ and gain
+    /// credits equal to its rez cost."
+    #[test]
+    fn blue_sun_returns_a_rezzed_card_to_hq_for_its_rez_cost() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("blue_sun_powering_the_future"));
+        state.corp.installed =
+            vec![installed("enigma", 60, ServerId::Hq, InstallSlot::Ice, true), installed("ice_wall", 61, ServerId::RnD, InstallSlot::Ice, false)];
+        state.corp.r_and_d = vec![id("hedge_fund")];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Corp);
+        let asked = until_parked(state, &registry);
+        assert_eq!(toggles(&asked, &registry, Side::Corp).len(), 1, "the rezzed ice, not the unrezzed one");
+        let done = select_all(asked, &registry, Side::Corp);
+        assert!(done.corp.hq.contains(&id("enigma")), "{:?}", done.corp.hq);
+        assert_eq!(done.corp.installed.len(), 1);
+        assert_eq!(done.corp.resources.credits, Credits(13), "Enigma's 3[credit]");
+    }
+
+    /// "You can advance this asset if it is unrezzed. Once per turn →
+    /// [click], hosted advancement counter: Gain [click][click]."
+    #[test]
+    fn haas_arcology_ai_is_advanced_unrezzed_and_spends_a_counter_for_two_clicks() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![installed("haas_arcology_ai", 60, ServerId::Remote(0), InstallSlot::Root, false)];
+        let advanced = act(&state, &registry, PlayerAction::AdvanceCard { target: InstallId(60) });
+        assert_eq!(advanced.corp.installed[0].advancement_tokens, 1);
+        let mut rezzed = advanced;
+        rezzed.corp.installed[0].rezzed = true;
+        rezzed.corp.installed[0].advancement_tokens = 2;
+        assert!(apply_action(&rezzed, &registry, PlayerAction::AdvanceCard { target: InstallId(60) }).is_err(), "not once it is rezzed");
+        let used = act(&rezzed, &registry, PlayerAction::ActivateAbility { target: InstallId(60), ability_index: 0 });
+        let used = close_all_windows(used, &registry).0;
+        assert_eq!(used.corp.resources.clicks, Clicks(3), "2 left after the advance, less 1, plus 2");
+        assert_eq!(used.corp.installed[0].advancement_tokens, 1);
+        assert!(apply_action(&used, &registry, PlayerAction::ActivateAbility { target: InstallId(60), ability_index: 0 }).is_err(), "once per turn");
+    }
+
+    /// "Players cannot trash this ice."
+    #[test]
+    fn architect_cannot_be_trashed_by_either_player() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![installed("architect", 60, ServerId::Hq, InstallSlot::Ice, true), installed("ice_wall", 61, ServerId::Hq, InstallSlot::Ice, true)];
+        for side in [Side::Corp, Side::Runner] {
+            assert!(!crate::rules::continuous::may_trash(&state, &registry, InstallId(60), side), "{side:?}");
+            assert!(crate::rules::continuous::may_trash(&state, &registry, InstallId(61), side), "{side:?}");
+        }
+    }
+
+    /// "Use this hardware only if you have made a successful run on HQ this
+    /// turn. [click][click]: Trash 1 rezzed bioroid, clone, executive, or
+    /// sysop in the root of a remote server."
+    #[test]
+    fn unregistered_s_w_35_trashes_a_rezzed_executive_in_a_remote_after_an_hq_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("unregistered_s_w_35", 700)];
+        state.corp.installed = vec![
+            installed("magistrate_revontulet", 60, ServerId::Remote(0), InstallSlot::Root, true),
+            installed("ryon_knight", 61, ServerId::Hq, InstallSlot::Root, true),
+            installed("pad_campaign", 62, ServerId::Remote(1), InstallSlot::Root, true),
+            installed("vera_ivanovna_shuyskaya", 63, ServerId::Remote(2), InstallSlot::Root, false),
+        ];
+        let shoot = PlayerAction::ActivateAbility { target: InstallId(700), ability_index: 0 };
+        assert!(apply_action(&state, &registry, shoot.clone()).is_err(), "no HQ run this turn");
+        crate::rules::test_support::a_run_succeeded_this_turn(&mut state);
+        let aimed = act(&state, &registry, shoot);
+        assert_eq!(toggles(&aimed, &registry, Side::Runner).len(), 1, "a rezzed executive in a remote; not a sysop in HQ, an advertisement or an unrezzed executive");
+        let done = until_parked(select_all(aimed, &registry, Side::Runner), &registry);
+        assert!(done.corp.installed.iter().all(|card| card.install_id != InstallId(60)));
+        assert_eq!(done.runner.resources.clicks, Clicks(2));
+    }
+
+    /// "Search R&D for up to X different sysops (by title), reveal them, and
+    /// add them to HQ."
+    #[test]
+    fn recruiting_trip_fetches_up_to_x_differently_named_sysops() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("recruiting_trip")];
+        state.corp.r_and_d = vec![id("ryon_knight"), id("hedge_fund"), id("ryon_knight"), id("bernice_mai")];
+        let asked = act(&state, &registry, PlayerAction::PlayOperation { card_id: id("recruiting_trip") });
+        let chosen = act(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 });
+        assert_eq!(chosen.corp.resources.credits, Credits(8));
+        let done = select_all(chosen, &registry, Side::Corp);
+        let mut fetched = done.corp.hq.clone();
+        fetched.sort();
+        assert_eq!(fetched, vec![id("bernice_mai"), id("ryon_knight")], "one Ryon Knight, by title");
+        assert_eq!(done.corp.r_and_d.len(), 2);
+    }
+
+    /// "Place X power counters on Angel Arena when it is installed. When
+    /// there are no power counters left on Angel Arena, trash it. Hosted
+    /// power counter: Reveal the top card of your stack. You may add that
+    /// card to the bottom of your stack."
+    #[test]
+    fn angel_arena_spends_its_last_counter_to_bottom_the_top_card_and_is_trashed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("angel_arena")];
+        state.runner.stack = vec![id("sure_gamble"), id("diesel")];
+        let asked = act(&state, &registry, PlayerAction::InstallResource { card_id: id("angel_arena"), host: None });
+        let installed = until_parked(act(&asked, &registry, PlayerAction::ChooseNumber { amount: 1 }), &registry);
+        assert_eq!(installed.runner.resources.credits, Credits(9));
+        let arena = installed.runner.rig.iter().find(|card| card.card == id("angel_arena")).expect("installed");
+        assert_eq!(arena.counters, 1);
+        let used = act(&installed, &registry, PlayerAction::ActivateAbility { target: arena.install_id, ability_index: 0 });
+        let done = until_parked(select_all(used, &registry, Side::Runner), &registry);
+        assert_eq!(done.runner.stack, vec![id("diesel"), id("sure_gamble")], "Diesel, from the top, to the bottom");
+        assert_eq!(done.runner.heap, vec![id("angel_arena")], "no counters left");
+    }
+
+    /// "Whenever a gray ops or black ops operation is trashed after
+    /// resolving, you may give the Corp 1 bad publicity and take 1 tag.
+    /// [trash]: Draw 1 card for each bad publicity the Corp has."
+    #[test]
+    fn tallie_perrault_trades_a_tag_for_bad_publicity_after_gray_ops_and_draws_for_it() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("tallie_perrault", 700)];
+        state.corp.hq = vec![id("hedge_fund"), id("subliminal_messaging")];
+        let hedged = until_parked(act(&state, &registry, PlayerAction::PlayOperation { card_id: id("hedge_fund") }), &registry);
+        assert!(hedged.pending_decision.is_none(), "a transaction is no gray ops");
+        let played = until_parked(act(&hedged, &registry, PlayerAction::PlayOperation { card_id: id("subliminal_messaging") }), &registry);
+        assert!(played.pending_decision.is_some(), "you may give the Corp 1 bad publicity");
+        let done = until_parked(act(&played, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }), &registry);
+        assert_eq!(done.corp.bad_publicity, 1);
+        assert_eq!(done.runner.tags, 1);
+
+        let mut runners = done;
+        runners.phase = GamePhase::Action(Side::Runner);
+        runners.corp.bad_publicity = 2;
+        runners.runner.stack = vec![id("sure_gamble"), id("diesel"), id("corroder")];
+        let drawn = until_parked(act(&runners, &registry, PlayerAction::ActivateAbility { target: InstallId(700), ability_index: 0 }), &registry);
+        assert_eq!(drawn.runner.grip.len(), 2);
+        assert_eq!(drawn.runner.heap, vec![id("tallie_perrault")]);
+    }
+
+    /// `Effect::filled` walks into a `Mill`'s `then`: a chosen number there
+    /// is written, as it is everywhere else.
+    #[test]
+    fn a_chosen_number_reaches_into_a_mills_then() {
+        let mill = crate::dsl::Effect::Mill { deck: Side::Corp, amount: crate::dsl::Amount::Fixed(1), then: Some(Box::new(crate::dsl::Effect::GainCreditsAmount(Side::Corp, crate::dsl::Amount::ChosenNumber))) };
+        let crate::dsl::Effect::Mill { then: Some(then), .. } = mill.with_chosen_number(3) else { panic!("still a mill") };
+        assert_eq!(*then, crate::dsl::Effect::GainCreditsAmount(Side::Corp, crate::dsl::Amount::Fixed(3)));
+    }
+}

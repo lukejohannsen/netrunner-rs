@@ -1,0 +1,36 @@
+{
+  "id": "replicator",
+  "title": "Replicator",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "CardType": "Hardware"
+        }
+      },
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnStack",
+            "filter": "CopyOfThisCard",
+            "min": 0,
+            "max": 1,
+            "reveal": true,
+            "shuffle_after": true,
+            "destination": "OwnGrip"
+          }
+        }
+      ],
+      "text": "Whenever you install a piece of hardware (including Replicator), you may search your stack for another copy of that hardware, reveal it, and add it your grip. Shuffle your stack."
+    }
+  ],
+  "built_from": 2088,
+  "is_playable": true
+}

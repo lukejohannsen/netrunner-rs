@@ -1,0 +1,130 @@
+{
+  "id": "architect",
+  "title": "Architect",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 3,
+  "continuous": [
+    {
+      "kind": {
+        "CannotBeTrashedBy": "Corp"
+      },
+      "applies_to": "This",
+      "text": "Players cannot trash this ice."
+    },
+    {
+      "kind": {
+        "CannotBeTrashedBy": "Runner"
+      },
+      "applies_to": "This",
+      "text": "Players cannot trash this ice."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Look at the top 5 cards of R&D. You may install 1 of those cards, ignoring the install cost.",
+      "effect": {
+        "Sequence": [
+          {
+            "LookAtTopOfDeck": {
+              "deck": "Corp",
+              "count": 5
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnRAndD",
+              "filter": {
+                "All": [
+                  {
+                    "TopOfZone": 5
+                  },
+                  {
+                    "Not": {
+                      "CardType": "Operation"
+                    }
+                  }
+                ]
+              },
+              "min": 0,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "PromptInstallCorpCard": {
+                  "origin_zone": "OwnRAndD",
+                  "ignore_costs": true
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "You may install 1 card from Archives or HQ.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnArchives",
+                "filter": {
+                  "Not": {
+                    "CardType": "Operation"
+                  }
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "PromptInstallCorpCard": {
+                    "origin_zone": "OwnArchives"
+                  }
+                }
+              }
+            },
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnHq",
+                "filter": {
+                  "Not": {
+                    "CardType": "Operation"
+                  }
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "PromptInstallCorpCard": {
+                    "origin_zone": "OwnHq"
+                  }
+                }
+              }
+            },
+            {
+              "Sequence": []
+            }
+          ],
+          "texts": [
+            "You may install 1 card from Archives or HQ — from Archives",
+            "You may install 1 card from Archives or HQ — from HQ",
+            ""
+          ]
+        }
+      }
+    }
+  ],
+  "built_from": 6061,
+  "is_playable": true
+}

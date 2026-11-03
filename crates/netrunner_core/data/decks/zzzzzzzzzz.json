@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Lunar Stage 6's (FFG F8) deck for Tennin Institute: The Secrets Within, on Zyzzyva's list, so the sweeps meet a Corp that advances a card when the Runner made no successful run on their last turn. It carries the stage's Jinteki and neutral cards: Cerebral Cast for a Kakurenbo, Mental Health Clinic and Chairman Hiro for two Project Junebug, Tenma Line for a Daruma, Medical Research Fundraiser for an Aimor, Fast Track for a Whirlpool, and the agendas point for point, Encrypted Portals for Water Monopoly, Philotic Entanglement for Braintrust and Hades Fragment for Fujii Asset Retrieval; Zyzzyva and other decks keep every card swapped out. Eternal-legal only. Spin Stages 1 to 4 (FFG F10) swapped in Tsurugi, Shinobi and Shock! for a Mlinzi, Otoroshi and Sadaka, which other decks keep. Two Taurus take a Pup's and a Mlinzi's place.",
+  "description": "Not a published list: Lunar Stage 6's (FFG F8) deck for Tennin Institute: The Secrets Within, on Zyzzyva's list, so the sweeps meet a Corp that advances a card when the Runner made no successful run on their last turn. It carries the stage's Jinteki and neutral cards: Cerebral Cast for a Kakurenbo, Mental Health Clinic and Chairman Hiro for two Project Junebug, Tenma Line for a Daruma, Medical Research Fundraiser for an Aimor, Fast Track for a Whirlpool, and the agendas point for point, Encrypted Portals for Water Monopoly, Philotic Entanglement for Braintrust and Hades Fragment for Fujii Asset Retrieval; Zyzzyva and other decks keep every card swapped out. Eternal-legal only. Spin Stages 1 to 4 (FFG F10) swapped in Tsurugi, Shinobi and Shock! for a Mlinzi, Otoroshi and Sadaka, which other decks keep. Two Taurus take a Pup's and a Mlinzi's place. Engine words Stage 24 (FFG): a Recruiting Trip for its Genotyping, which two keep.",
   "style": [
     "traps"
   ],
@@ -16,10 +16,6 @@
     {
       "card": "viral_weaponization",
       "count": 2
-    },
-    {
-      "card": "genotyping",
-      "count": 1
     },
     {
       "card": "mandatory_seed_replacement",
@@ -152,6 +148,10 @@
     {
       "card": "taurus",
       "count": 2
+    },
+    {
+      "card": "recruiting_trip",
+      "count": 1
     }
   ]
 }

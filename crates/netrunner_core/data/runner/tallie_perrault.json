@@ -1,0 +1,79 @@
+{
+  "id": "tallie_perrault",
+  "title": "Tallie Perrault",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnFinishedResolving",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Whose": "Corp"
+          },
+          {
+            "Card": {
+              "AnyOf": [
+                {
+                  "HasSubtype": "Gray Ops"
+                },
+                {
+                  "HasSubtype": "Black Ops"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "GiveBadPublicity": {
+                      "Fixed": 1
+                    }
+                  },
+                  {
+                    "GiveTags": {
+                      "Fixed": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may give the Corp 1 bad publicity and take 1 tag",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever a gray ops or black ops operation is trashed after resolving, you may give the Corp 1 bad publicity and take 1 tag."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "DrawCardsAmount": [
+          "Runner",
+          "BadPublicity"
+        ]
+      },
+      "text": "[trash]: Draw 1 card for each bad publicity the Corp has."
+    }
+  ],
+  "built_from": 4083,
+  "is_playable": true
+}

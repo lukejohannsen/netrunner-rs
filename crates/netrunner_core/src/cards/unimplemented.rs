@@ -230,7 +230,6 @@ pub(crate) const VAL_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Breaker Bay* (`breaker_bay`): tranche F7 of the FFG plan.
 pub(crate) const BB_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("recruiting_trip", "Recruiting Trip"),
     ("blacklist", "Blacklist"),
 ];
 
@@ -270,7 +269,6 @@ pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Spaces Between* (`the_spaces_between`): tranche F8 of the FFG plan.
 pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("the_foundry_refining_the_process", "The Foundry: Refining the Process"),
     ("enhanced_login_protocol", "Enhanced Login Protocol"),
     ("heinlein_grid", "Heinlein Grid"),
     ("sealed_vault", "Sealed Vault"),
@@ -285,12 +283,9 @@ pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Up and Over* (`up_and_over`): tranche F8 of the FFG plan.
 pub(crate) const UAO_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("architect", "Architect"),
     ("labyrinthine_servers", "Labyrinthine Servers"),
-    ("blue_sun_powering_the_future", "Blue Sun: Powering the Future"),
     ("inject", "Inject"),
     ("autoscripter", "Autoscripter"),
-    ("angel_arena", "Angel Arena"),
 ];
 
 /// *All That Remains* (`all_that_remains`): tranche F8 of the FFG plan.
@@ -308,7 +303,6 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("shi_kyu", "Shi.Kyū"),
     ("plan_b", "Plan B"),
-    ("unregistered_s_w_35", "Unregistered S&W '35"),
     ("window", "Window"),
     ("bug", "Bug"),
 ];
@@ -316,7 +310,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Creation and Control* (`creation_and_control`): tranche F9 of the FFG plan.
 pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("director_haas_pet_project", "Director Haas' Pet Project"),
-    ("haas_arcology_ai", "Haas Arcology AI"),
     ("howler", "Howler"),
     ("awakening_center", "Awakening Center"),
     ("tyrs_hand", "Tyr's Hand"),
@@ -343,7 +336,6 @@ pub(crate) const TC_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Fear and Loathing* (`fear_and_loathing`): tranche F10 of the FFG plan.
 pub(crate) const FAL_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("tallie_perrault", "Tallie Perrault"),
     ("blackguard", "Blackguard"),
     ("toshiyuki_sakai", "Toshiyuki Sakai"),
 ];
@@ -360,7 +352,6 @@ pub(crate) const WLA_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Trace Amount* (`trace_amount`): tranche F11 of the FFG plan.
 pub(crate) const TA_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("amazon_industrial_zone", "Amazon Industrial Zone"),
 ];
 
 /// *Cyber Exodus* (`cyber_exodus`): tranche F11 of the FFG plan.
@@ -376,7 +367,6 @@ pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Humanity's Shadow* (`humanitys_shadow`): tranche F11 of the FFG plan.
 pub(crate) const HS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("surge", "Surge"),
-    ("replicator", "Replicator"),
     ("data_hound", "Data Hound"),
 ];
 
@@ -400,5 +390,4 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
     ("sundew", "Sundew"),
-    ("blue_sun_powering_the_future", "Blue Sun: Powering the Future"),
 ];
