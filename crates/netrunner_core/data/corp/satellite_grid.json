@@ -1,0 +1,22 @@
+{
+  "id": "satellite_grid",
+  "title": "Satellite Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "trash_cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "AdditionalAdvancement": 1
+      },
+      "applies_to": {
+        "IceProtectingThisServer": "Any"
+      },
+      "text": "Each piece of ice protecting this server is considered to have 1 additional advancement token on it."
+    }
+  ],
+  "triggers": [],
+  "built_from": 7023,
+  "is_playable": true
+}

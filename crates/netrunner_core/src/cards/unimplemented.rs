@@ -178,7 +178,6 @@ pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Business First* (`business_first`): tranche F6 of the FFG plan.
 pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("diwan", "Diwan"),
-    ("lakshmi_smartfabrics", "Lakshmi Smartfabrics"),
 ];
 
 /// *Democracy and Dogma* (`democracy_and_dogma`): tranche F6 of the FFG plan.
@@ -209,7 +208,6 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.
 pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("rebranding_team", "Rebranding Team"),
-    ("ad_blitz", "Ad Blitz"),
     ("media_blitz", "Media Blitz"),
     ("surveillance_sweep", "Surveillance Sweep"),
     ("apex_invasive_predator", "Apex: Invasive Predator"),
@@ -217,7 +215,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("prey", "Prey"),
     ("harbinger", "Harbinger"),
     ("adam_compulsive_hacker", "Adam: Compulsive Hacker"),
-    ("independent_thinking", "Independent Thinking"),
     ("neutralize_all_threats", "Neutralize All Threats"),
     ("security_chip", "Security Chip"),
 ];
@@ -256,7 +253,6 @@ pub(crate) const UOT_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("glenn_station", "Glenn Station"),
     ("mark_yale", "Mark Yale"),
-    ("satellite_grid", "Satellite Grid"),
     ("hivemind", "Hivemind"),
 ];
 
@@ -267,7 +263,6 @@ pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Spaces Between* (`the_spaces_between`): tranche F8 of the FFG plan.
 pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("enhanced_login_protocol", "Enhanced Login Protocol"),
     ("net_celebrity", "Net Celebrity"),
 ];
 
@@ -298,7 +293,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Creation and Control* (`creation_and_control`): tranche F9 of the FFG plan.
 pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("director_haas_pet_project", "Director Haas' Pet Project"),
     ("howler", "Howler"),
     ("awakening_center", "Awakening Center"),
     ("tyrs_hand", "Tyr's Hand"),

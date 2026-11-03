@@ -294,6 +294,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
     match what {
         Prohibition::StealOrTrash => "the Runner cannot steal or trash cards",
         Prohibition::StealOrTrashAgendas => "the Runner cannot steal or trash agendas",
+        Prohibition::Steal => "the Runner cannot steal agendas",
         Prohibition::ScoreAgendas => "the Corp cannot score agendas",
         Prohibition::SpendOrLoseCreditPool => "the Runner cannot spend or lose credits from their credit pool",
         Prohibition::SpendCredits => "the Runner cannot spend credits",
@@ -438,6 +439,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 }
                 (Lingering::Cannot(what), On::CopiesOf(card)) => match what {
                     Prohibition::StealOrTrash => format!("the Runner cannot steal or trash copies of {}", title(card)),
+                    Prohibition::Steal => format!("the Runner cannot steal copies of {}", title(card)),
                     Prohibition::ScoreAgendas => format!("the Corp cannot score copies of {}", title(card)),
                     what => cannot_words(*what).to_string(),
                 },

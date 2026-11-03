@@ -3807,6 +3807,15 @@ pub enum Prohibition {
     /// work: `StealOrTrash` would forbid trashing the asset Pinhole
     /// Threading is for.
     StealOrTrashAgendas,
+    /// The Runner cannot steal an agenda, and may still trash one —
+    /// Lakshmi Smartfabrics' "The Runner cannot steal copies of that
+    /// agenda for the remainder of this turn", bound to copies of the
+    /// agenda revealed (`Effect::Prohibit::copies_of_it`). Asked where every
+    /// steal is (`continuous::may_steal`), so the steal is not offered and
+    /// a must-steal agenda may be passed, as Old Hollywood Grid's
+    /// `CannotBeStolen` is. Composition didn't work: `StealOrTrash` and
+    /// `StealOrTrashAgendas` bar the trash too, which Lakshmi does not.
+    Steal,
     /// The Runner cannot lose or spend credits from their credit pool —
     /// Aircheck's "while this event is active, … you cannot lose or spend
     /// credits from your credit pool", for the run it makes. Asked by
@@ -4130,10 +4139,11 @@ pub enum Prohibition {
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 37] = [
+    pub const ALL: [Prohibition; 38] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
+        Prohibition::Steal,
         Prohibition::SpendOrLoseCreditPool,
         Prohibition::SpendCredits,
         Prohibition::EndTheRun,
@@ -4174,7 +4184,7 @@ impl Prohibition {
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::InstallIce => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessRootOfArchives | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::PlayCurrents | Prohibition::SpendClickButToRun => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::Steal | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessRootOfArchives | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::PlayCurrents | Prohibition::SpendClickButToRun => Side::Runner,
         }
     }
 
@@ -4185,7 +4195,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessRootOfArchives | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::PlayCurrents | Prohibition::InstallIce | Prohibition::SpendClickButToRun => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::Steal | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessRootOfArchives | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::PlayCurrents | Prohibition::InstallIce | Prohibition::SpendClickButToRun => None,
         }
     }
 }
@@ -4332,7 +4342,17 @@ impl Effect {
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
             Effect::Repeat { times, effect } => Effect::Repeat { times, effect: Box::new(effect.with_chosen_installs(installs)) },
-            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: Box::new(effect.with_chosen_installs(installs)), otherwise: otherwise.map(|e| Box::new(e.with_chosen_installs(installs))) },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf {
+                condition: condition.with_chosen_installs(installs),
+                effect: Box::new(effect.with_chosen_installs(installs)),
+                otherwise: otherwise.map(|e| Box::new(e.with_chosen_installs(installs))),
+            },
+            // Independent Thinking's "trash up to 5 of your installed
+            // cards": each chosen card, trashed by its handle.
+            Effect::ForEach { source, filter, effect } => Effect::ForEach { source, filter: filter.with_chosen_installs(installs), effect: Box::new(effect.with_chosen_installs(installs)) },
+            // …and the number of them fixed ahead of the trash, so it
+            // rides past whatever a trash parks (a prevention).
+            Effect::ChooseNumber { chooser, min, max, of, then, text, secret } => Effect::ChooseNumber { chooser, min, max, of, then: Box::new(then.with_chosen_installs(installs)), text, secret },
             // Social Engineering's "If the Corp rezzes that piece of ice this
             // turn": an ability left waiting by the card whose text it is
             // (`AsThisCard`, since a `then` acts as the card chosen, and a

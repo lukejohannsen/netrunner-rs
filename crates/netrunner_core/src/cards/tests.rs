@@ -58367,3 +58367,248 @@ mod engine_words_stage_26 {
         assert_eq!(crate::rules::lingering::installs_prohibited(&done, crate::dsl::Prohibition::Access), vec![InstallId(61)]);
     }
 }
+
+mod engine_words_stage_27 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn installed(card: &str, install: u32, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn parked(state: &GameState) -> bool {
+        state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.active_trace.is_some()
+    }
+
+    /// Passes every open window until something is parked, or none is open.
+    fn until_parked(mut state: GameState, registry: &CardRegistry) -> GameState {
+        loop {
+            match &state.paid_ability_window {
+                Some(window) if !parked(&state) => state = act(&state, registry, PlayerAction::PassPriority { side: window.active_priority }),
+                _ => return state,
+            }
+        }
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<PlayerAction> {
+        crate::rules::legal_actions_for(state, registry, side).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect()
+    }
+
+    /// Toggles every position the parked selection offers, then confirms.
+    fn select_all(mut state: GameState, registry: &CardRegistry, side: Side) -> GameState {
+        let mut toggled = Vec::new();
+        loop {
+            let next = toggles(&state, registry, side).into_iter().find(|action| !toggled.contains(action));
+            match next {
+                Some(toggle) => {
+                    state = act(&state, registry, toggle.clone());
+                    toggled.push(toggle);
+                }
+                None => return act(&state, registry, PlayerAction::ConfirmCardSelection),
+            }
+        }
+    }
+
+    /// Toggles the first position the parked selection offers, then
+    /// confirms.
+    fn select_first(state: GameState, registry: &CardRegistry, side: Side) -> GameState {
+        let toggle = toggles(&state, registry, side).into_iter().next().expect("a card to choose");
+        let chosen = act(&state, registry, toggle);
+        act(&chosen, registry, PlayerAction::ConfirmCardSelection)
+    }
+
+    /// "Whenever you rez a card, place 1 power counter on Lakshmi
+    /// Smartfabrics. X hosted power counters: Reveal an agenda worth X
+    /// points from HQ. The Runner cannot steal copies of that agenda for
+    /// the remainder of this turn."
+    #[test]
+    fn lakshmi_smartfabrics_counts_rezzes_and_keeps_an_agendas_copies_from_being_stolen() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { counters: 2, ..installed("lakshmi_smartfabrics", 60, ServerId::Remote(0), InstallSlot::Root, true) },
+            installed("pad_campaign", 61, ServerId::Remote(1), InstallSlot::Root, false),
+        ];
+        state.corp.hq = vec![id("project_vitruvius"), id("hostile_takeover")];
+        let rezzed = until_parked(act(&state, &registry, PlayerAction::RezIce { ice: InstallId(61) }), &registry);
+        assert_eq!(rezzed.corp.installed[0].counters, 3, "a counter for the rez");
+        let used = until_parked(act(&rezzed, &registry, PlayerAction::ActivateAbility { target: InstallId(60), ability_index: 0 }), &registry);
+        let chose = until_parked(act(&used, &registry, PlayerAction::ChooseNumber { amount: 2 }), &registry);
+        assert_eq!(chose.corp.installed[0].counters, 1, "X counters spent");
+        assert_eq!(toggles(&chose, &registry, Side::Corp).len(), 1, "the agenda worth 2 alone");
+        let revealed = until_parked(select_all(chose, &registry, Side::Corp), &registry);
+        assert!(!crate::rules::continuous::may_steal(&revealed, &registry, &id("project_vitruvius")), "copies of it cannot be stolen");
+        assert!(crate::rules::continuous::may_steal(&revealed, &registry, &id("hostile_takeover")), "another agenda can");
+        assert!(!crate::rules::continuous::cannot_about(&revealed, &registry, crate::dsl::Prohibition::StealOrTrash, &id("project_vitruvius")), "and a copy may still be trashed");
+        let mut next_turn = revealed.clone();
+        next_turn.turn += 1;
+        assert!(crate::rules::continuous::may_steal(&next_turn, &registry, &id("project_vitruvius")), "for the remainder of this turn");
+    }
+
+    fn with_current(card: &str) -> GameState {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq.push(id(card));
+        let played = close_all_windows(act(&state, &registry, PlayerAction::PlayOperation { card_id: id(card) }), &registry).0;
+        assert!(played.corp.play_area.iter().any(|current| current.card == id(card)), "a current stays in play");
+        let mut state = played;
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state
+    }
+
+    /// "As an additional cost to take the basic action to run a server for
+    /// the first time each turn, the Runner must spend [click]."
+    #[test]
+    fn enhanced_login_protocol_charges_a_click_for_the_first_run_by_the_basic_action() {
+        let registry = registry();
+        let mut state = with_current("enhanced_login_protocol");
+        state.runner.resources.clicks = Clicks(1);
+        assert!(apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).is_err(), "the additional [click] cannot be spent");
+        state.runner.resources.clicks = Clicks(4);
+        let first = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        assert_eq!(first.runner.resources.clicks, Clicks(2), "the action's click and one more");
+        let mut again = first;
+        again.active_run = None;
+        again.paid_ability_window = None;
+        let second = act(&again, &registry, PlayerAction::InitiateRun { server: ServerId::RnD });
+        assert_eq!(second.runner.resources.clicks, Clicks(1), "only the first run");
+    }
+
+    /// The basic action alone: a run a card's text makes pays nothing more,
+    /// and is the turn's first run.
+    #[test]
+    fn enhanced_login_protocol_does_not_price_a_run_a_card_makes() {
+        let registry = registry();
+        let mut state = with_current("enhanced_login_protocol");
+        state.runner.grip = vec![id("dirty_laundry")];
+        let played = until_parked(act(&state, &registry, PlayerAction::PlayEvent { card_id: id("dirty_laundry") }), &registry);
+        let running = act(&played, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq });
+        assert!(running.active_run.is_some());
+        assert_eq!(running.runner.resources.clicks, Clicks(3), "the event's click alone");
+        let mut again = running;
+        again.active_run = None;
+        again.paid_ability_window = None;
+        let second = act(&again, &registry, PlayerAction::InitiateRun { server: ServerId::RnD });
+        assert_eq!(second.runner.resources.clicks, Clicks(2), "not the first run of the turn");
+    }
+
+    /// "Each piece of ice protecting this server is considered to have 1
+    /// additional advancement token on it."
+    #[test]
+    fn satellite_grid_gives_its_servers_ice_an_advancement_token() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![
+            installed("satellite_grid", 60, ServerId::Hq, InstallSlot::Root, false),
+            crate::rules::InstalledCard { advancement_tokens: 1, ..installed("ice_wall", 61, ServerId::Hq, InstallSlot::Ice, true) },
+            installed("ice_wall", 62, ServerId::RnD, InstallSlot::Ice, true),
+        ];
+        let strength = |state: &GameState, install: u32| crate::rules::continuous::installed_ice_strength(state, &registry, &id("ice_wall"), InstallId(install));
+        assert_eq!(strength(&state, 61), 2, "unrezzed, it says nothing");
+        state.corp.installed[0].rezzed = true;
+        assert_eq!(strength(&state, 61), 3, "its own counter and the one it is considered to have");
+        assert_eq!(strength(&state, 62), 1, "another server's ice");
+        assert_eq!(state.corp.installed[1].advancement_tokens, 1, "no counter is placed");
+    }
+
+    /// "Trash up to 5 of your installed cards. Draw 1 card for each card
+    /// trashed (or 2 cards for each card trashed if you trashed at least 1
+    /// directive)."
+    #[test]
+    fn independent_thinking_draws_two_a_card_when_a_directive_is_trashed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("independent_thinking")];
+        state.runner.stack = (0..10).map(|_| id("sure_gamble")).collect();
+        state.runner.rig = vec![rig("safety_first", 700), rig("akamatsu_mem_chip", 701)];
+        let played = until_parked(act(&state, &registry, PlayerAction::PlayEvent { card_id: id("independent_thinking") }), &registry);
+        let done = until_parked(select_all(played, &registry, Side::Runner), &registry);
+        assert!(done.runner.rig.is_empty(), "both trashed");
+        assert_eq!(done.runner.grip.len(), 4, "two cards for each, a directive among them");
+
+        let mut plain = runner_turn();
+        plain.runner.grip = vec![id("independent_thinking")];
+        plain.runner.stack = (0..10).map(|_| id("sure_gamble")).collect();
+        plain.runner.rig = vec![rig("safety_first", 700), rig("akamatsu_mem_chip", 701)];
+        let played = until_parked(act(&plain, &registry, PlayerAction::PlayEvent { card_id: id("independent_thinking") }), &registry);
+        let hardware = toggles(&played, &registry, Side::Runner).into_iter().nth(1).expect("the second card");
+        let chosen = act(&played, &registry, hardware);
+        let done = until_parked(act(&chosen, &registry, PlayerAction::ConfirmCardSelection), &registry);
+        assert_eq!(done.runner.rig.len(), 1, "the directive stays");
+        assert_eq!(done.runner.grip.len(), 1, "one card for the one trashed");
+    }
+
+    /// "As an additional cost to play this operation, spend [click].
+    /// Install and rez (paying all costs) X advertisements from Archives
+    /// and/or HQ, if able."
+    #[test]
+    fn ad_blitz_installs_and_rezzes_x_advertisements_from_hq_and_archives() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("ad_blitz"), id("pad_campaign"), id("hedge_fund")];
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("launch_campaign"))];
+        let asked = act(&state, &registry, PlayerAction::PlayOperation { card_id: id("ad_blitz") });
+        let mut playing = until_parked(act(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }), &registry);
+        assert_eq!(playing.corp.resources.clicks, Clicks(1), "a click to play and one more");
+        assert_eq!(playing.corp.resources.credits, Credits(8), "X is 2");
+        for option_index in [0, 1] {
+            let chose = until_parked(act(&playing, &registry, PlayerAction::ResolvePendingChoice { option_index }), &registry);
+            let selected = until_parked(select_first(chose, &registry, Side::Corp), &registry);
+            // A remote of its own each: an asset in a root already holding one would trash it.
+            let taken: Vec<ServerId> = selected.corp.installed.iter().map(|card| card.server).collect();
+            let server = crate::rules::legal_actions_for(&selected, &registry, Side::Corp)
+                .into_iter()
+                .find(|action| matches!(action, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(_) } if !matches!(action, PlayerAction::ChooseServerForPendingDecision { server } if taken.contains(server))))
+                .expect("an empty remote");
+            playing = until_parked(act(&selected, &registry, server), &registry);
+        }
+        let rezzed: Vec<&CardId> = playing.corp.installed.iter().filter(|card| card.rezzed).map(|card| &card.card).collect();
+        assert_eq!(rezzed, vec![&id("pad_campaign"), &id("launch_campaign")], "one from HQ and one from Archives, each rezzed");
+        assert_eq!(playing.corp.resources.credits, Credits(5), "their rez costs paid");
+    }
+
+    /// "When you score this agenda, you may create a new remote server by
+    /// installing up to 3 cards from HQ and/or Archives in the root of
+    /// and/or protecting that server, ignoring all install costs."
+    #[test]
+    fn director_haas_pet_project_builds_a_new_remote_out_of_hq_and_archives() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, ..installed("director_haas_pet_project", 60, ServerId::Remote(0), InstallSlot::Root, false) }];
+        state.corp.hq = vec![id("pad_campaign"), id("ice_wall")];
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("enigma"))];
+        let mut scoring = until_parked(act(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(60) }), &registry);
+        for option_index in [0, 0, 1] {
+            let chose = until_parked(act(&scoring, &registry, PlayerAction::ResolvePendingChoice { option_index }), &registry);
+            let selected = until_parked(select_first(chose, &registry, Side::Corp), &registry);
+            let servers: Vec<PlayerAction> =
+                crate::rules::legal_actions_for(&selected, &registry, Side::Corp).into_iter().filter(|action| matches!(action, PlayerAction::ChooseServerForPendingDecision { .. })).collect();
+            assert_eq!(servers.len(), 1, "the one new remote: {servers:?}");
+            scoring = until_parked(act(&selected, &registry, servers[0].clone()), &registry);
+        }
+        let server = scoring.corp.installed[0].server;
+        assert!(matches!(server, ServerId::Remote(_)), "a remote, the scored agenda's emptied one renumbered: {server:?}");
+        assert_eq!(scoring.corp.installed.len(), 3);
+        assert!(scoring.corp.installed.iter().all(|card| card.server == server), "one server");
+        assert_eq!(scoring.corp.resources.credits, Credits(10), "ignoring all install costs");
+        assert!(scoring.corp.hq.is_empty() && scoring.corp.archives.is_empty());
+    }
+}

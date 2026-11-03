@@ -1,0 +1,434 @@
+{
+  "id": "director_haas_pet_project",
+  "title": "Director Haas' Pet Project",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnHq",
+                  "filter": {
+                    "Not": {
+                      "CardType": "Operation"
+                    }
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PromptInstallCorpCard": {
+                      "origin_zone": "OwnHq",
+                      "ignore_costs": true,
+                      "new_remote": true,
+                      "then": {
+                        "PresentChoice": {
+                          "chooser": "Corp",
+                          "options": [
+                            {
+                              "PromptChooseCards": {
+                                "side": "Corp",
+                                "source": "OwnHq",
+                                "filter": {
+                                  "Not": {
+                                    "CardType": "Operation"
+                                  }
+                                },
+                                "min": 1,
+                                "max": 1,
+                                "reveal": false,
+                                "shuffle_after": false,
+                                "then": {
+                                  "PromptInstallCorpCard": {
+                                    "origin_zone": "OwnHq",
+                                    "ignore_costs": true,
+                                    "only_server": "Hq",
+                                    "then": {
+                                      "PresentChoice": {
+                                        "chooser": "Corp",
+                                        "options": [
+                                          {
+                                            "PromptChooseCards": {
+                                              "side": "Corp",
+                                              "source": "OwnHq",
+                                              "filter": {
+                                                "Not": {
+                                                  "CardType": "Operation"
+                                                }
+                                              },
+                                              "min": 1,
+                                              "max": 1,
+                                              "reveal": false,
+                                              "shuffle_after": false,
+                                              "then": {
+                                                "PromptInstallCorpCard": {
+                                                  "origin_zone": "OwnHq",
+                                                  "ignore_costs": true,
+                                                  "only_server": "Hq"
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "PromptChooseCards": {
+                                              "side": "Corp",
+                                              "source": "OwnArchives",
+                                              "filter": {
+                                                "Not": {
+                                                  "CardType": "Operation"
+                                                }
+                                              },
+                                              "min": 1,
+                                              "max": 1,
+                                              "reveal": false,
+                                              "shuffle_after": false,
+                                              "then": {
+                                                "PromptInstallCorpCard": {
+                                                  "origin_zone": "OwnArchives",
+                                                  "ignore_costs": true,
+                                                  "only_server": "Hq"
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "Sequence": []
+                                          }
+                                        ],
+                                        "texts": [
+                                          "installing up to 3 cards from HQ and/or Archives in the root of and/or protecting that server, ignoring all install costs — from HQ",
+                                          "installing up to 3 cards from HQ and/or Archives in the root of and/or protecting that server, ignoring all install costs — from Archives",
+                                          ""
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "PromptChooseCards": {
+                                "side": "Corp",
+                                "source": "OwnArchives",
+                                "filter": {
+                                  "Not": {
+                                    "CardType": "Operation"
+                                  }
+                                },
+                                "min": 1,
+                                "max": 1,
+                                "reveal": false,
+                                "shuffle_after": false,
+                                "then": {
+                                  "PromptInstallCorpCard": {
+                                    "origin_zone": "OwnArchives",
+                                    "ignore_costs": true,
+                                    "only_server": "Hq",
+                                    "then": {
+                                      "PresentChoice": {
+                                        "chooser": "Corp",
+                                        "options": [
+                                          {
+                                            "PromptChooseCards": {
+                                              "side": "Corp",
+                                              "source": "OwnHq",
+                                              "filter": {
+                                                "Not": {
+                                                  "CardType": "Operation"
+                                                }
+                                              },
+                                              "min": 1,
+                                              "max": 1,
+                                              "reveal": false,
+                                              "shuffle_after": false,
+                                              "then": {
+                                                "PromptInstallCorpCard": {
+                                                  "origin_zone": "OwnHq",
+                                                  "ignore_costs": true,
+                                                  "only_server": "Hq"
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "PromptChooseCards": {
+                                              "side": "Corp",
+                                              "source": "OwnArchives",
+                                              "filter": {
+                                                "Not": {
+                                                  "CardType": "Operation"
+                                                }
+                                              },
+                                              "min": 1,
+                                              "max": 1,
+                                              "reveal": false,
+                                              "shuffle_after": false,
+                                              "then": {
+                                                "PromptInstallCorpCard": {
+                                                  "origin_zone": "OwnArchives",
+                                                  "ignore_costs": true,
+                                                  "only_server": "Hq"
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "Sequence": []
+                                          }
+                                        ],
+                                        "texts": [
+                                          "installing up to 3 cards from HQ and/or Archives in the root of and/or protecting that server, ignoring all install costs — from HQ",
+                                          "installing up to 3 cards from HQ and/or Archives in the root of and/or protecting that server, ignoring all install costs — from Archives",
+                                          ""
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "Sequence": []
+                            }
+                          ],
+                          "texts": [
+                            "installing up to 3 cards from HQ and/or Archives in the root of and/or protecting that server, ignoring all install costs — from HQ",
+                            "installing up to 3 cards from HQ and/or Archives in the root of and/or protecting that server, ignoring all install costs — from Archives",
+                            ""
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnArchives",
+                  "filter": {
+                    "Not": {
+                      "CardType": "Operation"
+                    }
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PromptInstallCorpCard": {
+                      "origin_zone": "OwnArchives",
+                      "ignore_costs": true,
+                      "new_remote": true,
+                      "then": {
+                        "PresentChoice": {
+                          "chooser": "Corp",
+                          "options": [
+                            {
+                              "PromptChooseCards": {
+                                "side": "Corp",
+                                "source": "OwnHq",
+                                "filter": {
+                                  "Not": {
+                                    "CardType": "Operation"
+                                  }
+                                },
+                                "min": 1,
+                                "max": 1,
+                                "reveal": false,
+                                "shuffle_after": false,
+                                "then": {
+                                  "PromptInstallCorpCard": {
+                                    "origin_zone": "OwnHq",
+                                    "ignore_costs": true,
+                                    "only_server": "Hq",
+                                    "then": {
+                                      "PresentChoice": {
+                                        "chooser": "Corp",
+                                        "options": [
+                                          {
+                                            "PromptChooseCards": {
+                                              "side": "Corp",
+                                              "source": "OwnHq",
+                                              "filter": {
+                                                "Not": {
+                                                  "CardType": "Operation"
+                                                }
+                                              },
+                                              "min": 1,
+                                              "max": 1,
+                                              "reveal": false,
+                                              "shuffle_after": false,
+                                              "then": {
+                                                "PromptInstallCorpCard": {
+                                                  "origin_zone": "OwnHq",
+                                                  "ignore_costs": true,
+                                                  "only_server": "Hq"
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "PromptChooseCards": {
+                                              "side": "Corp",
+                                              "source": "OwnArchives",
+                                              "filter": {
+                                                "Not": {
+                                                  "CardType": "Operation"
+                                                }
+                                              },
+                                              "min": 1,
+                                              "max": 1,
+                                              "reveal": false,
+                                              "shuffle_after": false,
+                                              "then": {
+                                                "PromptInstallCorpCard": {
+                                                  "origin_zone": "OwnArchives",
+                                                  "ignore_costs": true,
+                                                  "only_server": "Hq"
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "Sequence": []
+                                          }
+                                        ],
+                                        "texts": [
+                                          "installing up to 3 cards from HQ and/or Archives in the root of and/or protecting that server, ignoring all install costs — from HQ",
+                                          "installing up to 3 cards from HQ and/or Archives in the root of and/or protecting that server, ignoring all install costs — from Archives",
+                                          ""
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "PromptChooseCards": {
+                                "side": "Corp",
+                                "source": "OwnArchives",
+                                "filter": {
+                                  "Not": {
+                                    "CardType": "Operation"
+                                  }
+                                },
+                                "min": 1,
+                                "max": 1,
+                                "reveal": false,
+                                "shuffle_after": false,
+                                "then": {
+                                  "PromptInstallCorpCard": {
+                                    "origin_zone": "OwnArchives",
+                                    "ignore_costs": true,
+                                    "only_server": "Hq",
+                                    "then": {
+                                      "PresentChoice": {
+                                        "chooser": "Corp",
+                                        "options": [
+                                          {
+                                            "PromptChooseCards": {
+                                              "side": "Corp",
+                                              "source": "OwnHq",
+                                              "filter": {
+                                                "Not": {
+                                                  "CardType": "Operation"
+                                                }
+                                              },
+                                              "min": 1,
+                                              "max": 1,
+                                              "reveal": false,
+                                              "shuffle_after": false,
+                                              "then": {
+                                                "PromptInstallCorpCard": {
+                                                  "origin_zone": "OwnHq",
+                                                  "ignore_costs": true,
+                                                  "only_server": "Hq"
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "PromptChooseCards": {
+                                              "side": "Corp",
+                                              "source": "OwnArchives",
+                                              "filter": {
+                                                "Not": {
+                                                  "CardType": "Operation"
+                                                }
+                                              },
+                                              "min": 1,
+                                              "max": 1,
+                                              "reveal": false,
+                                              "shuffle_after": false,
+                                              "then": {
+                                                "PromptInstallCorpCard": {
+                                                  "origin_zone": "OwnArchives",
+                                                  "ignore_costs": true,
+                                                  "only_server": "Hq"
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "Sequence": []
+                                          }
+                                        ],
+                                        "texts": [
+                                          "installing up to 3 cards from HQ and/or Archives in the root of and/or protecting that server, ignoring all install costs — from HQ",
+                                          "installing up to 3 cards from HQ and/or Archives in the root of and/or protecting that server, ignoring all install costs — from Archives",
+                                          ""
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "Sequence": []
+                            }
+                          ],
+                          "texts": [
+                            "installing up to 3 cards from HQ and/or Archives in the root of and/or protecting that server, ignoring all install costs — from HQ",
+                            "installing up to 3 cards from HQ and/or Archives in the root of and/or protecting that server, ignoring all install costs — from Archives",
+                            ""
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "installing up to 3 cards from HQ and/or Archives in the root of and/or protecting that server, ignoring all install costs — from HQ",
+              "installing up to 3 cards from HQ and/or Archives in the root of and/or protecting that server, ignoring all install costs — from Archives",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When you score this agenda, you may create a new remote server by installing up to 3 cards from HQ and/or Archives in the root of and/or protecting that server, ignoring all install costs."
+    }
+  ],
+  "built_from": 3004,
+  "is_playable": true
+}

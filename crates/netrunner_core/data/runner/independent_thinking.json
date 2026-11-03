@@ -1,0 +1,115 @@
+{
+  "id": "independent_thinking",
+  "title": "Independent Thinking",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnInstalled",
+            "filter": "Any",
+            "min": 0,
+            "max": 5,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "ZoneHasAtLeast": {
+                    "zone": "OwnInstalled",
+                    "count": 1,
+                    "filter": {
+                      "All": [
+                        "ChosenThisWay",
+                        {
+                          "HasSubtype": "Directive"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "effect": {
+                  "ChooseNumber": {
+                    "chooser": "Runner",
+                    "min": {
+                      "Times": {
+                        "amount": "CardsSelected",
+                        "times": 2
+                      }
+                    },
+                    "max": {
+                      "Times": {
+                        "amount": "CardsSelected",
+                        "times": 2
+                      }
+                    },
+                    "text": "2 cards for each card trashed if you trashed at least 1 directive",
+                    "then": {
+                      "Sequence": [
+                        {
+                          "ForEach": {
+                            "source": "OwnInstalled",
+                            "filter": "ChosenThisWay",
+                            "effect": {
+                              "TrashCard": {
+                                "Install": 0
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "DrawCardsAmount": [
+                            "Runner",
+                            "ChosenNumber"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                },
+                "otherwise": {
+                  "ChooseNumber": {
+                    "chooser": "Runner",
+                    "min": "CardsSelected",
+                    "max": "CardsSelected",
+                    "text": "Draw 1 card for each card trashed",
+                    "then": {
+                      "Sequence": [
+                        {
+                          "ForEach": {
+                            "source": "OwnInstalled",
+                            "filter": "ChosenThisWay",
+                            "effect": {
+                              "TrashCard": {
+                                "Install": 0
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "DrawCardsAmount": [
+                            "Runner",
+                            "ChosenNumber"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Trash up to 5 of your installed cards. Draw 1 card for each card trashed (or 2 cards for each card trashed if you trashed at least 1 directive)."
+    }
+  ],
+  "built_from": 9038,
+  "is_playable": true
+}

@@ -818,6 +818,18 @@ impl EffectRequirement {
         }
     }
 
+    /// See `Effect::with_chosen_installs`: Independent Thinking's "if you
+    /// trashed at least 1 **directive**" counts the chosen cards in a zone
+    /// (`ZoneHasAtLeast` over `ChosenThisWay`) before they are trashed.
+    pub fn with_chosen_installs(self, installs: &[crate::rules::InstallId]) -> EffectRequirement {
+        match self {
+            EffectRequirement::ZoneHasAtLeast { zone, count, filter } => EffectRequirement::ZoneHasAtLeast { zone, count, filter: filter.map(|filter| filter.with_chosen_installs(installs)) },
+            EffectRequirement::Not(inner) => EffectRequirement::Not(Box::new(inner.with_chosen_installs(installs))),
+            EffectRequirement::And(a, b) => EffectRequirement::And(Box::new(a.with_chosen_installs(installs)), Box::new(b.with_chosen_installs(installs))),
+            other => other,
+        }
+    }
+
     pub fn with_chosen_number(self, number: u32) -> EffectRequirement {
         self.filled(&|amount| matches!(amount, crate::dsl::Amount::ChosenNumber).then_some(number))
     }

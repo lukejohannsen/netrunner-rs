@@ -1532,7 +1532,7 @@ fn initiate_run(
 
     let mut next = state.clone();
     spend_click(&mut next, side)?;
-    let paid = run::start_run(&mut next, registry, server)?;
+    let paid = run::start_run_by_the_basic_action(&mut next, registry, server)?;
 
     let run_initiated_event = GameEvent::RunInitiated { server };
     let mut events = vec![GameEvent::ClickSpent { side }];

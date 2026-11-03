@@ -1964,7 +1964,7 @@ impl CardDefinition {
                 (Scope::Ice(filter), _) if matches!(effect.kind, ContinuousKind::RezCost(_)) => crate::rules::turn_log::Occurrences::ice_rezzes(filter, self.side),
                 (Scope::Playing(filter), _) => crate::rules::turn_log::Occurrences::plays(filter, self.side),
                 (Scope::Player(_), Some(trigger)) => crate::rules::turn_log::Occurrences::meant_by(trigger, None, self.side),
-                (Scope::Runs(_), _) if matches!(effect.kind, ContinuousKind::RunCost(_)) => crate::rules::turn_log::Occurrences::runs(self.side),
+                (Scope::Runs(_) | Scope::RunsByTheBasicAction, _) if matches!(effect.kind, ContinuousKind::RunCost(_)) => crate::rules::turn_log::Occurrences::runs(self.side),
                 (Scope::Controller, _) if matches!(effect.kind, ContinuousKind::ChoosesDamageTrash(_)) => crate::rules::turn_log::Occurrences::damage(&effect.kind),
                 _ => {
                     return Err(self.first_time_misfit(
@@ -2418,7 +2418,7 @@ impl CardDefinition {
                 (ContinuousKind::TraceBase(_), _) => {
                     return misfit("TraceBase", "a trace's base strength is asked about the ice whose subroutine starts it or the server a run is on");
                 }
-                (ContinuousKind::RunCost(_), Scope::Runs(_)) => {}
+                (ContinuousKind::RunCost(_), Scope::Runs(_) | Scope::RunsByTheBasicAction) => {}
                 // Cold Site Server's and Reduced Service's "to run this
                 // server": an upgrade's, about the server it is in.
                 (ContinuousKind::RunCost(_), Scope::RunsOnThisServer) if self.card_type == CardType::Upgrade => {}
@@ -2426,6 +2426,7 @@ impl CardDefinition {
                     return misfit("RunCost", "an additional cost to run is about the runs on a kind of server (`Runs`), or on an upgrade's own (`RunsOnThisServer`)");
                 }
                 (_, Scope::Runs(_)) => return misfit("Runs", "only an additional cost to run is about the runs on a kind of server"),
+                (_, Scope::RunsByTheBasicAction) => return misfit("RunsByTheBasicAction", "only an additional cost to run is about the basic action to run"),
                 (ContinuousKind::AdvancementRequirement(_), Scope::This) if self.card_type == CardType::Agenda => {}
                 // SanSan City Grid's "each agenda in the root of this
                 // server": an upgrade's, about the agendas beside it.
@@ -2478,6 +2479,8 @@ impl CardDefinition {
                 (ContinuousKind::CannotBeExposed, Scope::IceProtectingThisServer(_) | Scope::RootOfThisServer(_)) if matches!(self.card_type, CardType::Upgrade) => {}
                 (ContinuousKind::CannotBeExposed, Scope::This) if self.side == Side::Corp && !matches!(self.card_type, CardType::Operation | CardType::Identity) => {}
                 (ContinuousKind::CannotBeExposed, _) => return misfit("CannotBeExposed", "an installed Corp card that cannot be exposed is said by itself (`This`) or by an upgrade of its server"),
+                (ContinuousKind::AdditionalAdvancement(_), Scope::IceProtectingThisServer(_)) if matches!(self.card_type, CardType::Upgrade) => {}
+                (ContinuousKind::AdditionalAdvancement(_), _) => return misfit("AdditionalAdvancement", "advancement a piece of ice is considered to have is said by an upgrade of its server (`IceProtectingThisServer`)"),
                 (ContinuousKind::RezzedAsNonIce, Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}
                 (ContinuousKind::RezzedAsNonIce, _) => {
                     return misfit("RezzedAsNonIce", "when a piece of ice may be rezzed is said by the ice of itself (`This`)");
