@@ -47,6 +47,14 @@ fn lower_first(words: &str) -> String {
     }
 }
 
+pub(crate) fn capitalised(words: &str) -> String {
+    let mut chars = words.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
 fn plural(n: impl Into<u64>, one: &str, many: &str) -> String {
     let n = n.into();
     format!("{n} {}", if n == 1 { one } else { many })
@@ -1199,6 +1207,8 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::MayHost => "may be installed there".to_string(),
         ContinuousKind::CannotBeDeclaredSuccessful => "cannot be declared successful".to_string(),
         ContinuousKind::OrdersSubroutines => "chooses the order unbroken subroutines resolve in".to_string(),
+        ContinuousKind::ChoosesDamageTrash(None) => "chooses the cards damage trashes from the grip".to_string(),
+        ContinuousKind::ChoosesDamageTrash(Some(kind)) => format!("chooses the card {} damage trashes from the grip", damage_word(kind)),
         ContinuousKind::AccessOthersAtMost(n) => format!("accesses at most {} other than this card", plural(*n, "card", "cards")),
         ContinuousKind::BreakLimit { at_most, except_using: None } => {
             format!("at most {} of its printed subroutines can be broken each encounter", at_most)
@@ -1375,6 +1385,13 @@ pub fn interrupt_label(card: &netrunner_core::dsl::CardId, less: u32, index: usi
 
 /// The line under an install's question (CR 8.5.6): why a card has to go,
 /// or that the rest is up to the installer.
+/// The line under damage's question (`PaymentAsk::Damage`): how many
+/// cards it still takes, and what said who chooses.
+pub fn damage_trash_detail(question: &netrunner_core::rules::DamageQuestion, registry: &CardRegistry) -> String {
+    let left = if question.remaining == 1 { "The last card it takes.".to_string() } else { format!("It takes {} more.", question.remaining) };
+    format!("{left} {} says who chooses.", title(&question.card, registry))
+}
+
 pub fn install_trash_detail(question: &netrunner_core::rules::InstallQuestion) -> String {
     match (question.memory_short, question.may_stop) {
         (0, true) => "Trash another, or install it now.".to_string(),
@@ -1408,6 +1425,9 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
             }
             netrunner_core::rules::PaymentAsk::Install(question) => {
                 format!("Install {} — trash which first? {}", title(&question.card, registry), install_trash_detail(question))
+            }
+            netrunner_core::rules::PaymentAsk::Damage(question) => {
+                format!("{} damage — trash which card from the grip? {}", capitalised(damage_word(&question.kind)), damage_trash_detail(question, registry))
             }
         });
     }

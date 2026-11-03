@@ -77,6 +77,9 @@ pub(crate) fn searched_answers(ask: &PaymentAsk, after: Option<u32>) -> Vec<u32>
             .into_iter()
             .filter(|answer| *answer > last || ask.action_for(*answer) == PlayerAction::ConfirmCardSelection)
             .collect(),
+        // Damage's chosen cards are trashed together (CR 10.4.3a), so
+        // they are a set too.
+        (PaymentAsk::Damage(_), Some(last)) => answers.into_iter().filter(|answer| *answer > last).collect(),
         _ => answers,
     }
 }
@@ -88,6 +91,10 @@ pub(crate) fn searched_answers(ask: &PaymentAsk, after: Option<u32>) -> Vec<u32>
 /// a fresh question, such as a second install's in the same action, is
 /// searched whole.
 pub(crate) fn picked_before(asked: &PaymentAsk, answer: u32, next: &GameState) -> Option<u32> {
+    if let (PaymentAsk::Damage(asked), Some(PaymentAsk::Damage(now))) = (asked, next.pending_payment.as_ref().map(|payment| &payment.question)) {
+        let left: Vec<_> = asked.eligible.iter().filter(|candidate| candidate.position != answer).collect();
+        return (now.card == asked.card && now.kind == asked.kind && now.eligible.iter().eq(left)).then_some(answer);
+    }
     let (PaymentAsk::Install(asked), Some(PaymentAsk::Install(now))) = (asked, next.pending_payment.as_ref().map(|payment| &payment.question)) else {
         return None;
     };

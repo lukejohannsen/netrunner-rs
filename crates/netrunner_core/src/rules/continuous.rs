@@ -228,6 +228,9 @@ fn first_this_turn(state: &GameState, source: &Source<'_>, effect: &ContinuousEf
         // Service Outage's "as an additional cost to run for the first
         // time during their turn": priced before the run is announced.
         (Scope::Runs(_), ContinuousKind::RunCost(_)) => turn_log::Occurrences::runs(source.side),
+        // Chronos Protocol's "the first net damage the Runner suffers
+        // each turn": asked as the damage is done, before it is counted.
+        (Scope::Controller, kind @ ContinuousKind::ChoosesDamageTrash(_)) => turn_log::Occurrences::damage(kind),
         // "The first run each turn cannot be made…": asked before the run
         // is announced, so none counted yet.
         (Scope::Player(_), ContinuousKind::Cannot(what)) => match what.counted_as() {
@@ -391,6 +394,60 @@ pub(crate) fn subroutine_orderer(state: &GameState, registry: &CardRegistry) -> 
         found.get_or_insert_with(|| (source.card.clone(), source.install));
     });
     found
+}
+
+/// Who chooses each point of `kind` damage's cards (`ContinuousKind::
+/// ChoosesDamageTrash`): for the first point and for every later one, the
+/// side and the card that says so, or `None` where the roll is random (CR
+/// 10.4.2a). A declaration with `first_each_turn` reaches only the first
+/// point of the turn's first such damage (CR 10.4.3a's example), and only
+/// while the turn has counted none, which `for_each_applying` asks. Both
+/// players choosing one point is CR 9.12.1c's case, and the active player
+/// does; the scan's first card of a side stands for that side, since two
+/// copies give one choice.
+pub(crate) fn damage_choosers(state: &GameState, registry: &CardRegistry, kind: crate::dsl::DamageType) -> [Option<(Side, crate::dsl::CardId)>; 2] {
+    // [first point, every later point], per side.
+    let mut per_side: [[Option<crate::dsl::CardId>; 2]; 2] = Default::default();
+    for (index, side) in [Side::Corp, Side::Runner].into_iter().enumerate() {
+        for_each_applying(state, registry, Target::Player(side), |asked| matches!(asked, ContinuousKind::ChoosesDamageTrash(_)), |effect, source, _| {
+            let ContinuousKind::ChoosesDamageTrash(only) = effect.kind else { return };
+            if only.is_some_and(|only| only != kind) {
+                return;
+            }
+            per_side[index][0].get_or_insert_with(|| source.card.clone());
+            if !effect.first_each_turn {
+                per_side[index][1].get_or_insert_with(|| source.card.clone());
+            }
+        });
+    }
+    let active = crate::rules::listeners::active_side(state);
+    let pick = |point: usize| -> Option<(Side, crate::dsl::CardId)> {
+        let corp = per_side[0][point].clone().map(|card| (Side::Corp, card));
+        let runner = per_side[1][point].clone().map(|card| (Side::Runner, card));
+        match (corp, runner) {
+            (Some(corp), Some(runner)) => Some(if active == Side::Corp { corp } else { runner }),
+            (one, other) => one.or(other),
+        }
+    };
+    [pick(0), pick(1)]
+}
+
+/// Whether any active card says who chooses what damage trashes, or one in
+/// the grip could be installed and do it in the same action (Titanium
+/// Ribs' own install damage) — the necessary condition `payment::
+/// could_ask` asks for `Ask::Damage`.
+pub(crate) fn any_damage_chooser(state: &GameState, registry: &CardRegistry) -> bool {
+    let chooses = |card: &crate::dsl::CardId| {
+        registry.get(card).is_some_and(|def| def.continuous.iter().any(|effect| matches!(effect.kind, ContinuousKind::ChoosesDamageTrash(_))))
+    };
+    if state.runner.grip.iter().any(chooses) {
+        return true;
+    }
+    let mut any = false;
+    for side in [Side::Corp, Side::Runner] {
+        for_each_applying(state, registry, Target::Player(side), |asked| matches!(asked, ContinuousKind::ChoosesDamageTrash(_)), |_, _, _| any = true);
+    }
+    any
 }
 
 /// The most `side` may bid when secretly spending (Government

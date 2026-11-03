@@ -348,6 +348,23 @@ impl Selection {
             let purpose = Purpose { verb: "Trash a card to make room".to_string(), hint: String::new(), arrangement: false };
             return Some(Selection { candidates, min: 0, max: 1, verb: Verb::Trash, purpose });
         }
+        // So is damage's, when a card says who chooses its cards
+        // (Titanium Ribs, Chronos Protocol): the grip's cards, by name.
+        if let Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Damage(question), .. }) =
+            view.pending_payment.as_ref().and_then(|payment| payment.own.as_ref())
+        {
+            let candidates = view
+                .selection
+                .iter()
+                .map(|candidate| {
+                    let name = candidate.card.as_ref().map_or_else(|| "a card".to_string(), |card| card_title(card, registry));
+                    Candidate { position: candidate.position, card: candidate.card.clone(), name, place: "in the grip".to_string(), concealed: false, selected: false, pick: None }
+                })
+                .collect();
+            let verb = format!("Trash a card from the grip to {} damage", crate::prose::damage_word(&question.kind));
+            let purpose = Purpose { verb, hint: crate::prose::damage_trash_detail(question, registry), arrangement: false };
+            return Some(Selection { candidates, min: 1, max: 1, verb: Verb::Trash, purpose });
+        }
         let Some(PendingDecision::ChooseCards { side, source, filter, min, max, shuffle_after, destination, then, selected, source_card, .. }) = &view.pending_decision
         else {
             return None;

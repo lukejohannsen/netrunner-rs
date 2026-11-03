@@ -117,6 +117,13 @@ pub fn apply_action(
             }
             position
         }
+        (crate::rules::payment::Ask::Damage(question), PlayerAction::ToggleCardSelection { position }) => {
+            let position = u32::try_from(position).map_err(|_| RulesError::CardNotEligibleForSelection(position))?;
+            if !question.eligible.iter().any(|candidate| candidate.position == position) {
+                return Err(RulesError::CardNotEligibleForSelection(position as usize));
+            }
+            position
+        }
         (crate::rules::payment::Ask::Install(question), PlayerAction::ConfirmCardSelection) if question.may_stop => {
             crate::rules::install_trash::STOP
         }

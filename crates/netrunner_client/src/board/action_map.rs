@@ -567,6 +567,13 @@ impl Prompt {
                     title: format!("Install {}: trash which first?", title_of(Some(&question.card), registry)),
                     detail: crate::prose::install_trash_detail(question),
                 },
+                // Damage a card says its controller chooses the cards of
+                // (Titanium Ribs, Chronos Protocol): one card at a time, so
+                // the buttons under this are the grip's cards.
+                Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Damage(question), .. }) => Prompt {
+                    title: format!("{} damage: trash which card from the grip?", crate::prose::capitalised(crate::prose::damage_word(&question.kind))),
+                    detail: crate::prose::damage_trash_detail(question, registry),
+                },
                 None => Prompt { title: format!("The {:?} is choosing how to pay", payment.side), detail: String::new() },
             });
         }

@@ -409,6 +409,23 @@ pub enum ContinuousKind {
     /// and nothing a card said could reach it. No payload: the order is
     /// the Runner's to declare, one subroutine at a time.
     OrdersSubroutines,
+    /// The controller of the card chooses which cards of the grip damage
+    /// trashes, one point at a time (CR 10.4.3a: "selected sequentially
+    /// but are still trashed simultaneously"), where CR 10.4.2a has the
+    /// responsible player trash them at random — Titanium Ribs' "you
+    /// choose the card(s) from your grip to trash whenever you take
+    /// damage" (`None`: every kind) and, with `first_each_turn`, Chronos
+    /// Protocol's "for the first net damage the Runner suffers each turn,
+    /// you may look at the Runner's grip and select the card that is
+    /// trashed" (`Some(Net)`, its first point alone, the CR 10.4.3a
+    /// example). `Scope::Controller`. Both at once is CR 9.12.1c's case:
+    /// the active player chooses. Asked by `damage::apply_damage` through
+    /// `continuous::damage_choosers`, and the choice is parked by the
+    /// payment's replay (`payment::Ask::Damage`), because damage is done
+    /// from deep inside a prevention, a cost and a trigger alike and none
+    /// of them can stop halfway. Composition didn't work: the cards were
+    /// the damage's own random roll, and nothing a card said reached it.
+    ChoosesDamageTrash(Option<crate::dsl::DamageType>),
     /// What the Runner pays, as an additional cost, to run a server — Earth
     /// Station: SEA Headquarters' "As an additional cost to run HQ, the
     /// Runner must pay 1[credit]" and its flip side's "…to run a remote

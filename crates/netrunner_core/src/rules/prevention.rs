@@ -615,7 +615,7 @@ fn happen(
 ) -> Result<Vec<GameEvent>, RulesError> {
     match what {
         WouldHappen::Damage { kind, .. } => {
-            let (mut events, discarded) = damage::apply_damage(state, *kind, amount as usize, responsible);
+            let (mut events, discarded) = damage::apply_damage(state, registry, *kind, amount as usize, responsible)?;
             // Overwrite rather than append: the requirement reading this
             // (`LastDamageTrashedOddCostCard`) asks about the *most
             // recent* damage, so a second `DealDamage` in the same

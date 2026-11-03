@@ -596,6 +596,18 @@ impl Occurrences {
         Occurrences::meant_by(Trigger::OnRunStart, Some(&EventFilter::Whose(Side::Runner)), controller)
     }
 
+    /// The damage a `ContinuousKind::ChoosesDamageTrash` with
+    /// `first_each_turn` is about: the Runner's, of its kind or of any.
+    /// Only the Runner suffers damage, so it is asked of the Runner
+    /// whichever side's card chooses (Chronos Protocol is the Corp's).
+    pub(crate) fn damage(kind: &crate::dsl::ContinuousKind) -> Result<Occurrences, String> {
+        let crate::dsl::ContinuousKind::ChoosesDamageTrash(only) = kind else {
+            return Err(format!("{kind:?} is about no damage"));
+        };
+        let when = only.map(EventFilter::Damage);
+        Occurrences::meant_by(Trigger::OnDamageSuffered, when.as_ref(), Side::Runner)
+    }
+
     pub(crate) fn meant_by(trigger: Trigger, when: Option<&EventFilter>, controller: Side) -> Result<Occurrences, String> {
         // A conjunction counts what every part admits: the columns all of
         // them name, of the one player any of them names.

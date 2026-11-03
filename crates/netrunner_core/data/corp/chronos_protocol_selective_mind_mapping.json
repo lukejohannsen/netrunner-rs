@@ -1,0 +1,21 @@
+{
+  "id": "chronos_protocol_selective_mind_mapping",
+  "title": "Chronos Protocol: Selective Mind-mapping",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "continuous": [
+    {
+      "kind": {
+        "ChoosesDamageTrash": "Net"
+      },
+      "applies_to": "Controller",
+      "first_each_turn": true,
+      "text": "For the first net damage the Runner suffers each turn, you may look at the Runner's grip and select the card that is trashed."
+    }
+  ],
+  "triggers": [],
+  "built_from": 8111,
+  "is_playable": true
+}
