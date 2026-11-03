@@ -67,6 +67,10 @@ pub(crate) fn mark_parked_resume_subroutines(state: &mut GameState) {
     if let Some(pending) = state.pending_prevention.as_mut() {
         pending.resume = crate::rules::state::PreventionResume::ResumeSubroutines;
     }
+    // Nor is a breach a subroutine began (Kitsune's, Shiro's).
+    if let Some(breach) = state.active_run.as_mut().and_then(|run| run.encounter_breach.as_mut()) {
+        breach.resume_subroutines = true;
+    }
     // Accesses asked for by a subroutine (Otoroshi's) are not a parked
     // decision, but the encounter waits on them all the same.
     if let Some(outside) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()).and_then(|access| access.outside_breach.as_mut()).filter(|outside| outside.during_encounter) {

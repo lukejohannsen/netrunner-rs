@@ -57068,3 +57068,264 @@ mod engine_words_stage_20 {
         assert!(card.validate().is_err());
     }
 }
+
+mod engine_words_stage_21 {
+    use super::*;
+    use crate::rules::{AccessPhase, ArchivedCard, GameEvent, PendingDecision, RunPhase};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> (GameState, Vec<GameEvent>) {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}"))
+    }
+
+    fn phase(state: &GameState) -> Option<RunPhase> {
+        state.active_run.as_ref().map(|run| run.phase)
+    }
+
+    fn parked(state: &GameState) -> bool {
+        state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.pending_payment.is_some() || state.active_trace.is_some()
+    }
+
+    /// Passes and continues until something is parked, a card is being
+    /// accessed, or the run is over — collecting the events on the way.
+    fn drive(mut state: GameState, registry: &CardRegistry, events: &mut Vec<GameEvent>) -> GameState {
+        for _ in 0..64 {
+            let accessing = state.active_run.as_ref().is_some_and(|run| run.access_state.is_some());
+            if parked(&state) || accessing || state.active_run.is_none() {
+                return state;
+            }
+            let action = match (&state.paid_ability_window, phase(&state)) {
+                (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+                (None, Some(RunPhase::Initiation | RunPhase::Movement | RunPhase::EncounterIce | RunPhase::ApproachIce)) => PlayerAction::ContinueRun,
+                (None, Some(RunPhase::Success)) => PlayerAction::CompleteRun,
+                other => panic!("stuck at {other:?}"),
+            };
+            let (next, more) = act(&state, registry, action);
+            events.extend(more);
+            state = next;
+        }
+        panic!("never done");
+    }
+
+    /// A Runner's turn, with `ice` rezzed and protecting R&D and HQ holding
+    /// `hq` and an upgrade in its root.
+    fn facing(ice: &str, hq: &[&str]) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.corp.resources.credits = Credits(10);
+        state.next_install_id = 200;
+        state.corp.hq = hq.iter().map(|card| id(card)).collect();
+        state.corp.r_and_d = vec![id("project_vitruvius"), id("enigma"), id("ice_wall"), id("hedge_fund")];
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { install_id: InstallId(101), card: id(ice), server: ServerId::RnD, slot: InstallSlot::Ice, rezzed: true, ..Default::default() },
+            crate::rules::InstalledCard { install_id: InstallId(102), card: id("manegarm_skunkworks"), server: ServerId::Hq, slot: InstallSlot::Root, rezzed: false, ..Default::default() },
+            crate::rules::InstalledCard { install_id: InstallId(103), card: id("manegarm_skunkworks"), server: ServerId::RnD, slot: InstallSlot::Root, rezzed: false, ..Default::default() },
+        ];
+        state
+    }
+
+    fn accessed(events: &[GameEvent]) -> Vec<(CardId, ServerId)> {
+        events.iter().filter_map(|event| match event {
+            GameEvent::CardAccessed { card, server, .. } => Some((card.clone(), *server)),
+            _ => None,
+        }).collect()
+    }
+
+    /// The card being accessed now, and the Runner's pass on it — or, with
+    /// candidates to choose among, the first of them.
+    fn pass_access(state: &GameState, registry: &CardRegistry, events: &mut Vec<GameEvent>) -> GameState {
+        let action = match state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| access.phase.clone()) {
+            Some(AccessPhase::PendingChoice { card_id, .. }) => PlayerAction::PassAccessedCard { card_id },
+            Some(AccessPhase::SelectNextCard { selectable_cards }) => PlayerAction::SelectCardToAccess { candidate: selectable_cards[0].clone() },
+            other => panic!("not deciding on a card: {other:?}"),
+        };
+        let (next, more) = act(state, registry, action);
+        events.extend(more);
+        next
+    }
+
+    /// Drives the run to its end, passing on every card it accesses.
+    fn finish(mut state: GameState, registry: &CardRegistry, events: &mut Vec<GameEvent>) -> GameState {
+        for _ in 0..32 {
+            state = drive(state, registry, events);
+            if state.active_run.is_none() || parked(&state) {
+                return state;
+            }
+            state = pass_access(&state, registry, events);
+        }
+        panic!("the run never ended");
+    }
+
+    /// The encounter with Kitsune, its subroutine fired: the Corp asked
+    /// whether to choose a card in HQ.
+    fn kitsune_asks() -> (CardRegistry, GameState, Vec<GameEvent>) {
+        let registry = registry();
+        let state = facing("kitsune", &["hedge_fund", "ice_wall", "enigma"]);
+        let mut events = Vec::new();
+        let (started, more) = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD });
+        events.extend(more);
+        let asked = drive(started, &registry, &mut events);
+        match &asked.pending_decision {
+            Some(PendingDecision::ChooseEffect { chooser: Side::Corp, option_texts, .. }) => assert_eq!(option_texts[0], "You may choose 1 card in HQ"),
+            other => panic!("Kitsune's subroutine asks the Corp: {other:?}"),
+        }
+        (registry, asked, events)
+    }
+
+    /// "You may choose 1 card in HQ. If you do, the Runner breaches HQ.
+    /// During this breach, the Runner cannot access cards in the root of
+    /// HQ, and the first card they access must be the chosen card. When
+    /// the breach ends, trash this ice." The breach is the encounter's (CR
+    /// 6.1.4b): it accesses the chosen card and not the root, Kitsune goes
+    /// to Archives as it ends, and the run goes on to its own breach of
+    /// R&D, root and all.
+    #[test]
+    fn kitsune_breaches_hq_mid_encounter_on_the_chosen_card_then_trashes_itself_and_the_run_goes_on() {
+        let (registry, asked, mut events) = kitsune_asks();
+        let (choosing, _) = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        let position = choosing.corp.hq.iter().position(|card| *card == id("enigma")).expect("in HQ");
+        let (toggled, _) = act(&choosing, &registry, PlayerAction::ToggleCardSelection { position });
+        let (breaching, more) = act(&toggled, &registry, PlayerAction::ConfirmCardSelection);
+        events.extend(more);
+        assert!(events.contains(&GameEvent::BreachBegun { server: ServerId::Hq }), "a breach, heard as one");
+        let run = breaching.active_run.as_ref().expect("the run stands");
+        assert_eq!((run.server, run.position), (ServerId::RnD, 0), "still on R&D, at Kitsune");
+        assert!(run.encounter_breach.is_some(), "the encounter's breach");
+
+        // The Runner is never told which card the Corp chose.
+        let runners = crate::rules::mask_state_for_player(&breaching, &registry, Side::Runner);
+        let corps = crate::rules::mask_state_for_player(&breaching, &registry, Side::Corp);
+        assert_eq!(runners.active_run.as_ref().and_then(|run| run.encounter_breach.as_ref()).map(|breach| breach.first.clone()), Some(None));
+        assert_eq!(corps.active_run.as_ref().and_then(|run| run.encounter_breach.as_ref()).and_then(|breach| breach.first.clone()), Some(id("enigma")));
+
+        let mut events: Vec<GameEvent> = events.into_iter().filter(|event| matches!(event, GameEvent::CardAccessed { .. })).collect();
+        let handed_back = pass_access(&breaching, &registry, &mut events);
+        assert_eq!(accessed(&events), vec![(id("enigma"), ServerId::Hq)], "the chosen card, and not the root of HQ");
+        assert!(events.contains(&GameEvent::BreachEnded { server: ServerId::Hq, took: false }));
+        assert!(handed_back.corp.archives.iter().any(|archived| archived.card == id("kitsune")), "when the breach ends, trash this ice");
+        let run = handed_back.active_run.as_ref().expect("the run goes on");
+        assert!(run.encounter_breach.is_none() && run.breached.is_none(), "nothing of the breach is left on the run");
+        assert_ne!(run.phase, RunPhase::EncounterIce, "the encounter is over");
+
+        // On to R&D, whose own breach reaches the root again.
+        let at_rnd = finish(handed_back, &registry, &mut events);
+        assert!(at_rnd.active_run.is_none());
+        let rnd: Vec<_> = accessed(&events).into_iter().filter(|(_, server)| *server == ServerId::RnD).collect();
+        assert_eq!(rnd.len(), 2, "R&D's top card and its root: {rnd:?}");
+    }
+
+    /// The "may" declined: no breach, Kitsune stays, and the encounter ends.
+    #[test]
+    fn kitsune_declined_breaches_nothing_and_stays() {
+        let (registry, asked, _) = kitsune_asks();
+        let mut events = Vec::new();
+        let (declined, more) = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 });
+        events.extend(more);
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::BreachBegun { .. })));
+        assert!(declined.corp.installed.iter().any(|installed| installed.card == id("kitsune")));
+        assert_ne!(phase(&declined), Some(RunPhase::EncounterIce));
+    }
+
+    /// The encounter with Shiro, both subroutines unbroken: the first
+    /// arranges the top 3 of R&D (left as it is), and the second asks the
+    /// Corp whether to pay.
+    fn shiro_asks() -> (CardRegistry, GameState) {
+        let registry = registry();
+        let state = facing("shiro", &["hedge_fund"]);
+        let mut events = Vec::new();
+        let (started, _) = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD });
+        let arranging = drive(started, &registry, &mut events);
+        assert!(matches!(arranging.pending_decision, Some(PendingDecision::ChooseCards { side: Side::Corp, .. })), "look at the top 3 and arrange them");
+        let (asked, _) = act(&arranging, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(asked.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Corp), "you may pay 1[credit]");
+        (registry, asked)
+    }
+
+    /// "You may pay 1[credit]. If you do not, the Runner breaches R&D. They
+    /// cannot access cards in the root of R&D during that breach." Unpaid,
+    /// the Runner breaches R&D in the middle of the encounter, the top card
+    /// and not the root; then the run's own breach of R&D, root included.
+    #[test]
+    fn shiro_unpaid_breaches_r_and_d_mid_encounter_without_its_root() {
+        let (registry, asked) = shiro_asks();
+        let mut events = Vec::new();
+        let (breaching, more) = act(&asked, &registry, PlayerAction::DeclinePendingPaidChoice);
+        events.extend(more);
+        assert!(events.contains(&GameEvent::BreachBegun { server: ServerId::RnD }));
+        let handed_back = pass_access(&breaching, &registry, &mut events);
+        assert_eq!(accessed(&events), vec![(id("hedge_fund"), ServerId::RnD)], "the top of R&D, not its root");
+        assert!(handed_back.corp.installed.iter().any(|installed| installed.card == id("shiro")), "Shiro stays");
+        let run = handed_back.active_run.as_ref().expect("the run goes on");
+        assert_ne!(run.phase, RunPhase::EncounterIce);
+        let mut later = Vec::new();
+        let done = finish(handed_back, &registry, &mut later);
+        assert!(done.active_run.is_none());
+        assert!(accessed(&later).contains(&(id("manegarm_skunkworks"), ServerId::RnD)), "the run's own breach reaches the root: {later:?}");
+    }
+
+    /// Paid, nothing is breached.
+    #[test]
+    fn shiro_paid_breaches_nothing() {
+        let (registry, asked) = shiro_asks();
+        let (paid, events) = act(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None });
+        assert_eq!(paid.corp.resources.credits, Credits(9));
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::BreachBegun { .. })));
+        assert_ne!(phase(&paid), Some(RunPhase::EncounterIce));
+    }
+
+    /// "[trash]: The Corp discards 2 cards from HQ at random." A discard,
+    /// not a trash (CR 1.19.3): facedown into Archives, and no card hears a
+    /// trash.
+    #[test]
+    fn utopia_shard_discards_two_cards_from_hq_at_random_which_is_no_trash() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("utopia_shard"), install_id: InstallId(900), ..Default::default() }];
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        let (discarded, events) = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 0 });
+        assert_eq!(discarded.corp.hq.len(), 1);
+        assert_eq!(discarded.corp.archives.len(), 2);
+        assert!(discarded.corp.archives.iter().all(|archived| archived.facedown), "the Runner never saw them");
+        assert_eq!(events.iter().filter(|event| matches!(event, GameEvent::CardDiscarded { side: Side::Corp, .. })).count(), 2);
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::CardTrashed { card, .. } if *card != id("utopia_shard"))), "a discard is not a trash");
+        assert!(discarded.runner.heap.contains(&id("utopia_shard")));
+        // The Runner's log names neither card.
+        for event in events.iter().filter(|event| matches!(event, GameEvent::CardDiscarded { .. })) {
+            assert_eq!(crate::rules::mask_event_for_player(event, &discarded, Side::Runner), None);
+        }
+        let mut short = state.clone();
+        short.corp.hq = vec![id("hedge_fund")];
+        let (one, _) = act(&short, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 0 });
+        assert_eq!((one.corp.hq.len(), one.corp.archives.len()), (0, 1), "fewer in HQ, fewer discarded");
+        let _ = ArchivedCard::faceup(id("hedge_fund"));
+    }
+
+    /// "Whenever you make a successful run on HQ, instead of breaching HQ,
+    /// you may install this resource from your grip, ignoring all costs."
+    #[test]
+    fn utopia_shard_installs_from_the_grip_instead_of_breaching_hq() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(1);
+        state.runner.grip = vec![id("utopia_shard")];
+        state.corp.hq = vec![id("hedge_fund")];
+        let mut events = Vec::new();
+        let (started, _) = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let asked = drive(started, &registry, &mut events);
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseEffect { chooser: Side::Runner, .. })));
+        let (installed, _) = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        let installed = drive(installed, &registry, &mut events);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("utopia_shard")));
+        assert_eq!(installed.runner.resources.credits, Credits(1));
+        assert!(installed.active_run.is_none(), "HQ was never breached");
+    }
+}

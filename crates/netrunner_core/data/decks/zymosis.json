@@ -3,7 +3,7 @@
   "name": "Zymosis",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Nero Severn: Information Broker, Democracy and Dogma's Criminal identity, who may jack out once a turn as a sentry is encountered. Zero-Day Heist's list, its identity swapped, with two Political Operative (installed only after a successful run on HQ, then trashed with X[credit] to trash a rezzed card whose trash cost is X) for its two Jackpot, which Zero-Day Heist keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Mumbad is in neither pool. FFG F6 Stage 4. Mumbad Stage 14 swapped in a Windfall for a Build Script, which Zero-Day Heist still carries. Mumbad Stage 15 swapped in the three GS breakers for a Femme Fatale, a Shibboleth and an Aurora, which other decks carry. Mumbad Stage 16: Tech Trader for a Corporate Defector. Mumbad Stage 17: The Black File for a Mad Dash. Mumbad Stage 22 swapped a Spot the Prey for Security Nexus. SanSan Stage 16 Two Breach take Afterimage's place. Two Gingerbread take a Femme Fatale's and an Aurora's place. Two Executive Wiretaps take a Spot the Prey's and a Mad Dash's place. One Corporate Defector became a Kati Jones, whose two abilities share one use each turn (Engine words, Stage 2). Engine words Stage 6 takes one Möbius for Unscheduled Maintenance, a current that holds the Corp to one piece of ice a turn. Engine words Stage 12 brought two Feints and two Recons in for the Leave No Traces and Exploits, so the sweep bypasses ice by a run event's count and jacks out at the first encounter. Cortez Chip came in for two Ninja in Engine words Stage 13, to reach an additional cost on the rez of a chosen piece of ice.",
+  "description": "Not a published list: built so the sweeps reach Nero Severn: Information Broker, Democracy and Dogma's Criminal identity, who may jack out once a turn as a sentry is encountered. Zero-Day Heist's list, its identity swapped, with two Political Operative (installed only after a successful run on HQ, then trashed with X[credit] to trash a rezzed card whose trash cost is X) for its two Jackpot, which Zero-Day Heist keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Mumbad is in neither pool. FFG F6 Stage 4. Mumbad Stage 14 swapped in a Windfall for a Build Script, which Zero-Day Heist still carries. Mumbad Stage 15 swapped in the three GS breakers for a Femme Fatale, a Shibboleth and an Aurora, which other decks carry. Mumbad Stage 16: Tech Trader for a Corporate Defector. Mumbad Stage 17: The Black File for a Mad Dash. Mumbad Stage 22 swapped a Spot the Prey for Security Nexus. SanSan Stage 16 Two Breach take Afterimage's place. Two Gingerbread take a Femme Fatale's and an Aurora's place. Two Executive Wiretaps take a Spot the Prey's and a Mad Dash's place. One Corporate Defector became a Kati Jones, whose two abilities share one use each turn (Engine words, Stage 2). Engine words Stage 6 takes one Möbius for Unscheduled Maintenance, a current that holds the Corp to one piece of ice a turn. Engine words Stage 12 brought two Feints and two Recons in for the Leave No Traces and Exploits, so the sweep bypasses ice by a run event's count and jacks out at the first encounter. Cortez Chip came in for two Ninja in Engine words Stage 13, to reach an additional cost on the rez of a chosen piece of ice. Engine words Stage 21 took its Hernando Cortez, which three other decks keep, for a Utopia Shard, installed from the grip in place of a breach of HQ, whose trash discards 2 cards from HQ at random.",
   "style": [
     "pressure"
   ],
@@ -60,10 +60,6 @@
     {
       "card": "flashbang",
       "count": 2
-    },
-    {
-      "card": "hernando_cortez",
-      "count": 1
     },
     {
       "card": "rosetta_2_0",
@@ -148,6 +144,10 @@
     {
       "card": "cortez_chip",
       "count": 2
+    },
+    {
+      "card": "utopia_shard",
+      "count": 1
     }
   ]
 }

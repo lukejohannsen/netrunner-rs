@@ -1301,6 +1301,19 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
         Effect::Breach(server) => crate::rules::run::start_breach(state, registry, *server),
+        Effect::BreachStartingWith { server, first, then } => {
+            let first = match first {
+                CardTarget::ThisCard => ctx.acting_card.cloned(),
+                _ => return Err(RulesError::UnresolvedCardTarget),
+            };
+            let rest = crate::rules::run::EncounterBreachRest {
+                first,
+                then: then.clone(),
+                card: ctx.prompting_card.or(ctx.acting_card).cloned(),
+                install: ctx.prompting_install.or(ctx.acting_install),
+            };
+            crate::rules::run::start_encounter_breach(state, registry, *server, rest)
+        }
         Effect::Access { from, filter, count, then } => crate::rules::run::access_cards(
             state,
             registry,
@@ -1356,6 +1369,26 @@ pub fn evaluate_effect(
             crate::rules::engine::score_install(state, registry, install, requirement)
         }
 
+        Effect::DiscardAtRandom { side, count } => {
+            let mut events = Vec::new();
+            for _ in 0..*count {
+                let held = match side {
+                    Side::Corp => state.corp.hq.len(),
+                    Side::Runner => state.runner.grip.len(),
+                };
+                if held == 0 {
+                    break;
+                }
+                let index = (state.next_u64() as usize) % held;
+                let card = match side {
+                    Side::Corp => state.corp.hq.remove(index),
+                    Side::Runner => state.runner.grip.remove(index),
+                };
+                crate::rules::turn::discard_to_pile(state, *side, card.clone());
+                events.push(GameEvent::CardDiscarded { side: *side, card });
+            }
+            Ok(events)
+        }
         // Drawn together and first, so the `each` that moves one cannot be
         // dealt it again; revealed, so each is public (CR 1.21.3) and stays
         // so until it moves (`GameState::revealed`).

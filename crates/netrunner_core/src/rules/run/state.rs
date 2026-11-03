@@ -566,6 +566,56 @@ impl Default for AccessState {
     }
 }
 
+/// A breach begun during an encounter (CR 6.1.4b: "Any breach and/or
+/// access initiated during the encounter also ends" with it) — Kitsune's
+/// "the Runner breaches HQ" and Shiro's "the Runner breaches R&D", each a
+/// subroutine. The run stands in its own breach phases (`RunPhase::
+/// Success` while what the beginning triggered resolves, then
+/// `AccessingCard`) with its ice, position and encounter untouched, as
+/// Otoroshi's accesses leave them (`OutsideBreach::during_encounter`), and
+/// goes back to the encounter when the breach is over
+/// (`run::access::end_encounter_breach`).
+///
+/// **What a breach writes on the run is the breach's, and is kept here
+/// while this one stands**: the server breached, the access limit's
+/// additions and the accesses left, which the run's own breach, still to
+/// come, begins without. A breach of its own rather than an `Access`,
+/// because every "whenever you breach HQ" card hears it, its random access
+/// limit is set as a breach's is (CR 7.3.5), and a prohibition "during
+/// that breach" ends with it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EncounterBreach {
+    /// What `RunState::breached`, `additional_hq_access`,
+    /// `additional_rd_access`, `rd_from_bottom` and `breach_accesses_left`
+    /// were as the breach began, put back as it ends.
+    pub saved_breached: Option<ServerId>,
+    pub saved_additional_hq_access: u32,
+    pub saved_additional_rd_access: u32,
+    pub saved_rd_from_bottom: bool,
+    pub saved_breach_accesses_left: Option<u32>,
+    /// The card of HQ the first access of the breach takes — Kitsune's
+    /// "the first card they access must be the chosen card"
+    /// (`Effect::BreachStartingWith`). Hidden from the Runner until it is
+    /// accessed (`masking::PublicRunState::encounter_breach`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first: Option<CardId>,
+    /// What the card resolves when the breach ends — Kitsune's "When the
+    /// breach ends, trash this ice" — as `card` and `install`. An access in
+    /// progress parks nothing a `Sequence` waits behind, so what follows
+    /// the breach is carried here, as `OutsideBreach::then` is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub then: Option<Box<Effect>>,
+    #[serde(default)]
+    pub card: Option<CardId>,
+    #[serde(default)]
+    pub install: Option<InstallId>,
+    /// What began it was a subroutine whose ice's later subroutines still
+    /// fire once the breach is over (`pending_choice::
+    /// mark_parked_resume_subroutines`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub resume_subroutines: bool,
+}
+
 /// What a forced encounter with ice away from the Runner's position
 /// interrupted (CR 6.5.9a: "resolve an Encounter Ice Phase but do not change
 /// the Runner's position … After the encounter, return to the effect that
@@ -903,6 +953,11 @@ pub struct RunState {
     /// Public: the card says it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub breaches_after: Vec<ServerId>,
+    /// A breach begun during an encounter, standing in the run until it
+    /// is over (`EncounterBreach`). Public but for the card it begins
+    /// with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encounter_breach: Option<EncounterBreach>,
     /// How many times the Runner has encountered ice during this run,
     /// counting the encounter under way — S-Dobrado's "the first time"
     /// and "the second time you encounter a piece of ice during that run"
@@ -1124,6 +1179,7 @@ impl Default for RunState {
             reached_success_phase: false,
             breached: None,
             breaches_after: Vec::new(),
+            encounter_breach: None,
             encounters: 0,
             ice_passed: 0,
             passed: Vec::new(),

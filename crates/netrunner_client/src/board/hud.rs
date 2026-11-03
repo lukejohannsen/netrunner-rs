@@ -385,10 +385,17 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         };
         format!("This run: after this encounter, back to {to}")
     });
+    // Kitsune, Shiro: a breach the encounter began hands the run back to
+    // that encounter (`encounter_breach`, CR 6.1.4b), while the board shows
+    // the run standing at the ice and the prompt the breached server.
+    let breach_returns_to = view.active_run.as_ref().filter(|run| run.encounter_breach.is_some()).map(|run| {
+        let ice = run.ice.get(run.position).and_then(|ice| ice.identity.as_ref()).map_or_else(|| "the ice".to_string(), |identity| title(&identity.card));
+        format!("This run: after this breach, back to the encounter with {ice}")
+    });
     // Attini: a prohibition a card's standing effect has in force right
     // now (`standing_cannot`) — why an offer to pay has no Accept.
     let standing = view.standing_cannot.iter().map(|standing| format!("{}: {}", title(&standing.source), cannot_words(standing.what)));
-    redirect.into_iter().chain(event_counters).chain(gained_for_the_run).chain(derezzed).chain(run_credits_for).chain(returns_to).chain(standing).chain(view.lingering
+    redirect.into_iter().chain(event_counters).chain(gained_for_the_run).chain(derezzed).chain(run_credits_for).chain(returns_to).chain(breach_returns_to).chain(standing).chain(view.lingering
         .iter()
         .filter_map(|effect| {
             let what = match (&effect.what, &effect.on) {

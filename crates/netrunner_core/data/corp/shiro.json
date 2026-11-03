@@ -1,0 +1,60 @@
+{
+  "id": "shiro",
+  "title": "Shiro",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 6,
+  "strength": 5,
+  "subroutines": [
+    {
+      "text": "Look at the top 3 cards of R&D and arrange them in any order.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnRAndD",
+          "filter": {
+            "TopOfZone": 3
+          },
+          "min": 0,
+          "max": 3,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnRAndD"
+        }
+      }
+    },
+    {
+      "text": "You may pay 1[credit]. If you do not, the Runner breaches R&D. They cannot access cards in the root of R&D during that breach.",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Corp",
+          "cost": {
+            "Credits": 1
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": {
+            "Sequence": [
+              {
+                "Prohibit": {
+                  "what": "AccessRootOfHqOrRnD",
+                  "until": "NextBreach"
+                }
+              },
+              {
+                "Breach": "RnD"
+              }
+            ]
+          },
+          "text": "You may pay 1[credit]. If you do not, the Runner breaches R&D"
+        }
+      }
+    }
+  ],
+  "built_from": 5019,
+  "triggers": [],
+  "is_playable": true
+}

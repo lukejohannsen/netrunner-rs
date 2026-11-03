@@ -598,6 +598,13 @@ pub struct PublicRunState {
     /// Carried so a sample's run goes on to the same breaches.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub breaches_after: Vec<ServerId>,
+    /// `RunState::encounter_breach`: a breach the encounter began, public
+    /// as the subroutine that began it was — but for the card of HQ its
+    /// first access takes, which the Corp chose in secret and only they
+    /// see before it is accessed. Carried so a sample goes back to the
+    /// encounter where the real game will.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encounter_breach: Option<crate::rules::run::EncounterBreach>,
     /// `RunState::encounters`: public, as every encounter is. Carried so a
     /// sample asks S-Dobrado's "the second time you encounter a piece of
     /// ice during that run" where the real game does.
@@ -1605,7 +1612,11 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
     // Only the Runner sees accessed-card identities before the accessed
     // server is Archives (an always-public zone) — the Corp, and a
     // spectator, learn what was hit when it lands in a public zone.
-    let card_visible = viewer.is(Side::Runner) || run.server == ServerId::Archives;
+    // The server breached, not the attacked one: a run on Archives that
+    // breaches R&D (Eru Ayase-Pessoa's, Shiro's) shows the Corp nothing of
+    // R&D's order.
+    let breached = run.access_state.as_ref().map_or(run.server, |access| access.server);
+    let card_visible = viewer.is(Side::Runner) || breached == ServerId::Archives;
     // …or it is revealed while it is accessed (CR 1.21.6: it stays visible
     // until the access is over), which shows the card being accessed and
     // nothing already behind the Runner.
@@ -1652,6 +1663,10 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         reached_success_phase: run.reached_success_phase,
         breached: run.breached,
         breaches_after: run.breaches_after.clone(),
+        encounter_breach: run.encounter_breach.as_ref().map(|breach| crate::rules::run::EncounterBreach {
+            first: breach.first.clone().filter(|_| viewer.is(Side::Corp)),
+            ..breach.clone()
+        }),
         encounters: run.encounters,
         ice_passed: run.ice_passed,
         this_encounter: run.this_encounter.clone(),
