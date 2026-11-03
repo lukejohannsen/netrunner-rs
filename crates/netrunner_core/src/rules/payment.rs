@@ -207,6 +207,15 @@ pub enum Ask {
     /// `PlayerAction::ResolvePendingChoice`; what its cost takes is asked
     /// next, as any cost's cards are (`Card`).
     Interrupt { card: crate::dsl::CardId, less: u32 },
+    /// Which card of the grip damage trashes next, where a card says its
+    /// controller chooses (`ContinuousKind::ChoosesDamageTrash`: Titanium
+    /// Ribs, Chronos Protocol) — not a payment, but the same replay: damage
+    /// is done from inside a prevention, a cost and a trigger alike, and
+    /// none of them could stop halfway. Answered by
+    /// `PlayerAction::ToggleCardSelection` naming a candidate's position.
+    /// Boxed: it rides in `RulesError::PaymentChoiceNeeded`, which every
+    /// handler returns, and unboxed it made that error past clippy's size.
+    Damage(Box<DamageQuestion>),
 }
 
 impl Ask {
@@ -219,6 +228,7 @@ impl Ask {
             Ask::Alternative { offered, .. } => offered.clone(),
             Ask::X { max } => (0..=*max).collect(),
             Ask::Interrupt { .. } => vec![INTERRUPT_USED, INTERRUPT_DECLINED],
+            Ask::Damage(question) => question.eligible.iter().map(|candidate| candidate.position).collect(),
             Ask::Install(question) => {
                 let stop = question.may_stop.then_some(crate::rules::install_trash::STOP);
                 stop.into_iter().chain(question.eligible.iter().map(|candidate| candidate.position)).collect()
@@ -231,7 +241,7 @@ impl Ask {
         use crate::rules::PlayerAction;
         match self {
             Ask::Pools(_) | Ask::X { .. } => PlayerAction::ChooseNumber { amount: answer },
-            Ask::Card(_) => PlayerAction::ToggleCardSelection { position: answer as usize },
+            Ask::Card(_) | Ask::Damage(_) => PlayerAction::ToggleCardSelection { position: answer as usize },
             Ask::Alternative { .. } | Ask::Interrupt { .. } => PlayerAction::ResolvePendingChoice { option_index: answer as usize },
             Ask::Install(_) if answer == crate::rules::install_trash::STOP => PlayerAction::ConfirmCardSelection,
             Ask::Install(_) => PlayerAction::ToggleCardSelection { position: answer as usize },
@@ -280,6 +290,31 @@ pub struct InstallCandidate {
     pub position: u32,
     pub card: crate::dsl::CardId,
     pub install: InstallId,
+}
+
+/// What damage asks its chooser (`Ask::Damage`): which card of the grip
+/// goes next. The candidates are named outright, positions in the grip as
+/// it stood when the damage began with the cards already chosen left out,
+/// because the damage is done in the middle of an action the view has not
+/// seen happen — the grip a client shows is the one before it. The
+/// chooser alone sees it, like every parked payment, so the Corp choosing
+/// (Chronos Protocol's "look at the Runner's grip") is shown the grip
+/// here and nowhere else.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DamageQuestion {
+    /// The card that says its controller chooses.
+    pub card: crate::dsl::CardId,
+    pub kind: crate::dsl::DamageType,
+    pub eligible: Vec<DamageCandidate>,
+    /// The points of the damage still to trash a card, this one counted.
+    pub remaining: u32,
+}
+
+/// One card damage could trash: its position in the grip and the card.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DamageCandidate {
+    pub position: u32,
+    pub card: crate::dsl::CardId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -678,6 +713,10 @@ pub(crate) fn sources(
 ///
 /// **An install asks too** (`Ask::Install`), before it pays: which like
 /// cards it trashes (`install_trash::could_ask`).
+///
+/// **Damage asks too** (`Ask::Damage`), wherever it is done, while an
+/// active card says who chooses its cards; Titanium Ribs and Chronos
+/// Protocol are the only ones, so the copy is made in their games alone.
 pub(crate) fn could_ask(state: &GameState, registry: &CardRegistry, action: &crate::rules::PlayerAction) -> bool {
     pools_could_ask(state)
         || pays_a_cost_that_may_ask(state, registry, action)
@@ -685,6 +724,7 @@ pub(crate) fn could_ask(state: &GameState, registry: &CardRegistry, action: &cra
         || a_text_rez_could_ask(state, registry, action)
         || an_interrupt_could_ask(state, registry)
         || crate::rules::lingering::additional_costs_could_ask(state)
+        || crate::rules::continuous::any_damage_chooser(state, registry)
 }
 
 /// A card's text that rezzes a card and pays for it meets the card's own

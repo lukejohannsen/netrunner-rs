@@ -1237,8 +1237,25 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
     let mut state = state;
     seat_revealed(&mut state);
     seat_selection(&mut state, view);
+    seat_damage_question(&mut state);
     debug_assert_strengths_agree(&state, view, registry);
     state
+}
+
+/// Puts the grip a damage question shows the Corp (Chronos Protocol's
+/// "look at the Runner's grip", `PaymentAsk::Damage`) into the sample, in
+/// its order, so the replay of the Runner's action trashes the card the
+/// Corp chose rather than whatever the sample guessed at that position.
+/// Only where the question names the whole grip: its positions are the
+/// grip's as the damage began, and a grip the action changed first is
+/// not the view's.
+fn seat_damage_question(state: &mut GameState) {
+    use netrunner_core::rules::PaymentAsk as Ask;
+    let Some(netrunner_core::rules::PendingPayment { side: Side::Corp, question: Ask::Damage(question), .. }) = &state.pending_payment else { return };
+    if question.eligible.len() != state.runner.grip.len() || question.eligible.iter().enumerate().any(|(i, candidate)| candidate.position as usize != i) {
+        return;
+    }
+    state.runner.grip = question.eligible.iter().map(|candidate| candidate.card.clone()).collect();
 }
 
 /// The view's parked decision, with a bid the viewer was not shown (the

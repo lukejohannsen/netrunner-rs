@@ -57329,3 +57329,144 @@ mod engine_words_stage_21 {
         assert!(installed.active_run.is_none(), "HQ was never breached");
     }
 }
+
+mod engine_words_stage_22 {
+    use super::*;
+    use crate::dsl::DamageType;
+    use crate::rules::{GameEvent, PaymentAsk, PendingPayment};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    /// The damage question parked on `state`: its chooser and question.
+    fn asked(state: &GameState) -> (Side, crate::rules::DamageQuestion) {
+        match &state.pending_payment {
+            Some(PendingPayment { side, question: PaymentAsk::Damage(question), .. }) => (*side, (**question).clone()),
+            other => panic!("no damage question: {other:?}"),
+        }
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let (_, question) = asked(state);
+        let position = question.eligible.iter().find(|candidate| candidate.card == id(card)).unwrap_or_else(|| panic!("{card} is not a candidate")).position;
+        act(state, registry, PlayerAction::ToggleCardSelection { position: position as usize })
+    }
+
+    fn ribs() -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id("titanium_ribs"), install_id: InstallId(700), ..Default::default() }
+    }
+
+    /// "When you install Titanium Ribs, suffer 2 meat damage. You choose the
+    /// card(s) from your grip to trash whenever you take damage (including
+    /// the damage taken by installing Titanium Ribs)."
+    #[test]
+    fn titanium_ribs_has_the_runner_choose_both_cards_its_own_install_trashes() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("titanium_ribs"), id("sure_gamble"), id("diesel"), id("easy_mark")];
+        let state = act(&state, &registry, PlayerAction::InstallHardware { card_id: id("titanium_ribs"), host: None });
+        let (side, question) = asked(&state);
+        assert_eq!((side, question.kind, question.remaining), (Side::Runner, DamageType::Meat, 2));
+        assert_eq!(question.eligible.len(), 3, "the grip as the damage began: Ribs is installed");
+        let state = pick(&state, &registry, "diesel");
+        let (_, second) = asked(&state);
+        assert_eq!(second.remaining, 1);
+        assert!(second.eligible.iter().all(|candidate| candidate.card != id("diesel")), "a card chosen is not offered twice");
+        let state = pick(&state, &registry, "easy_mark");
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(state.pending_payment.is_none());
+        assert_eq!(state.runner.grip, vec![id("sure_gamble")]);
+        assert_eq!(state.runner.heap, vec![id("diesel"), id("easy_mark")]);
+        assert!(state.runner.rig.iter().any(|card| card.card == id("titanium_ribs")));
+    }
+
+    /// The legal actions while the question stands are its candidates, and
+    /// the Runner's alone.
+    #[test]
+    fn a_damage_question_offers_its_chooser_each_candidate_and_nothing_else() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("titanium_ribs"), id("sure_gamble"), id("diesel"), id("easy_mark")];
+        let state = act(&state, &registry, PlayerAction::InstallHardware { card_id: id("titanium_ribs"), host: None });
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+        assert_eq!(offered.len(), 3, "{offered:?}");
+        assert!(offered.iter().all(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })));
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Corp).is_empty());
+    }
+
+    /// No card that says who chooses: the old roll, untouched.
+    #[test]
+    fn damage_with_no_chooser_asks_nobody() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.grip = vec![id("sure_gamble"), id("diesel"), id("easy_mark")];
+        let (events, trashed) = crate::rules::apply_damage(&mut state, &registry, DamageType::Net, 2, Some(Side::Corp)).expect("nobody asked");
+        assert_eq!((trashed.len(), state.runner.grip.len()), (2, 1));
+        assert!(matches!(events[0], GameEvent::DamageTaken { amount: 2, .. }));
+    }
+
+    /// "For the first net damage the Runner suffers each turn, you may look
+    /// at the Runner's grip and select the card that is trashed." Snare!'s
+    /// 3 net damage: the Corp selects the first card (CR 10.4.3a's own
+    /// example), the other two are random, and the turn's next net damage
+    /// asks nobody.
+    #[test]
+    fn chronos_protocol_selects_the_first_card_of_the_turns_first_net_damage() {
+        let (mut state, registry) = run_into_snare(5);
+        state.corp.identity = Some(id("chronos_protocol_selective_mind_mapping"));
+        state.runner.grip = vec![id("sure_gamble"), id("diesel"), id("easy_mark"), id("dirty_laundry"), id("corroder")];
+        let state = act(&state, &registry, PlayerAction::PayAccessTrigger { card_id: id("snare") });
+        let (side, question) = asked(&state);
+        assert_eq!((side, question.kind, question.remaining), (Side::Corp, DamageType::Net, 3));
+        assert_eq!(question.eligible.len(), 5, "the Corp looks at the whole grip");
+        let view = crate::view::build_client_view(&state, &registry, Side::Corp);
+        assert_eq!(view.selection.len(), 5, "and is shown it as the selection");
+        assert!(view.selection.iter().all(|candidate| candidate.card.is_some()));
+        let runner = crate::view::build_client_view(&state, &registry, Side::Runner);
+        assert!(runner.selection.is_empty() && runner.pending_payment.as_ref().is_some_and(|payment| payment.own.is_none()));
+        let state = pick(&state, &registry, "corroder");
+        assert!(state.pending_payment.is_none(), "one card is the Corp's, the rest are random");
+        assert_eq!(state.runner.grip.len(), 2);
+        assert_eq!(state.runner.heap.first(), Some(&id("corroder")));
+        let mut again = state.clone();
+        crate::rules::apply_damage(&mut again, &registry, DamageType::Net, 1, Some(Side::Corp)).expect("the turn's second net damage asks nobody");
+        assert_eq!(again.runner.grip.len(), 1);
+    }
+
+    /// CR 9.12.1c: with Chronos Protocol and Titanium Ribs both active, the
+    /// active player chooses the first card — on the Runner's turn, the
+    /// Runner — and Ribs has the Runner choose the rest.
+    #[test]
+    fn with_chronos_protocol_and_titanium_ribs_the_active_player_chooses_the_first_card() {
+        let (mut state, registry) = run_into_snare(5);
+        state.corp.identity = Some(id("chronos_protocol_selective_mind_mapping"));
+        state.runner.rig = vec![ribs()];
+        state.runner.grip = vec![id("sure_gamble"), id("diesel"), id("easy_mark"), id("dirty_laundry")];
+        let mut state = act(&state, &registry, PlayerAction::PayAccessTrigger { card_id: id("snare") });
+        for card in ["sure_gamble", "diesel", "easy_mark"] {
+            let (side, _) = asked(&state);
+            assert_eq!(side, Side::Runner, "{card}");
+            state = pick(&state, &registry, card);
+        }
+        assert!(state.pending_payment.is_none());
+        assert_eq!(state.runner.grip, vec![id("dirty_laundry")]);
+    }
+
+    /// Damage that takes every card left asks nobody: there is no choice.
+    #[test]
+    fn titanium_ribs_does_not_ask_when_the_damage_takes_the_whole_grip() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![ribs()];
+        state.runner.grip = vec![id("sure_gamble"), id("diesel")];
+        crate::rules::apply_damage(&mut state, &registry, DamageType::Meat, 2, Some(Side::Corp)).expect("no choice to make");
+        assert!(state.runner.grip.is_empty());
+    }
+}

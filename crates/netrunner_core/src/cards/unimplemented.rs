@@ -236,7 +236,6 @@ pub(crate) const BB_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Chrome City* (`chrome_city`): tranche F7 of the FFG plan.
 pub(crate) const CC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("titanium_ribs", "Titanium Ribs"),
 ];
 
 /// *The Underway* (`the_underway`): tranche F7 of the FFG plan.
@@ -253,7 +252,6 @@ pub(crate) const OH_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Universe of Tomorrow* (`the_universe_of_tomorrow`): tranche F7 of the FFG plan.
 pub(crate) const UOT_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("chronos_protocol_selective_mind_mapping", "Chronos Protocol: Selective Mind-mapping"),
 ];
 
 /// *Order and Chaos* (`order_and_chaos`): tranche F7 of the FFG plan.

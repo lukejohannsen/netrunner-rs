@@ -201,6 +201,11 @@ pub(crate) fn selection_positions(
             let candidates = question.eligible.iter().map(|c| (c.position as usize, c.card.clone(), Some(c.install))).collect();
             return Some(SelectionPositions { chooser: payment.side, corp_archives: false, candidates });
         }
+        // Damage's too, as the grip stood when the damage began.
+        if let crate::rules::payment::Ask::Damage(question) = &payment.question {
+            let candidates = question.eligible.iter().map(|c| (c.position as usize, c.card.clone(), None)).collect();
+            return Some(SelectionPositions { chooser: payment.side, corp_archives: false, candidates });
+        }
         let crate::rules::payment::Ask::Card(question) = &payment.question else { return None };
         let cards = zone_card_ids(state, payment.side, &question.zone, None);
         let installs = zone_install_ids(state, payment.side, &question.zone);

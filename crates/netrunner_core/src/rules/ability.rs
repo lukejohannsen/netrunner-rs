@@ -5504,7 +5504,7 @@ pub(crate) fn pay_cost_ctx(
             // cost is not prevented (1.16.1a). Its `DamageTaken` is
             // dispatched by the payer (`dispatch_cost_events`).
             // The Runner chose to suffer it, so it is theirs (CR 10.4.1).
-            Ok(crate::rules::damage::apply_damage(state, *damage_type, *amount as usize, Some(Side::Runner)).0)
+            Ok(crate::rules::damage::apply_damage(state, registry, *damage_type, *amount as usize, Some(Side::Runner))?.0)
         }
 
         Cost::Forfeit(count) => {

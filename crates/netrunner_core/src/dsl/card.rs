@@ -1955,9 +1955,10 @@ impl CardDefinition {
                 (Scope::Playing(filter), _) => crate::rules::turn_log::Occurrences::plays(filter, self.side),
                 (Scope::Player(_), Some(trigger)) => crate::rules::turn_log::Occurrences::meant_by(trigger, None, self.side),
                 (Scope::Runs(_), _) if matches!(effect.kind, ContinuousKind::RunCost(_)) => crate::rules::turn_log::Occurrences::runs(self.side),
+                (Scope::Controller, _) if matches!(effect.kind, ContinuousKind::ChoosesDamageTrash(_)) => crate::rules::turn_log::Occurrences::damage(&effect.kind),
                 _ => {
                     return Err(self.first_time_misfit(
-                        "a continuous effect is about the first of something only where it is about an install, a play (`Installing`, `Playing`), a rez of ice (`Ice` with `RezCost`), a run's cost (`Runs` with `RunCost`) or a prohibition the turn counts (`Prohibition::counted_as`)".to_string(),
+                        "a continuous effect is about the first of something only where it is about an install, a play (`Installing`, `Playing`), a rez of ice (`Ice` with `RezCost`), a run's cost (`Runs` with `RunCost`), the damage a player chooses the cards of (`ChoosesDamageTrash`) or a prohibition the turn counts (`Prohibition::counted_as`)".to_string(),
                     ));
                 }
             };
@@ -2347,6 +2348,8 @@ impl CardDefinition {
                 (ContinuousKind::RemoteServerLimit(_), Scope::Controller) => {}
                 (ContinuousKind::OrdersSubroutines, Scope::Controller) if self.side == Side::Runner => {}
                 (ContinuousKind::OrdersSubroutines, _) => return misfit("OrdersSubroutines", "the order subroutines resolve in is declared by the Runner who controls the card (`Controller`)"),
+                (ContinuousKind::ChoosesDamageTrash(_), Scope::Controller) => {}
+                (ContinuousKind::ChoosesDamageTrash(_), _) => return misfit("ChoosesDamageTrash", "the cards damage trashes are chosen by the player who controls the card (`Controller`)"),
                 (ContinuousKind::CannotBeStolen { .. }, Scope::Stealing(_) | Scope::StealingFromThisServer) => {}
                 (ContinuousKind::CannotBeStolen { .. }, _) => return misfit("CannotBeStolen", "an agenda that cannot be stolen is about `Stealing` or `StealingFromThisServer`"),
                 (ContinuousKind::DrawsEachTurnAtMost(_), Scope::Player(Side::Runner)) => {}

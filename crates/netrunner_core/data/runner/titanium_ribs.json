@@ -1,0 +1,34 @@
+{
+  "id": "titanium_ribs",
+  "title": "Titanium Ribs",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "ChoosesDamageTrash": null
+      },
+      "applies_to": "Controller",
+      "text": "You choose the card(s) from your grip to trash whenever you take damage (including the damage taken by installing Titanium Ribs)."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            2
+          ]
+        }
+      ],
+      "text": "When you install Titanium Ribs, suffer 2 meat damage."
+    }
+  ],
+  "built_from": 8045,
+  "is_playable": true
+}
