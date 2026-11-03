@@ -1,0 +1,40 @@
+{
+  "id": "medical_breakthrough",
+  "title": "Medical Breakthrough",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "continuous": [
+    {
+      "kind": {
+        "AdvancementRequirement": {
+          "per": -1,
+          "of": {
+            "Increased": {
+              "amount": {
+                "Increased": {
+                  "amount": {
+                    "CopiesInScoreArea": "Corp"
+                  },
+                  "by": {
+                    "CopiesInScoreArea": "Runner"
+                  }
+                }
+              },
+              "by": {
+                "Fixed": 1
+              }
+            }
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "Lower the advancement requirement of each Medical Breakthrough by 1. This ability is active even while Medical Breakthrough is in the Runner's score area."
+    }
+  ],
+  "triggers": [],
+  "built_from": 5005,
+  "is_playable": true
+}

@@ -1,0 +1,16 @@
+{
+  "id": "net_police",
+  "title": "Net Police",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 1,
+  "counter_kind": "Credit",
+  "recurring_credits": "RunnerLink",
+  "pays_for": [
+    "TraceAttempts"
+  ],
+  "triggers": [],
+  "built_from": 2075,
+  "is_playable": true
+}

@@ -1030,6 +1030,7 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             RecurringCredits::Counted(CountedRecurring::HostedCounters) => "a hosted credit for each counter on it".to_string(),
             RecurringCredits::Counted(CountedRecurring::IceProtecting(server)) => format!("a hosted credit for each piece of ice protecting {}", describe_server(server)),
             RecurringCredits::Counted(CountedRecurring::RemoteServers) => "a hosted credit for each remote server".to_string(),
+            RecurringCredits::Counted(CountedRecurring::RunnerLink) => "a hosted credit for each of the Runner's link".to_string(),
         };
         lines.push(format!("• [recurring] → when this becomes active, and before your turn begins, refill to {up_to}"));
     }

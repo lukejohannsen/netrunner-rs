@@ -57470,3 +57470,174 @@ mod engine_words_stage_22 {
         assert!(state.runner.grip.is_empty());
     }
 }
+
+mod engine_words_stage_23 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn root(card: &str, install: u32, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed, ..Default::default() }
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    /// Toggles every position the parked selection offers, then confirms.
+    fn select_all(mut state: GameState, registry: &CardRegistry, side: Side) -> GameState {
+        let mut toggled = Vec::new();
+        loop {
+            let offered = crate::rules::legal_actions_for(&state, registry, side);
+            let next = offered.iter().find(|action| matches!(action, PlayerAction::ToggleCardSelection { .. }) && !toggled.contains(*action)).cloned();
+            match next {
+                Some(toggle) => {
+                    state = act(&state, registry, toggle.clone());
+                    toggled.push(toggle);
+                }
+                None => return act(&state, registry, PlayerAction::ConfirmCardSelection),
+            }
+        }
+    }
+
+    /// "Lower the advancement requirement of each Medical Breakthrough by 1.
+    /// This ability is active even while Medical Breakthrough is in the
+    /// Runner's score area." An installed copy lowers itself, and every
+    /// copy in either score area lowers it once more.
+    #[test]
+    fn medical_breakthrough_is_lowered_by_itself_and_by_every_scored_or_stolen_copy() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![root("medical_breakthrough", 60, false)];
+        let requirement = |state: &GameState| crate::rules::continuous::advancement_requirement(state, &registry, InstallId(60));
+        assert_eq!(requirement(&state), Some(3), "4, less itself");
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda { install_id: InstallId(9), ..crate::rules::ScoredAgenda::plain(id("medical_breakthrough")) }];
+        assert_eq!(requirement(&state), Some(2), "and the Corp's scored copy");
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda { install_id: InstallId(10), ..crate::rules::ScoredAgenda::plain(id("medical_breakthrough")) }];
+        assert_eq!(requirement(&state), Some(1), "and the copy the Runner stole");
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda { install_id: InstallId(10), ..crate::rules::ScoredAgenda::plain(id("hostile_takeover")) }];
+        assert_eq!(requirement(&state), Some(2), "another agenda is no copy");
+    }
+
+    /// "When you score this agenda, the Runner removes all cards in the heap
+    /// from the game."
+    #[test]
+    fn chronos_project_removes_the_whole_heap_from_the_game() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, ..root("chronos_project", 60, false) }];
+        state.runner.heap = vec![id("sure_gamble"), id("diesel"), id("sure_gamble")];
+        let scored = act(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(60) });
+        let done = select_all(scored, &registry, Side::Corp);
+        let (done, _) = close_all_windows(done, &registry);
+        assert!(done.runner.heap.is_empty(), "{:?}", done.runner.heap);
+        assert_eq!(done.runner.removed_from_game.len(), 3);
+        assert!(done.corp.scored_agendas.iter().any(|scored| scored.card == id("chronos_project")));
+    }
+
+    /// "When your turn begins, lose [click]. Ignore any additional costs on
+    /// each double event you play."
+    #[test]
+    fn starlight_crusade_funding_waives_a_double_events_click_and_takes_one_as_the_turn_begins() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(1);
+        state.runner.resources.credits = Credits(0);
+        state.runner.grip = vec![id("power_nap")];
+        state.runner.rig = vec![rig("starlight_crusade_funding", 700)];
+        let played = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("power_nap") });
+        assert_eq!(played.runner.resources.clicks, Clicks(0), "the action's click, and no other");
+        assert_eq!(played.runner.resources.credits, Credits(2));
+
+        let mut turn = base_state();
+        turn.runner.rig = vec![rig("starlight_crusade_funding", 700)];
+        crate::rules::test_support::enter_start_of_turn(&mut turn, &registry, Side::Runner);
+        let (turn, _) = pass_until_settled(turn, &registry);
+        assert_eq!(turn.runner.resources.clicks, Clicks(3));
+    }
+
+    /// Without it, Power Nap's additional [click] is owed.
+    #[test]
+    fn a_double_event_without_starlight_crusade_funding_costs_its_additional_click() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(1);
+        state.runner.grip = vec![id("power_nap")];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("power_nap") }).is_err());
+    }
+
+    /// "Play only if the Runner made a run during their last turn. Trash any
+    /// number of cards from the top of R&D. The Runner trashes an installed
+    /// program or piece of hardware with an install cost equal to or less
+    /// than the number of cards you trashed this way."
+    #[test]
+    fn power_shutdown_has_the_runner_trash_a_card_costing_no_more_than_the_cards_milled() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("power_shutdown")];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund"), id("hedge_fund")];
+        state.runner.rig = vec![rig("corroder", 700), rig("akamatsu_mem_chip", 701), rig("gordian_blade", 702)];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("power_shutdown") }).is_err(), "no run last turn");
+        let event = crate::rules::GameEvent::RunInitiated { server: ServerId::Hq };
+        crate::rules::turn_log::record(&mut state, &registry, &event);
+        crate::rules::turn_log::rotate(&mut state);
+        let asked = act(&state, &registry, PlayerAction::PlayOperation { card_id: id("power_shutdown") });
+        let milled = act(&asked, &registry, PlayerAction::ChooseNumber { amount: 1 });
+        assert_eq!(milled.corp.r_and_d.len(), 2);
+        let offered: Vec<PlayerAction> = crate::rules::legal_actions_for(&milled, &registry, Side::Runner)
+            .into_iter()
+            .filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. }))
+            .collect();
+        assert_eq!(offered.len(), 1, "only the 1[credit] chip: {offered:?}");
+        let done = select_all(milled, &registry, Side::Runner);
+        assert_eq!(done.runner.heap, vec![id("akamatsu_mem_chip")]);
+        assert_eq!(done.runner.rig.len(), 2);
+    }
+
+    /// "Hosted power counter: Reveal all cards in the Runner's grip. Trash 1
+    /// of those cards."
+    #[test]
+    fn snoop_spends_a_power_counter_to_trash_a_card_from_the_grip() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(60),
+            card: id("snoop"),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            counters: 1,
+            ..Default::default()
+        }];
+        state.runner.grip = vec![id("sure_gamble"), id("diesel")];
+        let asked = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(60), ability_index: 0 });
+        assert_eq!(asked.corp.installed[0].counters, 0);
+        let position = asked.runner.grip.iter().position(|card| *card == id("diesel")).expect("in the grip");
+        let picked = act(&asked, &registry, PlayerAction::ToggleCardSelection { position });
+        let done = act(&picked, &registry, PlayerAction::ConfirmCardSelection);
+        assert_eq!(done.runner.grip, vec![id("sure_gamble")]);
+        assert_eq!(done.runner.heap, vec![id("diesel")]);
+    }
+
+    /// "X[recurring-credit]. Use these credits during traces. X is the
+    /// number of links the Runner has." Counted at the refill.
+    #[test]
+    fn net_police_refills_to_the_runners_link() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![root("net_police", 60, true)];
+        crate::rules::payment::refill(&mut state, &registry, Side::Corp).expect("refill");
+        assert_eq!(state.corp.installed[0].counters, 0, "no link, no credits");
+        state.runner.identity = Some(id("kate_mac_mccaffrey_digital_tinker"));
+        crate::rules::payment::refill(&mut state, &registry, Side::Corp).expect("refill");
+        assert_eq!(state.corp.installed[0].counters, 1, "Kate's 1[link]");
+    }
+}

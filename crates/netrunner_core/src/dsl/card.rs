@@ -1159,18 +1159,25 @@ pub enum CountedRecurring {
     /// The remote servers there are — Khondi Plaza's "X is the number of
     /// remote servers", counted when the credits are placed or refilled.
     RemoteServers,
+    /// The Runner's link (`continuous::link`) — Net Police's "X is the
+    /// number of links the Runner has", counted when the credits are placed
+    /// or refilled, as the others are, so a link gained mid-turn adds a
+    /// credit at the next refill. Composition didn't work: what an
+    /// X[recurring-credit] counts was the board's or the card's own.
+    RunnerLink,
 }
 
 impl RecurringCredits {
     /// N, for a card holding `counters` of its own kind, with `ice` the
-    /// number of pieces of ice protecting a server and `remotes` the
-    /// number of remote servers.
-    pub fn of(self, counters: u32, ice: impl Fn(crate::rules::ServerId) -> u32, remotes: u32) -> u32 {
+    /// number of pieces of ice protecting a server, `remotes` the number of
+    /// remote servers and `link` the Runner's link.
+    pub fn of(self, counters: u32, ice: impl Fn(crate::rules::ServerId) -> u32, remotes: u32, link: u32) -> u32 {
         match self {
             RecurringCredits::Fixed(n) => n,
             RecurringCredits::Counted(CountedRecurring::HostedCounters) => counters,
             RecurringCredits::Counted(CountedRecurring::IceProtecting(server)) => ice(server),
             RecurringCredits::Counted(CountedRecurring::RemoteServers) => remotes,
+            RecurringCredits::Counted(CountedRecurring::RunnerLink) => link,
         }
     }
 
