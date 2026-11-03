@@ -406,6 +406,15 @@ pub enum GameEvent {
         /// came from on `CardInstalled::from_hq`.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         from_heap: bool,
+        /// Whether the card came out of the grip — Bazaar's "Whenever you
+        /// install a piece of hardware **from your grip**"
+        /// (`EventFilter::InstalledFromGrip`). Public, as `from_heap` is.
+        /// Its own flag beside `from_heap` rather than one zone in their
+        /// place, so a history recorded before it reads as it did: a card
+        /// can come from the stack, a host or the set-aside cards too, and
+        /// neither flag is set for those.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        from_grip: bool,
     },
     ProgramInstalled {
         side: Side,
@@ -416,6 +425,9 @@ pub enum GameEvent {
         /// As `HardwareInstalled::from_heap`.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         from_heap: bool,
+        /// As `HardwareInstalled::from_grip`.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        from_grip: bool,
     },
     ResourceInstalled {
         side: Side,
@@ -430,6 +442,9 @@ pub enum GameEvent {
         /// As `HardwareInstalled::from_heap`.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         from_heap: bool,
+        /// As `HardwareInstalled::from_grip`.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        from_grip: bool,
     },
     /// `install` names the instance when the accessed card is a root
     /// install (`AccessState::pending_install`), so `Trigger::OnAccessed`

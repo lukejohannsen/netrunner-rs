@@ -80,6 +80,9 @@ pub(crate) struct Moment {
     /// (`GameEvent::ProgramInstalled::from_heap` and its two siblings) for
     /// `EventFilter::InstalledFromHeap`, as `from_hq` is for the Corp's.
     pub from_heap: Option<bool>,
+    /// Whether a Runner install came out of the grip, for
+    /// `EventFilter::InstalledFromGrip` — as `from_heap`.
+    pub from_grip: Option<bool>,
     /// The server a Corp card was installed in, read off the event for
     /// `EventFilter::InstalledIn`.
     pub installed_in: Option<ServerId>,
@@ -197,7 +200,7 @@ pub(crate) fn card_about(state: &GameState, event: &GameEvent, trigger: Trigger)
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, from_heap: None, installed_in: None, trashed_from: None, damage: None, by: None, was_active: false, trashed_install: None, successful: None, unsuccessful: None, jacked_out: None, in_archives: None, guarded: None, ability: None };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, from_heap: None, from_grip: None, installed_in: None, trashed_from: None, damage: None, by: None, was_active: false, trashed_install: None, successful: None, unsuccessful: None, jacked_out: None, in_archives: None, guarded: None, ability: None };
     // A moment about the ice at `position` in the run's ice. Where the run
     // or the ice has gone by the time the moment is asked again — a
     // trigger fired after the run ended — it is about nothing, and keeps
@@ -208,7 +211,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             .as_ref()
             .and_then(|run| run.ice.get(position as usize))
             .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
-        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, from_heap: None, installed_in: None, trashed_from: None, damage: None, was_active: false, by: None, trashed_install: None, successful: None, unsuccessful: None, jacked_out: None, in_archives: None, guarded: None, ability: None }
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, from_heap: None, from_grip: None, installed_in: None, trashed_from: None, damage: None, was_active: false, by: None, trashed_install: None, successful: None, unsuccessful: None, jacked_out: None, in_archives: None, guarded: None, ability: None }
     };
     match event {
         GameEvent::EventPlayed { side, card: played, .. } => {
@@ -229,12 +232,15 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             vec![moment(Trigger::OnPlay, &about, Some(*side)), moment(Trigger::OnCardPlayed, &about, Some(*side))]
         }
 
-        GameEvent::ProgramInstalled { side, card: installed, from_heap, .. }
-        | GameEvent::HardwareInstalled { side, card: installed, from_heap, .. }
-        | GameEvent::ResourceInstalled { side, card: installed, from_heap, .. } => {
+        GameEvent::ProgramInstalled { side, card: installed, from_heap, from_grip, .. }
+        | GameEvent::HardwareInstalled { side, card: installed, from_heap, from_grip, .. }
+        | GameEvent::ResourceInstalled { side, card: installed, from_heap, from_grip, .. } => {
             let about = card(installed, newest_rig_install(state, installed));
-            let from_heap = Some(*from_heap);
-            vec![Moment { from_heap, ..moment(Trigger::OnInstall, &about, Some(*side)) }, Moment { from_heap, ..moment(Trigger::OnCardInstalled, &about, Some(*side)) }]
+            let (from_heap, from_grip) = (Some(*from_heap), Some(*from_grip));
+            vec![
+                Moment { from_heap, from_grip, ..moment(Trigger::OnInstall, &about, Some(*side)) },
+                Moment { from_heap, from_grip, ..moment(Trigger::OnCardInstalled, &about, Some(*side)) },
+            ]
         }
         // The Corp's installs. `card` is `None` only in a masked copy of the
         // event, which the engine never dispatches.
@@ -921,6 +927,9 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     if let EventFilter::InstalledFromHeap = filter {
         return moment.from_heap == Some(true);
     }
+    if let EventFilter::InstalledFromGrip = filter {
+        return moment.from_grip == Some(true);
+    }
     if let EventFilter::InstalledIn(kind) = filter {
         return moment.installed_in.is_some_and(|server| kind.admits(server));
     }
@@ -1502,7 +1511,7 @@ mod tests {
         assert_eq!(who(&plan_for(&state, &registry, &GameEvent::RunSucceeded { server: ServerId::Hq })), vec![("docklands_pass", Heard::AsBystander)]);
         assert!(plan_for(&state, &registry, &GameEvent::RunSucceeded { server: ServerId::RnD }).is_empty());
 
-        let installed = |card: &str| GameEvent::ProgramInstalled { side: Side::Runner, card: CardId(card.to_string()), memory_cost: 1, credits_paid: 0, from_heap: false };
+        let installed = |card: &str| GameEvent::ProgramInstalled { side: Side::Runner, card: CardId(card.to_string()), memory_cost: 1, credits_paid: 0, from_heap: false, from_grip: false };
         assert!(plan_for(&state, &registry, &installed("mayfly")).is_empty());
         // "…place 1 virus counter on **it**": the virus travels with the
         // trigger, because the card said its effects act on it.
@@ -1623,7 +1632,7 @@ mod tests {
         let registry = registry(vec![the_future]);
         let mut state = GameState::default();
         state.corp.identity = Some(CardId("haas_bioroid_engineering_the_future".to_string()));
-        let runners = GameEvent::ProgramInstalled { side: Side::Runner, card: CardId("leech".to_string()), memory_cost: 1, credits_paid: 0, from_heap: false };
+        let runners = GameEvent::ProgramInstalled { side: Side::Runner, card: CardId("leech".to_string()), memory_cost: 1, credits_paid: 0, from_heap: false, from_grip: false };
         let corps = GameEvent::CardInstalled { side: Side::Corp, install: InstallId(1), card: Some(CardId("pad_campaign".to_string())), server: ServerId::Remote(0), from_hq: true };
 
         let as_of = turn_log::record(&mut state, &registry, &runners);

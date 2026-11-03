@@ -1,0 +1,66 @@
+{
+  "id": "self_destruct",
+  "title": "Self-destruct",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 0,
+  "install_only_in": [
+    "Remote"
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": "RunAgainstThisServer",
+      "effect": {
+        "ChooseNumber": {
+          "chooser": "Corp",
+          "min": {
+            "InZone": {
+              "zone": "OwnInstalled",
+              "filter": "InThisServer"
+            }
+          },
+          "max": {
+            "InZone": {
+              "zone": "OwnInstalled",
+              "filter": "InThisServer"
+            }
+          },
+          "text": "Trash all cards installed in the root of or protecting this server",
+          "then": {
+            "Sequence": [
+              {
+                "ForEach": {
+                  "source": "OwnInstalled",
+                  "filter": "InThisServer",
+                  "effect": {
+                    "TrashCard": {
+                      "Install": 0
+                    }
+                  }
+                }
+              },
+              {
+                "Trace": {
+                  "base": "ChosenNumber",
+                  "on_success": {
+                    "DealDamage": [
+                      "Net",
+                      3
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "text": "[trash]: Trash all cards installed in the root of or protecting this server. Trace[X], where X is equal to the number of cards trashed. If successful, do 3 net damage. Use this ability only during a run on this server."
+    }
+  ],
+  "built_from": 6112,
+  "is_playable": true
+}

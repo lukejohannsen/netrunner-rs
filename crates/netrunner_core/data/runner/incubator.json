@@ -1,0 +1,67 @@
+{
+  "id": "incubator",
+  "title": "Incubator",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When your turn begins, place 1 virus counter on Incubator."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "ChooseNumber": {
+          "chooser": "Runner",
+          "min": "HostedCounters",
+          "max": "HostedCounters",
+          "text": "Move all virus counters from Incubator",
+          "then": {
+            "PromptChooseCards": {
+              "side": "Runner",
+              "source": "OwnInstalled",
+              "filter": {
+                "All": [
+                  {
+                    "CardType": "Program"
+                  },
+                  {
+                    "HasSubtype": "Virus"
+                  }
+                ]
+              },
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "AddVirusCounters": "ChosenNumber"
+              }
+            }
+          }
+        }
+      },
+      "text": "[click], [trash]: Move all virus counters from Incubator to another installed virus program."
+    }
+  ],
+  "counter_kind": "Virus",
+  "built_from": 6113,
+  "is_playable": true
+}

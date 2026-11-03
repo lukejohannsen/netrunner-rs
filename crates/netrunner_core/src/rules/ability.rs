@@ -892,12 +892,13 @@ pub fn evaluate_effect(
         // beside them (`pending_choice::virus_on`); any other card's are
         // its own, as `AddCounters` places them.
         Effect::AddVirusCounters(amount) => {
-            let Some(position) = acting_rig_position(state, ctx) else { return modify_counters(state, ctx, i64::from(*amount)) };
+            let amount = resolve_amount(amount, ctx, state, registry);
+            let Some(position) = acting_rig_position(state, ctx) else { return modify_counters(state, ctx, i64::from(amount)) };
             let installed = &mut state.runner.rig[position];
             let own = registry.get(&installed.card).and_then(|card| card.counter_kind) == Some(crate::dsl::CounterKind::Virus);
             let held = if own { &mut installed.counters } else { &mut installed.virus_counters };
-            *held = held.saturating_add(*amount);
-            Ok(vec![GameEvent::CountersAdded { card: installed.card.clone(), amount: *amount }])
+            *held = held.saturating_add(amount);
+            Ok(vec![GameEvent::CountersAdded { card: installed.card.clone(), amount }])
         }
         Effect::RemoveVirusCounters(amount) => {
             let amount = resolve_amount(amount, ctx, state, registry);
@@ -2806,6 +2807,10 @@ pub fn evaluate_effect(
 
         Effect::ForEach { source, filter, effect } => {
             let side = controller(ctx, state, registry);
+            // "This server", the one the card is in — or was in, when its
+            // own cost has trashed it: Self-destruct's "[trash]: Trash all
+            // cards installed in the root of or protecting this server".
+            let filter = &filter.clone().with_this_server(acting_server(state, ctx));
             let positions = crate::rules::pending_choice::eligible_positions(state, registry, side, source, filter, ctx.acting_install, ctx.acting_card);
             let installs = crate::rules::pending_choice::zone_install_ids(state, side, source).ok_or(RulesError::UnresolvedCardTarget)?;
             let each: Vec<Effect> = positions.iter().filter_map(|position| installs.get(*position)).map(|install| (**effect).clone().with_each_install(*install)).collect();
@@ -3028,7 +3033,8 @@ pub fn evaluate_effect(
             if let Some(of) = of {
                 most = most.min(resolve_amount(of, ctx, state, registry));
             }
-            if most <= *min {
+            let min = resolve_amount(min, ctx, state, registry);
+            if most <= min {
                 // One number, or none the card allows: nobody is asked.
                 // A range the state has emptied ("up to 2" of no tags)
                 // resolves with what there is, as `RemoveTags` always
@@ -3037,7 +3043,7 @@ pub fn evaluate_effect(
             }
             state.pending_decision = Some(PendingDecision::ChooseNumber {
                 chooser: *chooser,
-                min: *min,
+                min,
                 max: most,
                 then: then.clone(),
                 text: text.clone(),
@@ -3048,7 +3054,7 @@ pub fn evaluate_effect(
                 secret: *secret,
                 install: None,
             });
-            Ok(vec![GameEvent::NumberChoiceOffered { chooser: *chooser, min: *min, max: most }])
+            Ok(vec![GameEvent::NumberChoiceOffered { chooser: *chooser, min, max: most }])
         }
 
         Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {
@@ -6948,6 +6954,9 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::TimesThisTurn(trigger) => state.this_turn.times(*trigger),
         Amount::InZone { zone, filter } => {
             let side = ctx.acting_card.and_then(|card| registry.get(card)).map_or(Side::Corp, |card| card.side);
+            // "This server" as `Effect::ForEach` reads it, so a count of
+            // the cards an effect is about to act on counts those.
+            let filter = &filter.clone().with_this_server(acting_server(state, ctx));
             crate::rules::pending_choice::eligible_positions(state, registry, side, zone, filter, ctx.acting_install, ctx.acting_card).len() as u32
         }
         Amount::AgendasInScoreArea(side) => match side {

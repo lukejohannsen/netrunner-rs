@@ -188,7 +188,6 @@ pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Salsette Island* (`salsette_island`): tranche F6 of the FFG plan.
 pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("bazaar", "Bazaar"),
     ("personality_profiles", "Personality Profiles"),
     ("jeeves_model_bioroids", "Jeeves Model Bioroids"),
     ("raman_rai", "Raman Rai"),
@@ -269,7 +268,6 @@ pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *The Spaces Between* (`the_spaces_between`): tranche F8 of the FFG plan.
 pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("enhanced_login_protocol", "Enhanced Login Protocol"),
-    ("sealed_vault", "Sealed Vault"),
     ("net_celebrity", "Net Celebrity"),
 ];
 
@@ -289,9 +287,6 @@ pub(crate) const ATR_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Source* (`the_source`): tranche F8 of the FFG plan.
 pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("it_department", "IT Department"),
-    ("self_destruct", "Self-destruct"),
-    ("incubator", "Incubator"),
 ];
 
 /// *Honor and Profit* (`honor_and_profit`): tranche F8 of the FFG plan.
@@ -329,13 +324,11 @@ pub(crate) const TC_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Fear and Loathing* (`fear_and_loathing`): tranche F10 of the FFG plan.
 pub(crate) const FAL_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("blackguard", "Blackguard"),
     ("toshiyuki_sakai", "Toshiyuki Sakai"),
 ];
 
 /// *Double Time* (`double_time`): tranche F10 of the FFG plan.
 pub(crate) const DT_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("queens_gambit", "Queen's Gambit"),
 ];
 
 /// *What Lies Ahead* (`what_lies_ahead`): tranche F11 of the FFG plan.
@@ -348,7 +341,6 @@ pub(crate) const TA_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Cyber Exodus* (`cyber_exodus`): tranche F11 of the FFG plan.
 pub(crate) const CE_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("snitch", "Snitch"),
     ("personal_workshop", "Personal Workshop"),
 ];
 
@@ -379,7 +371,6 @@ pub(crate) const MO_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *System Core 2019* (`system_core_2019`): tranche F12 of the FFG plan.
 pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("queens_gambit", "Queen's Gambit"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
     ("sundew", "Sundew"),
 ];

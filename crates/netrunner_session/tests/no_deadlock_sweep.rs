@@ -627,6 +627,16 @@ fn assert_no_concealed_card_is_named_in_log(
         if let GameEvent::FinishedResolving { card, .. } = event {
             visible.insert(card.0.as_str());
         }
+        // An ability used on a rezzed card that the same entry derezzes
+        // was used in the open: the Runner clicking through Markus 1.0,
+        // which Bioroid Efficiency Research then derezzes as the ice is
+        // fully broken (seed 141, Cerebral Imaging's Sweep deck against
+        // Head Case, first reached on Engine words Stage 26's branch).
+        if let GameEvent::AbilityActivated { card_id, install: Some(install), .. } = event
+            && entry.events.iter().any(|event| matches!(event, GameEvent::CardDerezzed { install: derezzed, .. } if derezzed == install))
+        {
+            visible.insert(card_id.0.as_str());
+        }
         // A reveal is a reveal (Esca accessed in R&D).
         if let GameEvent::CardRevealed { card, .. } = event {
             visible.insert(card.0.as_str());

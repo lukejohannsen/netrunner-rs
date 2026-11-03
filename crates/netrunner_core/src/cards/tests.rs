@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "aumakua", "botulus", "cache", "chakana", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "deep_thought", "fermenter", "friday_chip", "god_of_war", "gorman_drip_v1", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "nerve_agent", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "virus_breeding_ground", "yusuf"],
+            vec!["audrey_v2", "aumakua", "botulus", "cache", "chakana", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "deep_thought", "fermenter", "friday_chip", "god_of_war", "gorman_drip_v1", "hantu", "hemorrhage", "imp", "incubator", "leech", "medium", "musaazi", "nerve_agent", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "virus_breeding_ground", "yusuf"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -58129,5 +58129,241 @@ mod engine_words_stage_25 {
         assert_eq!(at_ice.runner.resources.credits, Credits(10));
         let broken = until_parked(act(&at_ice, &registry, PlayerAction::ActivateAbility { target: InstallId(61), ability_index: 0 }), &registry);
         assert_eq!(broken.runner.resources.credits, Credits(0), "a click lost paying Eli 1.0's break");
+    }
+}
+
+mod engine_words_stage_26 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn installed(card: &str, install: u32, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn parked(state: &GameState) -> bool {
+        state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.active_trace.is_some()
+    }
+
+    /// Passes every open window until something is parked, or none is open.
+    fn until_parked(mut state: GameState, registry: &CardRegistry) -> GameState {
+        loop {
+            match &state.paid_ability_window {
+                Some(window) if !parked(&state) => state = act(&state, registry, PlayerAction::PassPriority { side: window.active_priority }),
+                _ => return state,
+            }
+        }
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<PlayerAction> {
+        crate::rules::legal_actions_for(state, registry, side).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect()
+    }
+
+    /// Toggles every position the parked selection offers, then confirms.
+    fn select_all(mut state: GameState, registry: &CardRegistry, side: Side) -> GameState {
+        let mut toggled = Vec::new();
+        loop {
+            let next = toggles(&state, registry, side).into_iter().find(|action| !toggled.contains(action));
+            match next {
+                Some(toggle) => {
+                    state = act(&state, registry, toggle.clone());
+                    toggled.push(toggle);
+                }
+                None => return act(&state, registry, PlayerAction::ConfirmCardSelection),
+            }
+        }
+    }
+
+    fn counters(state: &GameState, install: u32) -> u32 {
+        state.runner.rig.iter().find(|card| card.install_id == InstallId(install)).map_or(0, |card| card.counters)
+    }
+
+    /// "Whenever you install a piece of hardware from your grip, you may
+    /// install another copy of that hardware from your grip (paying all
+    /// costs)."
+    #[test]
+    fn bazaar_offers_a_second_copy_of_hardware_installed_from_the_grip() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("bazaar", 700)];
+        state.runner.grip = vec![id("akamatsu_mem_chip"), id("akamatsu_mem_chip"), id("sure_gamble")];
+        let installed = until_parked(act(&state, &registry, PlayerAction::InstallHardware { card_id: id("akamatsu_mem_chip"), host: None }), &registry);
+        assert_eq!(toggles(&installed, &registry, Side::Runner).len(), 1, "the other copy, and not the Sure Gamble");
+        let done = until_parked(select_all(installed, &registry, Side::Runner), &registry);
+        assert_eq!(done.runner.rig.iter().filter(|card| card.card == id("akamatsu_mem_chip")).count(), 2);
+        assert_eq!(done.runner.grip, vec![id("sure_gamble")]);
+        assert_eq!(done.runner.resources.credits, Credits(8), "both paid for");
+        assert_eq!(done.runner.resources.clicks, Clicks(3), "one click, for the first");
+
+        assert!(done.pending_decision.is_none(), "the second install is from the grip too, and no copy is left to offer");
+    }
+
+    /// "When your turn begins, place 1 virus counter on Incubator. [click],
+    /// [trash]: Move all virus counters from Incubator to another installed
+    /// virus program."
+    #[test]
+    fn incubator_moves_all_its_counters_to_the_virus_program_chosen() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 3, ..rig("incubator", 700) }, rig("datasucker", 701), rig("corroder", 702)];
+        let used = until_parked(act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(700), ability_index: 0 }), &registry);
+        assert!(used.runner.rig.iter().all(|card| card.install_id != InstallId(700)), "trashed as its cost");
+        assert_eq!(toggles(&used, &registry, Side::Runner).len(), 1, "the virus program alone");
+        let done = until_parked(select_all(used, &registry, Side::Runner), &registry);
+        assert_eq!(counters(&done, 701), 3, "every counter its cost took off the table");
+        assert_eq!(done.runner.resources.clicks, Clicks(3));
+    }
+
+    /// "[click]: Place 1 power counter on IT Department. Hosted power
+    /// counter: Choose a rezzed piece of ice. That ice has +1 strength until
+    /// the end of the turn for each power counter (including the one spent)
+    /// on IT Department."
+    #[test]
+    fn it_department_raises_the_chosen_ice_by_its_counters_including_the_one_spent() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { counters: 2, ..installed("it_department", 60, ServerId::Remote(0), InstallSlot::Root, true) },
+            installed("ice_wall", 61, ServerId::Hq, InstallSlot::Ice, true),
+            installed("enigma", 62, ServerId::Hq, InstallSlot::Ice, false),
+        ];
+        let strength = |state: &GameState| crate::rules::continuous::installed_ice_strength(state, &registry, &id("ice_wall"), InstallId(61));
+        let before = strength(&state);
+        let used = until_parked(act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(60), ability_index: 1 }), &registry);
+        assert_eq!(toggles(&used, &registry, Side::Corp).len(), 1, "the rezzed ice alone");
+        let done = until_parked(select_all(used, &registry, Side::Corp), &registry);
+        assert_eq!(strength(&done), before + 2, "two counters, the one spent among them");
+        assert_eq!(done.corp.installed[0].counters, 1);
+        let mut next_turn = done.clone();
+        next_turn.turn += 1;
+        assert_eq!(strength(&next_turn), before, "until the end of the turn");
+    }
+
+    /// "1[credit]: Move any number of credits from your credit pool to this
+    /// asset. [click]: Take any number of credits from this asset. [trash]:
+    /// Take any number of credits from this asset."
+    #[test]
+    fn sealed_vault_holds_the_credits_moved_to_it_and_gives_them_back() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![installed("sealed_vault", 60, ServerId::Remote(0), InstallSlot::Root, true)];
+        let number = |amount| PlayerAction::ChooseNumber { amount };
+        let moving = until_parked(act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(60), ability_index: 0 }), &registry);
+        let moved = until_parked(act(&moving, &registry, number(6)), &registry);
+        assert_eq!(moved.corp.resources.credits, Credits(3), "10, less 1 to use it and the 6 moved");
+        assert_eq!(moved.corp.installed[0].counters, 6);
+        let taking = until_parked(act(&moved, &registry, PlayerAction::ActivateAbility { target: InstallId(60), ability_index: 1 }), &registry);
+        let taken = until_parked(act(&taking, &registry, number(2)), &registry);
+        assert_eq!(taken.corp.resources.credits, Credits(5));
+        assert_eq!(taken.corp.installed[0].counters, 4);
+        let trashing = until_parked(act(&taken, &registry, PlayerAction::ActivateAbility { target: InstallId(60), ability_index: 2 }), &registry);
+        assert!(trashing.corp.installed.is_empty(), "trashed as its cost");
+        let trashed = until_parked(act(&trashing, &registry, number(4)), &registry);
+        assert_eq!(trashed.corp.resources.credits, Credits(9), "the credits it held as its cost trashed it");
+    }
+
+    /// "[trash]: Trash all cards installed in the root of or protecting
+    /// this server. Trace[X], where X is equal to the number of cards
+    /// trashed. If successful, do 3 net damage. Use this ability only
+    /// during a run on this server."
+    #[test]
+    fn self_destruct_trashes_its_server_and_traces_at_the_count() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![
+            installed("self_destruct", 60, ServerId::Remote(0), InstallSlot::Root, true),
+            installed("pad_campaign", 61, ServerId::Remote(0), InstallSlot::Root, false),
+            installed("ice_wall", 62, ServerId::Remote(0), InstallSlot::Ice, false),
+            installed("enigma", 63, ServerId::Hq, InstallSlot::Ice, false),
+        ];
+        let activate = PlayerAction::ActivateAbility { target: InstallId(60), ability_index: 0 };
+        assert!(apply_action(&state, &registry, activate.clone()).is_err(), "only during a run on this server");
+        state.phase = GamePhase::Action(Side::Runner);
+        let mut running = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
+        while running.paid_ability_window.as_ref().is_some_and(|window| window.active_priority != Side::Corp) {
+            running = act(&running, &registry, PlayerAction::PassPriority { side: Side::Runner });
+        }
+        let used = act(&running, &registry, activate);
+        let trace = used.active_trace.as_ref().expect("a trace");
+        assert_eq!(trace.base_strength, 2, "the two cards its effect trashed: its cost trashed Self-destruct before");
+        assert_eq!(used.corp.installed.iter().map(|card| card.install_id).collect::<Vec<_>>(), vec![InstallId(63)], "the other server's ice stays");
+    }
+
+    fn approached(state: GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let running = act(&state, registry, PlayerAction::InitiateRun { server });
+        let (approached, _) = crate::rules::test_support::through_movement(&running, registry).expect("approach");
+        approached
+    }
+
+    /// "Once per run, you may expose an unrezzed piece of ice when you
+    /// approach it. You may then jack out."
+    #[test]
+    fn snitch_exposes_the_approached_ice_and_offers_a_jack_out() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("snitch", 700)];
+        state.corp.installed = vec![installed("ice_wall", 61, ServerId::Hq, InstallSlot::Ice, false)];
+        let offered = approached(state, &registry, ServerId::Hq);
+        assert!(offered.pending_decision.is_some(), "the expose is offered");
+        let chose = act(&offered, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        let exposed = select_all(chose, &registry, Side::Runner);
+        assert!(exposed.pending_paid_choice.is_some(), "then the jack out");
+        let jacked = act(&exposed, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None });
+        assert!(jacked.active_run.is_none(), "jacked out");
+    }
+
+    /// "Whenever you expose a card, the Corp must rez it by paying its rez
+    /// cost, if able."
+    #[test]
+    fn blackguard_makes_the_corp_rez_what_is_exposed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("snitch", 700), rig("blackguard", 701)];
+        state.corp.installed = vec![installed("ice_wall", 61, ServerId::Hq, InstallSlot::Ice, false)];
+        let offered = approached(state, &registry, ServerId::Hq);
+        let chose = act(&offered, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        let exposed = select_all(chose, &registry, Side::Runner);
+        assert!(exposed.corp.installed[0].rezzed, "rezzed");
+        assert_eq!(exposed.corp.resources.credits, Credits(9), "paying its rez cost");
+    }
+
+    /// "As an additional cost to play this event, spend [click]. Place up
+    /// to 3 advancement counters on 1 unrezzed card in the root of a remote
+    /// server. Gain 2[credit] for each counter placed this way. You cannot
+    /// access that card for the remainder of the turn."
+    #[test]
+    fn queens_gambit_pays_two_credits_a_counter_and_closes_the_card_for_the_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("queens_gambit")];
+        state.corp.installed = vec![
+            installed("pad_campaign", 61, ServerId::Remote(0), InstallSlot::Root, false),
+            installed("pad_campaign", 62, ServerId::Remote(1), InstallSlot::Root, true),
+            installed("ice_wall", 63, ServerId::Remote(0), InstallSlot::Ice, false),
+        ];
+        let played = until_parked(act(&state, &registry, PlayerAction::PlayEvent { card_id: id("queens_gambit") }), &registry);
+        assert_eq!(played.runner.resources.clicks, Clicks(2), "a click to play and one more");
+        assert_eq!(toggles(&played, &registry, Side::Runner).len(), 1, "the unrezzed root card alone");
+        let chosen = select_all(played, &registry, Side::Runner);
+        let done = until_parked(act(&chosen, &registry, PlayerAction::ChooseNumber { amount: 3 }), &registry);
+        assert_eq!(done.corp.installed[0].advancement_tokens, 3);
+        assert_eq!(done.runner.resources.credits, Credits(16));
+        assert_eq!(crate::rules::lingering::installs_prohibited(&done, crate::dsl::Prohibition::Access), vec![InstallId(61)]);
     }
 }

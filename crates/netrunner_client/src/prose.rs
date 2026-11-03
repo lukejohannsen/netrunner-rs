@@ -482,7 +482,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::RemoveCounters(Amount::Fixed(n)) => format!("remove {}", plural(*n, "counter", "counters")),
         Effect::RemoveCounters(Amount::HostedCounters) => "remove all its counters".to_string(),
         Effect::RemoveCounters(amount) => format!("remove counters equal to {}", describe_amount(amount)),
-        Effect::AddVirusCounters(n) => format!("place {}", plural(*n, "virus counter", "virus counters")),
+        Effect::AddVirusCounters(Amount::Fixed(n)) => format!("place {}", plural(*n, "virus counter", "virus counters")),
+        Effect::AddVirusCounters(amount) => format!("place virus counters equal to {}", describe_amount(amount)),
         Effect::RemoveVirusCounters(Amount::Fixed(n)) => format!("remove {}", plural(*n, "virus counter", "virus counters")),
         Effect::RemoveVirusCounters(Amount::HostedVirusCounters) => "remove all its virus counters".to_string(),
         Effect::RemoveVirusCounters(amount) => format!("remove virus counters equal to {}", describe_amount(amount)),
@@ -506,9 +507,10 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             options.iter().map(|option| describe_effect(option, registry)).collect::<Vec<_>>().join(" / ")
         ),
         Effect::ChooseNumber { chooser, min, max, of, then, secret, .. } => format!(
-            "{} {}chooses a number from {min} to {}{}, then: {}",
+            "{} {}chooses a number from {} to {}{}, then: {}",
             who(*chooser),
             if *secret { "secretly " } else { "" },
+            describe_amount(min),
             describe_amount(max),
             of.as_ref().map(|of| format!(" (at most {})", describe_amount(of))).unwrap_or_default(),
             describe_effect(then, registry)
@@ -971,6 +973,7 @@ fn describe_when(filter: &EventFilter) -> String {
         EventFilter::InstalledFromHq(true) => "from HQ".to_string(),
         EventFilter::InstalledFromHq(false) => "from anywhere except HQ".to_string(),
         EventFilter::InstalledFromHeap => "from the heap".to_string(),
+        EventFilter::InstalledFromGrip => "from the grip".to_string(),
         EventFilter::ServerKind(kind) => format!("on {}", match kind {
             netrunner_core::dsl::ServerKind::Remote => "a remote server",
             netrunner_core::dsl::ServerKind::Central => "a central server",

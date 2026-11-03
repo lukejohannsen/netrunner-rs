@@ -1,0 +1,44 @@
+{
+  "id": "blackguard",
+  "title": "Blackguard",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 11,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+2[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnCardExposed",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "Not": {
+            "CardType": "Agenda"
+          }
+        }
+      },
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "RezInstalled": {
+            "install": 0,
+            "pay_cost": true
+          }
+        }
+      ],
+      "text": "Whenever you expose a card, the Corp must rez it by paying its rez cost, if able."
+    }
+  ],
+  "built_from": 4085,
+  "is_playable": true
+}
