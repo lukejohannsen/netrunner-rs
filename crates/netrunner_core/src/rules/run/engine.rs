@@ -257,7 +257,7 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { finishes: None, broke_with: Vec::new(), rd_from_bottom: false, ice_approached: 0, suspended: Vec::new(), uninstalled_ice: None, gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, redirect_at_success: false, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, click_lost_to_break: false, reached_success_phase: false, breached: None, breaches_after: Vec::new(), encounters: 0, ice_passed: 0, passed: Vec::new(), rezzed: Vec::new(), used: Vec::new(), fully_broken_ice: Vec::new(), last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
+    state.active_run = Some(RunState { finishes: None, broke_with: Vec::new(), rd_from_bottom: false, ice_approached: 0, suspended: Vec::new(), uninstalled_ice: None, gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, redirect_at_success: false, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, click_lost_to_break: false, reached_success_phase: false, breached: None, breaches_after: Vec::new(), encounter_breach: None, encounters: 0, ice_passed: 0, passed: Vec::new(), rezzed: Vec::new(), used: Vec::new(), fully_broken_ice: Vec::new(), last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -298,12 +298,68 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
 /// while a run or another breach is in progress: CR 7.3.8 would delay it
 /// until that breach ends, and no card in the pool breaches from inside
 /// one.
+///
+/// **During an encounter it is the encounter's** (CR 6.1.4b: "Any breach
+/// and/or access initiated during the encounter also ends" with it) —
+/// Kitsune's and Shiro's, each a subroutine: the run stands in a breach of
+/// `server` and goes back to the encounter when it is over
+/// (`RunState::encounter_breach`), with the card of HQ its first access
+/// takes, if one was chosen (`first`), and what resolves after it.
 pub(crate) fn start_breach(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<Vec<GameEvent>, RulesError> {
+    if state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::EncounterIce && run.access_state.is_none() && run.encounter_breach.is_none()) {
+        return start_encounter_breach(state, registry, server, EncounterBreachRest::default());
+    }
     if state.active_run.is_some() {
         return Err(RulesError::RunAlreadyInProgress);
     }
     state.active_run = Some(RunState { server, phase: RunPhase::Success, breach_only: true, ..RunState::default() });
     super::access::breach(state, registry)
+}
+
+/// What a breach begun during an encounter carries beside its server:
+/// the card of HQ it takes first and what resolves when it ends, as
+/// `card` and `install` (`Effect::BreachStartingWith`).
+#[derive(Default)]
+pub(crate) struct EncounterBreachRest {
+    pub first: Option<CardId>,
+    pub then: Option<Box<crate::dsl::Effect>>,
+    pub card: Option<CardId>,
+    pub install: Option<crate::rules::state::InstallId>,
+}
+
+/// `start_breach` during an encounter: the breach's fields of the run put
+/// aside (`EncounterBreach`), its beginning announced as any breach's is
+/// (`GameEvent::BreachBegun`, which "access additional cards" hears before
+/// the random access limit is set, CR 7.3.5b), and, once nothing it
+/// triggered is waiting, its candidates (`access::access_server`, which
+/// reads `breached`). What the beginning parks is answered first and the
+/// breach goes on in `engine::resume_run`, as a run's own does.
+pub(crate) fn start_encounter_breach(state: &mut GameState, registry: &CardRegistry, server: ServerId, rest: EncounterBreachRest) -> Result<Vec<GameEvent>, RulesError> {
+    let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
+    if run.phase != RunPhase::EncounterIce || run.access_state.is_some() || run.encounter_breach.is_some() {
+        return Err(RulesError::NotInEncounter);
+    }
+    run.encounter_breach = Some(crate::rules::run::state::EncounterBreach {
+        saved_breached: run.breached.take(),
+        saved_additional_hq_access: std::mem::take(&mut run.additional_hq_access),
+        saved_additional_rd_access: std::mem::take(&mut run.additional_rd_access),
+        saved_rd_from_bottom: std::mem::take(&mut run.rd_from_bottom),
+        saved_breach_accesses_left: run.breach_accesses_left.take(),
+        first: rest.first,
+        then: rest.then,
+        card: rest.card,
+        install: rest.install,
+        resume_subroutines: false,
+    });
+    run.phase = RunPhase::Success;
+    run.breached = Some(server);
+    let mut events = Vec::new();
+    crate::rules::dispatcher::emit(state, registry, &mut events, GameEvent::BreachBegun { server })?;
+    if state.resolution_halted() || !state.deferred_triggers.is_empty() || state.active_run.is_none() {
+        return Ok(events);
+    }
+    events.extend(super::access::breach(state, registry)?);
+    Ok(events)
 }
 
 /// Puts the run into the movement phase at `position` — the next ice
@@ -809,7 +865,9 @@ pub(crate) fn reconcile_ice(
         return Ok(None);
     }
     let Some(run) = state.active_run.as_ref() else { return Ok(None) };
-    if matches!(run.phase, RunPhase::AccessingCard | RunPhase::Ended) {
+    // Nor while a breach the encounter began stands in for it: the
+    // encounter is reconciled when the breach hands the run back.
+    if matches!(run.phase, RunPhase::AccessingCard | RunPhase::Ended) || run.encounter_breach.is_some() {
         return Ok(None);
     }
     // A forced encounter away from the Runner's position stands on its one

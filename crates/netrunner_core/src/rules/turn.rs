@@ -123,7 +123,7 @@ fn take_from_hand(state: &mut GameState, side: Side, card_id: &CardId) -> Result
 
 /// Moves a discarded card into `side`'s discard pile (Corp's `archives` or
 /// Runner's `heap`) — both fully public zones, unlike `hq`/`grip`.
-fn discard_to_pile(state: &mut GameState, side: Side, card_id: CardId) {
+pub(crate) fn discard_to_pile(state: &mut GameState, side: Side, card_id: CardId) {
     match side {
         // A Corp discard from HQ goes facedown — the Runner never saw it.
         Side::Corp => crate::rules::turn_log::file_in_archives(state, ArchivedCard::facedown(card_id)),

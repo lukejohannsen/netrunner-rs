@@ -43,6 +43,16 @@ fn begin_breach(state: &mut GameState, server: ServerId) -> (Vec<AccessCandidate
             let take = (1 + additional as usize).min(state.corp.hq.len());
             let mut pool = state.corp.hq.clone();
             let mut from_zone = Vec::with_capacity(take);
+            // Kitsune's "the first card they access must be the chosen
+            // card": the first of the breach's accesses out of HQ, the rest
+            // at random from what is left.
+            let first = state.active_run.as_ref().and_then(|run| run.encounter_breach.as_ref()).and_then(|breach| breach.first.clone());
+            if let Some(position) = first.and_then(|first| pool.iter().position(|card| *card == first))
+                && take > 0
+            {
+                from_zone.push(pool.remove(position));
+            }
+            let take = take - from_zone.len();
             for _ in 0..take {
                 let roll = state.next_u64();
                 let index = (roll as usize) % pool.len();
@@ -263,6 +273,13 @@ fn offer_next(state: &mut GameState, registry: &CardRegistry, server: ServerId) 
             let breach = access.outside_breach.is_none().then_some((access.server, access.took));
             let mut events = Vec::new();
             if let Some((breached, took)) = breach {
+                // A breach the encounter began hands the run back to it
+                // first, so what hears the breach's end — and what the card
+                // resolves after it (Kitsune's "trash this ice") — finds
+                // the encounter it belongs to (CR 6.1.4b).
+                if state.active_run.as_ref().is_some_and(|run| run.encounter_breach.is_some()) {
+                    return end_encounter_breach_announcing(state, registry, Some((breached, took)));
+                }
                 dispatcher::emit(state, registry, &mut events, GameEvent::BreachEnded { server: breached, took })?;
             }
             // Divide and Conquer's next breach, where this one would have
@@ -301,7 +318,49 @@ fn offer_next(state: &mut GameState, registry: &CardRegistry, server: ServerId) 
 /// the encounter waits on them, so nothing may carry the run on past it
 /// until `offer_next` hands the run back.
 pub(crate) fn accessing_during_an_encounter(run: &RunState) -> bool {
-    run.access_state.as_ref().and_then(|access| access.outside_breach.as_ref()).is_some_and(|outside| outside.during_encounter)
+    run.encounter_breach.is_some() || run.access_state.as_ref().and_then(|access| access.outside_breach.as_ref()).is_some_and(|outside| outside.during_encounter)
+}
+
+/// The end of a breach an encounter began (`RunState::encounter_breach`),
+/// with nothing to announce: it had no candidates.
+fn end_encounter_breach(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    end_encounter_breach_announcing(state, registry, None)
+}
+
+/// Hands the run back to the encounter that began a breach (CR 6.1.4b):
+/// the breach's fields of the run as they were before it, the encounter's
+/// phase, and then `BreachEnded` (when it accessed anything, as a run's
+/// breach announces it), what the card said to resolve when the breach
+/// ends, and the ice's later subroutines when a subroutine began it — or,
+/// when what came before parked something, the intent that they still fire
+/// (`pending_choice::mark_parked_resume_subroutines`).
+fn end_encounter_breach_announcing(state: &mut GameState, registry: &CardRegistry, ended: Option<(ServerId, bool)>) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(run) = state.active_run.as_mut() else { return Ok(Vec::new()) };
+    let Some(breach) = run.encounter_breach.take() else { return Ok(Vec::new()) };
+    run.access_state = None;
+    run.phase = RunPhase::EncounterIce;
+    run.breached = breach.saved_breached;
+    run.additional_hq_access = breach.saved_additional_hq_access;
+    run.additional_rd_access = breach.saved_additional_rd_access;
+    run.rd_from_bottom = breach.saved_rd_from_bottom;
+    run.breach_accesses_left = breach.saved_breach_accesses_left;
+    let mut events = Vec::new();
+    if let Some((server, took)) = ended {
+        dispatcher::emit(state, registry, &mut events, GameEvent::BreachEnded { server, took })?;
+    }
+    if let Some(then) = breach.then
+        && !state.is_over()
+    {
+        events.extend(resolve_after_accesses(state, registry, *then, breach.card, breach.install)?);
+    }
+    if breach.resume_subroutines {
+        if state.resolution_halted() {
+            crate::rules::pending_choice::mark_parked_resume_subroutines(state);
+        } else if state.active_run.is_some() {
+            events.extend(crate::rules::paid_ability::resolve_encounter_ice(state, registry)?);
+        }
+    }
+    Ok(events)
 }
 
 /// Whether the Runner is accessing on the Corp's turn — an access a Corp
@@ -923,6 +982,10 @@ pub fn access_server(
         run.breach_accesses_left = left;
     }
     if (candidates.is_empty() && from_zone.is_empty()) || left == Some(0) {
+        if state.active_run.as_ref().is_some_and(|run| run.encounter_breach.is_some()) {
+            events.extend(end_encounter_breach(state, registry)?);
+            return Ok(events);
+        }
         if let Some(next) = breach_next(state, registry)? {
             events.extend(next);
             return Ok(events);

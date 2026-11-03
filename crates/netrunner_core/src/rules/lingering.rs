@@ -365,7 +365,11 @@ impl LingeringEffect {
             Until::EndOfRun => state.active_run.is_some(),
             Until::ThroughNextBreach { turn, begun } => {
                 let now = state.this_turn.times(crate::dsl::Trigger::OnBreach);
-                state.turn == turn && (now == begun || (now == begun + 1 && state.active_run.is_some()))
+                // In force through the breach that began after it, and no
+                // longer: a breach an encounter began hands the run back
+                // with nothing breached (`RunState::encounter_breach`),
+                // and the run's own breach is a later one.
+                state.turn == turn && (now == begun || (now == begun + 1 && state.active_run.as_ref().is_some_and(|run| run.breached.is_some())))
             }
             Until::EndOfTurn(turn) => state.turn <= turn,
             Until::BeforeTurn(turn) => state.turn < turn,

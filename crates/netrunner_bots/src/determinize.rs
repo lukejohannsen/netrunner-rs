@@ -918,6 +918,9 @@ fn determinize_run(
         // Public, and which server a breach that has begun goes on to.
         breached: run.breached,
         breaches_after: run.breaches_after.clone(),
+        // The breach an encounter began, as the view carries it: the card
+        // of HQ it begins with only when the sample is the Corp's own.
+        encounter_breach: run.encounter_breach.clone(),
         // Public, and what S-Dobrado's "the second time" reads.
         encounters: run.encounters,
         // Public, and what Into the Depths' "for each time you passed ice"

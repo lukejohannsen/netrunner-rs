@@ -2066,6 +2066,26 @@ pub enum Effect {
     /// `RunState::breached`). The run goes on, on Archives, to a breach of
     /// R&D.
     Breach(crate::rules::ServerId),
+    /// The Runner breaches `server` during the encounter this resolves in,
+    /// and the first card they access out of its zone is `first` —
+    /// Kitsune's "You may choose 1 card in HQ. If you do, the Runner
+    /// breaches HQ. … the first card they access must be the chosen card.
+    /// When the breach ends, trash this ice", the `then` of the Corp's
+    /// selection, where `ThisCard` is the chosen card (the acting-context
+    /// convention `TrashCard(ThisCard)` follows). `then` resolves when the
+    /// breach ends, as the card whose text this is (the selection's
+    /// prompting card). A breach as `Breach` is (`RunState::
+    /// encounter_breach`); `RulesError::NotInEncounter` outside an
+    /// encounter, and only `ThisCard` names a card. Composition didn't
+    /// work: `Breach` takes its first card of HQ at random (CR 7.3.4a), and
+    /// a breach in progress parks nothing a `Sequence` waits behind, so the
+    /// trash after it would have resolved under its first access.
+    BreachStartingWith {
+        server: crate::rules::ServerId,
+        first: CardTarget,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        then: Option<Box<Effect>>,
+    },
     /// The Runner accesses `count` of the cards in `from` that match
     /// `filter`, one at a time, choosing each, and then `then` resolves —
     /// an access that is not a breach (CR 7.1.9, 7.1.10): Pinhole
@@ -2095,6 +2115,23 @@ pub enum Effect {
         count: Amount,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         then: Option<Box<Effect>>,
+    },
+    /// `side` discards `count` cards from their hand at random — Utopia
+    /// Shard's "[trash]: The Corp discards 2 cards from HQ at random". A
+    /// discard, which CR 1.19.3 keeps apart from a trash ("A trashed card
+    /// is not considered to have been discarded, and vice versa. Cards
+    /// that prevent a card from being trashed cannot prevent a card from
+    /// being discarded"): each card goes to its owner's discard pile as
+    /// the discard phase sends it (`turn::discard_to_pile`, HQ's facedown),
+    /// recorded as `GameEvent::CardDiscarded`, which no card hears, and
+    /// never offered to a prevention. Drawn with the state's own PRNG, one
+    /// card at a time from what is left; fewer in the hand, fewer
+    /// discarded. Composition didn't work: `TrashCard(RandomFromHand)` is
+    /// a trash, heard as one (`OnCardTrashed`) and preventable as one, and
+    /// the discard phase's discards are the player's own choice.
+    DiscardAtRandom {
+        side: crate::rules::Side,
+        count: u32,
     },
     /// Reveals `count` cards at random from `side`'s hand — HQ or the grip
     /// — and, with `each`, resolves it as each card in turn: Bring Them
@@ -4761,8 +4798,9 @@ impl Effect {
             Effect::PromptChooseCards { then: Some(effect), .. }
             | Effect::InstallRunnerCardFromZone { if_installed: Some(effect), .. }
             | Effect::Access { then: Some(effect), .. }
+            | Effect::BreachStartingWith { then: Some(effect), .. }
             | Effect::IncreaseAboutToResolve { then: Some(effect), .. } => effect.for_each_effect(f),
-            Effect::Access { then: None, .. } => {}
+            Effect::Access { then: None, .. } | Effect::BreachStartingWith { then: None, .. } => {}
             Effect::PromptChooseServer { on_success, on_start, .. } => {
                 for effect in [on_success, on_start].into_iter().flatten() {
                     effect.for_each_effect(f);
@@ -4899,6 +4937,7 @@ impl Effect {
             | Effect::ScoreIgnoringAdvancementRequirement
             | Effect::StealAccessedCard
             | Effect::Breach(_)
+            | Effect::DiscardAtRandom { .. }
             | Effect::BreachAfter(_)
             | Effect::GainCreditsAmount(..) => {}
         }

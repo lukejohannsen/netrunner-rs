@@ -282,7 +282,6 @@ pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *First Contact* (`first_contact`): tranche F8 of the FFG plan.
 pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("kitsune", "Kitsune"),
     ("chronos_project", "Chronos Project"),
     ("order_of_sol", "Order of Sol"),
 ];
@@ -299,7 +298,6 @@ pub(crate) const UAO_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *All That Remains* (`all_that_remains`): tranche F8 of the FFG plan.
 pub(crate) const ATR_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("utopia_shard", "Utopia Shard"),
 ];
 
 /// *The Source* (`the_source`): tranche F8 of the FFG plan.
@@ -313,7 +311,6 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("medical_breakthrough", "Medical Breakthrough"),
     ("shi_kyu", "Shi.Kyū"),
-    ("shiro", "Shiro"),
     ("plan_b", "Plan B"),
     ("unregistered_s_w_35", "Unregistered S&W '35"),
     ("window", "Window"),

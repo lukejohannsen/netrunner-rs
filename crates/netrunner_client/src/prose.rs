@@ -586,6 +586,17 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::Score => "score that card, if able".to_string(),
         Effect::ScoreIgnoringAdvancementRequirement => "score that card, whatever its advancement counters".to_string(),
         Effect::Breach(server) => format!("breach {}", describe_server(*server)),
+        Effect::BreachStartingWith { server, then, .. } => {
+            let breach = format!("breach {}, the chosen card first", describe_server(*server));
+            match then {
+                Some(then) => format!("{breach}; when the breach ends, {}", describe_effect(then, registry)),
+                None => breach,
+            }
+        }
+        Effect::DiscardAtRandom { side, count } => {
+            let hand = if *side == Side::Corp { "HQ" } else { "the grip" };
+            format!("discard {count} card(s) from {hand} at random")
+        }
         Effect::BreachAfter(servers) => format!("after this breach, breach {}", servers.iter().map(|server| describe_server(*server)).collect::<Vec<_>>().join(", then ")),
         Effect::Access { from, filter, count, then } => {
             let which = match filter {

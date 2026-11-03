@@ -1,0 +1,69 @@
+{
+  "id": "utopia_shard",
+  "title": "Utopia Shard",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 7,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "from_hand": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "SetAccessReplacement": {
+                      "effect": {
+                        "Sequence": []
+                      }
+                    }
+                  },
+                  {
+                    "InstallRunnerCardFromZone": {
+                      "from": "OwnGrip",
+                      "discount": "AllCosts"
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may install this resource from your grip, ignoring all costs",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run on HQ, instead of breaching HQ, you may install this resource from your grip, ignoring all costs."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "DiscardAtRandom": {
+          "side": "Corp",
+          "count": 2
+        }
+      },
+      "text": "[trash]: The Corp discards 2 cards from HQ at random."
+    }
+  ],
+  "built_from": 6100,
+  "is_playable": true
+}

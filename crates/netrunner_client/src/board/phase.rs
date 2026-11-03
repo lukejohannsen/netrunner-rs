@@ -302,6 +302,7 @@ mod tests {
             reached_success_phase: false,
             breached: None,
             breaches_after: Vec::new(),
+            encounter_breach: None,
             encounters: 0,
             ice_passed: 0,
             run_credits_pay_for: None,

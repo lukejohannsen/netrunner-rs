@@ -1,0 +1,62 @@
+{
+  "id": "kitsune",
+  "title": "Kitsune",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 2,
+  "strength": 3,
+  "subroutines": [
+    {
+      "text": "You may choose 1 card in HQ. If you do, the Runner breaches HQ. During this breach, the Runner cannot access cards in the root of HQ, and the first card they access must be the chosen card. When the breach ends, trash this ice.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnHq",
+                "filter": "Any",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "Sequence": [
+                    {
+                      "Prohibit": {
+                        "what": "AccessRootOfHqOrRnD",
+                        "until": "NextBreach"
+                      }
+                    },
+                    {
+                      "BreachStartingWith": {
+                        "server": "Hq",
+                        "first": "ThisCard",
+                        "then": {
+                          "TrashCard": "ThisCard"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "Sequence": []
+            }
+          ],
+          "texts": [
+            "You may choose 1 card in HQ",
+            ""
+          ]
+        }
+      }
+    }
+  ],
+  "built_from": 6043,
+  "triggers": [],
+  "is_playable": true
+}
