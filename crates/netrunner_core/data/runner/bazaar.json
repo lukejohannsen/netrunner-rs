@@ -1,0 +1,46 @@
+{
+  "id": "bazaar",
+  "title": "Bazaar",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Card": {
+              "CardType": "Hardware"
+            }
+          },
+          "InstalledFromGrip"
+        ]
+      },
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnGrip",
+            "filter": {
+              "All": [
+                "CopyOfThisCard",
+                "InstallableRunnerCard"
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": "InstallRunnerCardFromGrip"
+          }
+        }
+      ],
+      "text": "Whenever you install a piece of hardware from your grip, you may install another copy of that hardware from your grip (paying all costs)."
+    }
+  ],
+  "built_from": 10065,
+  "is_playable": true
+}

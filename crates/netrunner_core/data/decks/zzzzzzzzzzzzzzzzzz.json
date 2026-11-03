@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Cerebral Imaging: Infinite Frontiers, whose maximum hand size is its credit pool. Zzzz's list, its identity swapped. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 4. One Turing became a Minelayer, whose subroutine installs ice protecting its own server (Engine words, Stage 3). Engine words Stage 12 brought two Bioroid Efficiency Research, an Encryption Protocol, a Domestic Sleepers and a Diversified Portfolio in for a Brain-Taping Warehouse, a Team Sponsorship, a Cybernetics Court, an Eliza's Toybox and a Peak Efficiency, so the sweep plays a condition that rezzes its host, a raised trash cost on every install and an agenda worth nothing until its own ability is used. Engine words Stage 25 (FFG): a Heinlein Grid for its Oaktown Grid.",
+  "description": "Not a published list: built so the sweeps reach Cerebral Imaging: Infinite Frontiers, whose maximum hand size is its credit pool. Zzzz's list, its identity swapped. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 4. One Turing became a Minelayer, whose subroutine installs ice protecting its own server (Engine words, Stage 3). Engine words Stage 12 brought two Bioroid Efficiency Research, an Encryption Protocol, a Domestic Sleepers and a Diversified Portfolio in for a Brain-Taping Warehouse, a Team Sponsorship, a Cybernetics Court, an Eliza's Toybox and a Peak Efficiency, so the sweep plays a condition that rezzes its host, a raised trash cost on every install and an agenda worth nothing until its own ability is used. Engine words Stage 25 (FFG): a Heinlein Grid for its Oaktown Grid. Engine words Stage 26 (FFG): an IT Department for its Exposé, which two other decks keep.",
   "style": [
     "glacier"
   ],
@@ -84,10 +84,6 @@
     {
       "card": "pachinko",
       "count": 2
-    },
-    {
-      "card": "expose",
-      "count": 1
     },
     {
       "card": "test_ground",
@@ -179,6 +175,10 @@
     },
     {
       "card": "heinlein_grid",
+      "count": 1
+    },
+    {
+      "card": "it_department",
       "count": 1
     }
   ]

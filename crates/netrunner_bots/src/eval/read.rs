@@ -1324,7 +1324,7 @@ fn instead(effect: &Effect, state: &GameState, registry: &CardRegistry, hosted: 
         Effect::PromptChooseCards { source: CardZoneRef::OpponentDeck, filter: CardFilter::TopOfZone(n), .. } => {
             Instead { looks: (*n).min(state.corp.r_and_d.len() as u32), ..Default::default() }
         }
-        Effect::ChooseNumber { chooser: Side::Runner, min, max, then, .. } => (*min..=amount(max).min(MOST_A_NUMBER_IS_READ_AT))
+        Effect::ChooseNumber { chooser: Side::Runner, min, max, then, .. } => (amount(min)..=amount(max).min(MOST_A_NUMBER_IS_READ_AT))
             .map(|n| {
                 let mut set_aside = *set_aside;
                 instead(&then.as_ref().clone().with_chosen_number(n), state, registry, hosted, &mut set_aside)

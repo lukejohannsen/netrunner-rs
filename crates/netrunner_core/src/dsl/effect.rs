@@ -564,8 +564,11 @@ pub enum Effect {
     /// `InstalledRunnerCard::virus_counters` otherwise
     /// (`pending_choice::virus_on`). Composition didn't work: `AddCounters`
     /// places the card's own kind, which on a Power card is not a virus
-    /// counter.
-    AddVirusCounters(u32),
+    /// counter. An `Amount`, written as a bare number when fixed, since
+    /// Incubator's "move **all** virus counters from Incubator" to the
+    /// program chosen (`Amount::ChosenNumber`, the number carried past the
+    /// selection), as `AddCounters` is.
+    AddVirusCounters(#[serde(deserialize_with = "number_or_amount", serialize_with = "write_number_or_amount")] Amount),
     /// Removes `amount` virus counters from the acting rig card, from
     /// whichever number holds them — The Nihilist's "remove any 2 virus
     /// counters from your installed cards" and Business As Usual's
@@ -1469,13 +1472,23 @@ pub enum Effect {
     /// **Nothing is asked when there is nothing to choose:** a range of one
     /// number resolves `then` with it at once.
     ///
+    /// `min` is an `Amount` too, so a range of one number can be one the
+    /// state holds — Incubator's "move **all** virus counters from
+    /// Incubator to another installed virus program" is `min` and `max`
+    /// both its counters, read as its cost has trashed it, and the number
+    /// rides into the selection behind it, whose `then` acts as the card
+    /// chosen and could not read Incubator's. That is a number carried
+    /// past a parked decision, which is what a chosen number already was:
+    /// a word of its own beside this (a "let") would have been a second
+    /// placeholder and a second walk through every effect that holds one.
+    ///
     /// Not how an X *cost* is said — no card in the pool prints one, and a
     /// cost is chosen before it is paid, which is a question for the
     /// action that pays it, not for an effect.
     ChooseNumber {
         chooser: Side,
-        #[serde(default)]
-        min: u32,
+        #[serde(default = "crate::dsl::effect::no_amount", deserialize_with = "number_or_amount", serialize_with = "write_number_or_amount")]
+        min: Amount,
         max: Amount,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         of: Option<Amount>,
@@ -2778,6 +2791,12 @@ impl Amount {
 /// `Effect::Trace::base` written back the way a card file writes it: a
 /// fixed base as its number, so a trace round-trips to the file it came
 /// from.
+/// `Amount::Fixed(0)`, the default of an `Amount` a card file may leave
+/// out (`Effect::ChooseNumber::min`).
+pub(crate) fn no_amount() -> Amount {
+    Amount::Fixed(0)
+}
+
 pub(crate) fn write_number_or_amount<S: serde::Serializer>(base: &Amount, serializer: S) -> Result<S::Ok, S::Error> {
     match base {
         Amount::Fixed(number) => serializer.serialize_u32(*number),
@@ -4590,6 +4609,7 @@ impl Effect {
             Effect::Access { from, filter, count, then } => Effect::Access { from, filter: filter.filled(fill), count: amount(count), then: then.map(boxed) },
             Effect::RemoveTags(a) => Effect::RemoveTags(amount(a)),
             Effect::AddCounters(a) => Effect::AddCounters(amount(a)),
+            Effect::AddVirusCounters(a) => Effect::AddVirusCounters(amount(a)),
             Effect::PlaceAdvancementCounters(a) => Effect::PlaceAdvancementCounters(amount(a)),
             Effect::RezInstalled { install, pay_cost, discount } => Effect::RezInstalled { install, pay_cost, discount: amount(discount) },
             // Its `then` is about the cards milled (`TrashedThisWay`), and
@@ -4600,7 +4620,7 @@ impl Effect {
             Effect::AddAdditionalAccessAmount { server, amount: a } => Effect::AddAdditionalAccessAmount { server, amount: amount(a) },
             Effect::BoostStrengthAmount { amount: a, duration } => Effect::BoostStrengthAmount { amount: amount(a), duration },
             Effect::ChooseNumber { chooser, min, max, of, then, text, secret } => {
-                Effect::ChooseNumber { chooser, min, max: amount(max), of: of.map(amount), then, text, secret }
+                Effect::ChooseNumber { chooser, min: amount(min), max: amount(max), of: of.map(amount), then, text, secret }
             }
             Effect::SetIdentityCopy(a) => Effect::SetIdentityCopy(amount(a)),
             Effect::RemoveCounters(a) => Effect::RemoveCounters(amount(a)),

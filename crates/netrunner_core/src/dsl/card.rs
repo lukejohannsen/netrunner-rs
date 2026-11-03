@@ -1631,6 +1631,8 @@ impl CardDefinition {
             EventFilter::InstalledIn(_) => (triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp) || triggered.trigger == Trigger::OnAccessAboutToResolve,
             // …and only a Runner install's whether it left the heap.
             EventFilter::InstalledFromHeap => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Runner,
+            // …or the grip.
+            EventFilter::InstalledFromGrip => matches!(triggered.trigger, Trigger::OnInstall | Trigger::OnCardInstalled) && self.side == crate::rules::Side::Runner,
             // Only an install is in a root or not.
             EventFilter::InRoot => triggered.trigger == Trigger::OnInstall,
             // Only a Corp card is in a root, and only the Corp installs
@@ -3363,7 +3365,7 @@ mod tests {
         };
         let asked = Effect::ChooseNumber {
             chooser: Side::Corp,
-            min: 0,
+            min: Amount::Fixed(0),
             max: Amount::Fixed(2),
             of: None,
             then: Box::new(Effect::Sequence(vec![Effect::RemoveTags(Amount::ChosenNumber)])),
@@ -3379,7 +3381,7 @@ mod tests {
         // bound the number by.
         let bounded_by_itself = Effect::ChooseNumber {
             chooser: Side::Runner,
-            min: 0,
+            min: Amount::Fixed(0),
             max: Amount::ChosenNumber,
             of: None,
             then: Box::new(Effect::Sequence(Vec::new())),

@@ -1,0 +1,84 @@
+{
+  "id": "snitch",
+  "title": "Snitch",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnIceApproached",
+      "subject": "Any",
+      "requirement": {
+        "And": [
+          {
+            "ZoneHasAtLeast": {
+              "zone": "OpponentInstalled",
+              "count": 1,
+              "filter": {
+                "All": [
+                  "BeingApproached",
+                  "Unrezzed"
+                ]
+              }
+            }
+          },
+          "OncePerRun"
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OpponentInstalled",
+                      "filter": {
+                        "All": [
+                          "BeingApproached",
+                          "Unrezzed"
+                        ]
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": "Expose"
+                    }
+                  },
+                  {
+                    "OfferPaidChoice": {
+                      "side": "Runner",
+                      "cost": "JackOut",
+                      "if_paid": {
+                        "Sequence": []
+                      },
+                      "if_declined": {
+                        "Sequence": []
+                      },
+                      "text": "You may then jack out"
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may expose an unrezzed piece of ice when you approach it",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Once per run, you may expose an unrezzed piece of ice when you approach it. You may then jack out."
+    }
+  ],
+  "built_from": 2045,
+  "is_playable": true
+}

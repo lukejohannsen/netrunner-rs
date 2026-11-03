@@ -1029,6 +1029,15 @@ pub enum EventFilter {
     /// didn't work: no filter read where a Runner card came from, and no
     /// Runner install event said.
     InstalledFromHeap,
+    /// The Runner installed the card out of the grip — Bazaar's "Whenever
+    /// you install a piece of hardware **from your grip**", `All` with
+    /// `Card(Hardware)`. Read off the moment (`GameEvent::
+    /// HardwareInstalled::from_grip`), as `InstalledFromHeap` is, and on
+    /// `OnInstall` or `OnCardInstalled` of a Runner card. Composition
+    /// didn't work: `Not(InstalledFromHeap)` admits an install out of the
+    /// stack, a host or the set-aside cards (Muse, Madani, The Wizard's
+    /// Chest), none of which came from the grip.
+    InstalledFromGrip,
     /// The Corp installed the card in the root of or protecting a server
     /// of this kind — A Teia: IP Recovery's "install a card in the root of
     /// or protecting **a remote server**". Read off the moment, which the

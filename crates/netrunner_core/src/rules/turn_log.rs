@@ -735,7 +735,7 @@ impl Occurrences {
                 return Err(format!("the turn counts a {trigger:?} by the card's type and whether it was installed, not which pile it left, so \"the first\" cannot be narrowed to one"));
             }
             Some(EventFilter::All(_)) => unreachable!("a conjunction is read part by part above"),
-            Some(EventFilter::InstalledFromHq(_) | EventFilter::InstalledFromHeap) => {
+            Some(EventFilter::InstalledFromHq(_) | EventFilter::InstalledFromHeap | EventFilter::InstalledFromGrip) => {
                 return Err(format!("the turn counts a {trigger:?} without where the card came from, so \"the first\" cannot be narrowed by it"));
             }
             Some(EventFilter::TrashedFromThisServer) => {
