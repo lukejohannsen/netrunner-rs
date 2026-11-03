@@ -1152,6 +1152,10 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         {
             None
         }
+        // Heard from the grip and still there: a shard the Runner declined
+        // (`grip_card_concealed_from`). Dropped whole, as a facedown
+        // card's is.
+        GameEvent::TriggerFired { card, .. } | GameEvent::TriggerOrderChosen { card, .. } if grip_card_concealed_from(state, card, viewer) => None,
         GameEvent::TriggerFired { card, trigger } if concealed(card) => {
             (viewer.is(Side::Runner) && *trigger == crate::dsl::Trigger::OnAccessed).then(visible).flatten()
         }
@@ -1385,10 +1389,19 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
 /// masking invariant at *Elevation* Stage 5, seed 20.
 fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: Viewer) -> PendingDecision {
     let conceal = |card: &Option<CardId>| match card {
-        Some(id) if corp_card_concealed_from(state, id, viewer) => None,
+        Some(id) if corp_card_concealed_from(state, id, viewer) || grip_card_concealed_from(state, id, viewer) => None,
         other => other.clone(),
     };
     let mut masked = decision.clone();
+    // A choice a card in the grip asks (the shards' "you may install this
+    // resource from your grip") prints that card's words in its options:
+    // the Corp is told a choice is being made and not what it offers.
+    if let PendingDecision::ChooseEffect { chooser, option_texts, source_card: Some(source), .. } = &mut masked
+        && !viewer.is(*chooser)
+        && grip_card_concealed_from(state, source, viewer)
+    {
+        option_texts.clear();
+    }
     // What a card in a hidden zone the moment was about would be named
     // in (Jinja City Grid's drawn ice, `ThatCard` written into its
     // selection) is the chooser's alone — found by the session sweep's
@@ -1431,7 +1444,7 @@ fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: 
         // asked is public, as the log's install handles are.
         PendingDecision::ChooseTriggerOrder { pending, .. } => {
             for trigger in pending.iter_mut() {
-                if corp_card_concealed_from(state, &trigger.card, viewer) {
+                if corp_card_concealed_from(state, &trigger.card, viewer) || grip_card_concealed_from(state, &trigger.card, viewer) {
                     trigger.card = CardId(String::new());
                 }
                 trigger.event = trigger.event.as_ref().and_then(|event| mask_event_for_player(event, state, viewer));
@@ -1478,6 +1491,30 @@ fn install_concealed_from(state: &GameState, install: InstallId, card: &CardId, 
         Some(installed) => !installed.rezzed && !(viewer.is(Side::Runner) && installed.seen_by_runner),
         None => state.corp.archives.iter().any(|archived| archived.card == *card && archived.facedown),
     }
+}
+
+/// Whether `viewer` may not be told that `card`, a Runner card, did
+/// something from the grip — the masking layer's rule for a listener in a
+/// hidden zone (`TriggeredEffect::from_hand`, the shards). Never for the
+/// Runner. For anyone else, a card that is in the grip and in no zone they
+/// can see: its trigger fired, the place it was ordered in and the
+/// decision it asks name nothing. A copy in a public zone — the rig, the
+/// heap, played — conceals nothing, since the name is public there and a
+/// card in play fires from play, which is why a copy of an event in the
+/// grip beside the one just played does not hide the played one's
+/// trigger. What it costs is the rare event that is about a card *going
+/// back* to the grip with no copy left in sight, which the Corp is then
+/// not told fired: a loss of something public, never a leak.
+fn grip_card_concealed_from(state: &GameState, card: &CardId, viewer: Viewer) -> bool {
+    if viewer.is(Side::Runner) {
+        return false;
+    }
+    let runner = &state.runner;
+    runner.grip.contains(card)
+        && !runner.heap.contains(card)
+        && !runner.play_area.contains(card)
+        && !runner.rig.iter().any(|installed| installed.card == *card)
+        && !runner.in_play.iter().any(|played| played.card == *card)
 }
 
 fn corp_card_concealed_from(state: &GameState, card: &CardId, viewer: Viewer) -> bool {

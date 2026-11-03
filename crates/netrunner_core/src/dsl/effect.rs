@@ -1174,6 +1174,16 @@ pub enum Effect {
         /// destinations is the install's.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         only_server: Option<ServerId>,
+        /// Offer only a server no ice protects — NEXT Design's "install up
+        /// to 3 pieces of ice, **with no more than a single piece of ice per
+        /// server**", before the first turn (CR 1.6.7a), when no server has
+        /// any: each install in the sequence then leaves its server out of
+        /// the next one's offer, which is the printed limit. A field for
+        /// the reason `remote_only` is one: what narrows an install's
+        /// destinations is the install's; the per-ice tax cannot say it,
+        /// since a second piece of ice on a server is only 1[credit] dearer.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        unprotected: bool,
     },
     /// Installs the resolving card — `acting_card`, a card sitting in the
     /// Runner's grip — into the rig, **paying** its install cost (with the
@@ -1558,7 +1568,10 @@ pub enum Effect {
     /// zone it names: nothing goes in, so no faceup card is turned down.
     /// `OwnHq` alone is the Corp's other: "shuffle HQ into R&D" (Executive
     /// Retreat, Corporate Shuffle), from one hidden zone into another, so
-    /// nothing is turned down there either.
+    /// nothing is turned down there either. `OwnArchives` alone is "shuffle
+    /// all cards in Archives into R&D" (Jinteki Biotech's Tank): its faceup
+    /// cards go facedown into R&D, which the shuffle hides whatever they
+    /// were.
     ShuffleIntoDeck(Vec<crate::dsl::CardZoneRef>),
     /// Places credits on the run's event, spendable during the run as its
     /// others are (`RunState::bonus_run_credits`, Overclock's pool) —
@@ -3872,6 +3885,15 @@ pub enum Prohibition {
     /// One word for the two centrals, since no pool card names one of
     /// them alone where the other could be breached.
     AccessRootOfHqOrRnD,
+    /// The Runner cannot access cards in the root of Archives — Hades
+    /// Shard's "[trash]: Breach Archives. You cannot access cards in the
+    /// root of Archives during this breach", made until the next breach as
+    /// Mind's Eye's is. The other central's word beside the two-central
+    /// one rather than a list of servers on it: Divide and Conquer
+    /// breaches Archives first under its "HQ or R&D", so widening that
+    /// word would close Archives' root there too, and a word per root a
+    /// card prints is the one this enum already keeps.
+    AccessRootOfArchives,
     /// The Runner cannot access cards in HQ, though they can still access
     /// cards in its root — Rip Deal's "If you do, you cannot access any
     /// cards in HQ during this breach. (You can still access cards in the
@@ -4030,7 +4052,7 @@ pub enum Prohibition {
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 36] = [
+    pub const ALL: [Prohibition; 37] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -4051,6 +4073,7 @@ impl Prohibition {
         Prohibition::JackOut,
         Prohibition::AccessMoreThanOneCard,
         Prohibition::AccessRootOfHqOrRnD,
+        Prohibition::AccessRootOfArchives,
         Prohibition::AccessCardsInHq,
         Prohibition::Install,
         Prohibition::ResolveFirstThreeSubroutines,
@@ -4073,7 +4096,7 @@ impl Prohibition {
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::InstallIce => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::PlayCurrents | Prohibition::SpendClickButToRun => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessRootOfArchives | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::PlayCurrents | Prohibition::SpendClickButToRun => Side::Runner,
         }
     }
 
@@ -4084,7 +4107,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::PlayCurrents | Prohibition::InstallIce | Prohibition::SpendClickButToRun => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessRootOfArchives | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::PlayCurrents | Prohibition::InstallIce | Prohibition::SpendClickButToRun => None,
         }
     }
 }
@@ -4645,8 +4668,9 @@ impl Effect {
         let boxed = |effect: Box<Effect>| Box::new(effect.with_this_server(server));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_this_server(server)).collect();
         match self {
-            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, this_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, any_position, innermost, only_server, onto_this } => {
+            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, this_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, any_position, innermost, only_server, onto_this, unprotected } => {
                 Effect::PromptInstallCorpCard {
+                    unprotected,
                     onto_this,
                     not_in_root_of: Some(ThisServer::Server(server)),
                     origin_zone,

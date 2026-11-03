@@ -1,0 +1,108 @@
+{
+  "id": "jinteki_biotech_life_imagined",
+  "title": "Jinteki Biotech: Life Imagined",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "before_first_turn": {
+    "ChooseNumber": {
+      "chooser": "Corp",
+      "min": 1,
+      "max": {
+        "Fixed": 3
+      },
+      "then": {
+        "SetIdentityCopy": "ChosenNumber"
+      },
+      "text": "you may switch this identity with any copy of Jinteki Biotech",
+      "secret": true
+    }
+  },
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 3
+      },
+      "requirement": {
+        "Not": "IdentityFlipped"
+      },
+      "effect": "FlipIdentity",
+      "text": "[click][click][click]: Flip this identity."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnIdentityFlipped",
+      "requirement": {
+        "And": [
+          "IdentityFlipped",
+          {
+            "IdentityCopy": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            2
+          ]
+        }
+      ],
+      "text": "Side 1: When you flip this identity, do 2 net damage."
+    },
+    {
+      "trigger": "OnIdentityFlipped",
+      "requirement": {
+        "And": [
+          "IdentityFlipped",
+          {
+            "IdentityCopy": 2
+          }
+        ]
+      },
+      "effects": [
+        {
+          "ShuffleIntoDeck": [
+            "OwnArchives"
+          ]
+        }
+      ],
+      "text": "Side 2: When you flip this identity, shuffle all cards in Archives into R&D."
+    },
+    {
+      "trigger": "OnIdentityFlipped",
+      "requirement": {
+        "And": [
+          "IdentityFlipped",
+          {
+            "IdentityCopy": 3
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Advanceable",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PlaceAdvancementCounters": {
+                "Fixed": 4
+              }
+            }
+          }
+        }
+      ],
+      "text": "Side 3: When you flip this identity, place 4 advancement counters on 1 installed card that you can advance."
+    }
+  ],
+  "built_from": 8012,
+  "is_playable": true
+}

@@ -587,7 +587,11 @@ fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
     let bypassed = due.trigger == Trigger::OnEncounter
         && matches!(due.event, Some(GameEvent::IceEncountered { .. }))
         && state.active_run.as_ref().is_some_and(|run| run.ice_bypassed);
-    !state.is_over() && present && !bypassed && (!run_scoped || state.active_run.is_some())
+    // A card heard from the grip has no install to look for: it applies
+    // while it is still there (the shards — played or discarded since, it
+    // is a card in another zone, which never heard).
+    let still_held = due.heard != crate::rules::state::Heard::FromHand || due.continuation.is_some() || state.runner.grip.contains(&due.card);
+    !state.is_over() && present && still_held && !bypassed && (!run_scoped || state.active_run.is_some())
 }
 
 /// Fires whatever `fire_plan` had to queue, once whatever blocked it has
@@ -673,7 +677,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type: CardType::Program,
-            triggers: vec![TriggeredEffect { subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false, text: None, trigger, effects: vec![effect], requirement: None }],
+            triggers: vec![TriggeredEffect { subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false, text: None, trigger, effects: vec![effect], requirement: None }],
             is_playable: true,
             ..Default::default()
         }

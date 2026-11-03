@@ -990,7 +990,7 @@ mod tests {
             card_type: CardType::Operation,
             cost: 5,
             triggers: vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -1709,6 +1709,7 @@ mod tests {
             effects.extend(card.triggers.iter().flat_map(|t| t.effects.iter().cloned()));
             effects.extend(card.subroutines.iter().map(|s| s.effect.clone()));
             effects.extend(card.before_starting_hand.iter().cloned());
+            effects.extend(card.before_first_turn.iter().cloned());
             if let Some(interactive) = &card.interactive_on_access {
                 effects.extend(interactive.effects.iter().cloned());
             }

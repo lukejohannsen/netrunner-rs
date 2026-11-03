@@ -288,9 +288,44 @@ fn advance_past_mulligan(
 ) -> Result<(), RulesError> {
     match side {
         Side::Corp => next.phase = GamePhase::Mulligan(Side::Runner),
-        Side::Runner => turn::enter_start_of_turn(next, registry, events, Side::Corp)?,
+        Side::Runner => {
+            // "If the Corp's identity has an ability with instructions for
+            // 'before taking your first turn,' the Corp resolves that
+            // ability immediately before taking their first turn, and thus
+            // before the game starts" (CR 1.6.7a). Resolved at
+            // `StartOfTurn(Corp)` with the turn counter still 0, which no
+            // turn ever is, so what it parks is answered there and the
+            // first turn is owed until it is ([`finish_before_first_turn`]).
+            let identity = next.corp.identity.clone();
+            if let Some(effect) = identity.as_ref().and_then(|identity| registry.get(identity)).and_then(|definition| definition.before_first_turn.clone()) {
+                next.phase = GamePhase::StartOfTurn(Side::Corp);
+                let mut ctx = ability::ResolutionContext::for_card(identity.as_ref());
+                events.extend(ability::evaluate_effect(next, &effect, &mut ctx, registry)?);
+                events.extend(finish_before_first_turn(next, registry)?);
+                return Ok(());
+            }
+            turn::enter_start_of_turn(next, registry, events, Side::Corp)?
+        }
     }
     Ok(())
+}
+
+/// The Corp's first turn, owed while the phase is `StartOfTurn(Corp)` on
+/// turn 0 — which is only ever true across a `before_first_turn` effect
+/// (CR 1.6.7a) — and nothing it set off is parked, queued or open. Paid
+/// by `engine::apply_action` after every action, as
+/// `turn::finish_turn_beginning` is, and read off the state for the same
+/// reason: nothing has to remember to clear it. A no-op everywhere else.
+pub(crate) fn finish_before_first_turn(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    if state.phase != GamePhase::StartOfTurn(Side::Corp) || state.turn != 0 {
+        return Ok(Vec::new());
+    }
+    if state.paid_ability_window.is_some() || state.resolution_halted() || !state.deferred_triggers.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut events = Vec::new();
+    turn::enter_start_of_turn(state, registry, &mut events, Side::Corp)?;
+    Ok(events)
 }
 
 #[cfg(test)]

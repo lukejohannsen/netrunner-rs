@@ -56770,3 +56770,301 @@ mod engine_words_stage_19 {
         assert_eq!(crate::rules::continuous::trash_cost_delta(&scored, &registry, definition, Some(InstallId(101))), 3, "one left hosted");
     }
 }
+
+mod engine_words_stage_20 {
+    use super::*;
+    use crate::dsl::{CardDefinition, CardType, Effect};
+    use crate::rules::{GameEvent, PendingDecision, RunPhase};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    /// A game set up and both hands drawn, with `identity` the Corp's and
+    /// HQ holding `hq` — the identity written in after setup, as the step
+    /// it alters is read off the state when the Runner keeps.
+    fn before_the_first_turn(identity: &str, hq: &[&str]) -> (CardRegistry, GameState) {
+        let registry = registry();
+        let corp = crate::decks::by_id("ad_nihilum").expect("a Corp deck").to_deck();
+        let runner = crate::decks::by_id("hit_list").expect("a Runner deck whose identity hears no Corp install").to_deck();
+        let (mut state, _) = GameState::setup(&corp, &runner, &registry, 7).expect("setup");
+        state.corp.identity = Some(id(identity));
+        state.corp.hq = hq.iter().map(|card| id(card)).collect();
+        let state = act(&state, &registry, PlayerAction::KeepHand);
+        let state = act(&state, &registry, PlayerAction::KeepHand);
+        (registry, state)
+    }
+
+    fn close_windows(mut state: GameState, registry: &CardRegistry) -> GameState {
+        while let Some(window) = &state.paid_ability_window {
+            let side = window.active_priority;
+            state = act(&state, registry, PlayerAction::PassPriority { side });
+        }
+        state
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let position = state.corp.hq.iter().position(|held| *held == id(card)).expect("in HQ");
+        let toggled = act(state, registry, PlayerAction::ToggleCardSelection { position });
+        act(&toggled, registry, PlayerAction::ConfirmCardSelection)
+    }
+
+    fn servers_offered(state: &GameState) -> Vec<ServerId> {
+        match &state.pending_decision {
+            Some(PendingDecision::ChooseServer { allowed_servers: Some(allowed), .. }) => allowed.clone(),
+            other => panic!("no server to choose: {other:?}"),
+        }
+    }
+
+    /// "Before taking your first turn, you may install up to 3 pieces of
+    /// ice, with no more than a single piece of ice per server. Draw until
+    /// you have 5 cards in HQ." The game waits at turn 0 while the Corp
+    /// installs, a server with ice is not offered again, and the first
+    /// turn begins once the draw is made — its mandatory draw on top.
+    #[test]
+    fn next_design_installs_ice_one_per_server_before_the_first_turn_then_draws_to_five() {
+        let (registry, asked) = before_the_first_turn("next_design_guarding_the_net", &["ice_wall", "enigma", "hedge_fund"]);
+        assert_eq!((asked.phase, asked.turn), (GamePhase::StartOfTurn(Side::Corp), 0), "before the game starts (CR 1.6.7a)");
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseCards { side: Side::Corp, .. })), "you may install a piece of ice");
+        let first = pick(&asked, &registry, "ice_wall");
+        assert!(servers_offered(&first).contains(&ServerId::Hq));
+        let placed = act(&first, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq });
+        assert_eq!(placed.corp.resources.credits, Credits(5), "the first piece of ice on a server costs nothing");
+        let second = pick(&placed, &registry, "enigma");
+        assert!(!servers_offered(&second).contains(&ServerId::Hq), "HQ has its piece of ice");
+        // HQ holds no third piece of ice, so the third "you may" asks nothing.
+        let declined = act(&second, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD });
+        assert_eq!(declined.turn, 1, "the first turn has begun");
+        let started = close_windows(declined, &registry);
+        assert_eq!(started.phase, GamePhase::Action(Side::Corp));
+        assert_eq!(started.corp.hq.len(), 6, "drew up to 5, then the mandatory draw");
+        assert_eq!(started.corp.resources.clicks, Clicks(3));
+        let ice: Vec<(CardId, ServerId)> = started.corp.installed.iter().map(|installed| (installed.card.clone(), installed.server)).collect();
+        assert_eq!(ice, vec![(id("ice_wall"), ServerId::Hq), (id("enigma"), ServerId::RnD)]);
+        assert!(started.corp.installed.iter().all(|installed| !installed.installed_this_turn), "installed before the game, not on the first turn");
+    }
+
+    /// Without such an ability, keeping the Runner's hand begins the
+    /// Corp's turn at once, as it always has.
+    #[test]
+    fn an_identity_with_nothing_before_the_first_turn_starts_it_at_once() {
+        let (_, started) = before_the_first_turn("haas_bioroid_engineering_the_future", &["ice_wall"]);
+        assert_eq!(started.turn, 1);
+        assert!(started.pending_decision.is_none());
+    }
+
+    /// "Before taking your first turn, you may switch this identity with
+    /// any copy of Jinteki Biotech", in secret; "[click][click][click]:
+    /// Flip this identity", and the side flipped to is the copy chosen —
+    /// Side 2's "shuffle all cards in Archives into R&D".
+    #[test]
+    fn jinteki_biotech_chooses_a_copy_in_secret_before_the_first_turn_and_flips_to_it() {
+        let (registry, asked) = before_the_first_turn("jinteki_biotech_life_imagined", &["hedge_fund"]);
+        assert_eq!(asked.turn, 0);
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseNumber { chooser: Side::Corp, .. })));
+        let runners = crate::rules::mask_state_for_player(&asked, &registry, Side::Runner);
+        assert!(runners.pending_decision.is_some(), "the Runner sees a number being chosen");
+        let chosen = act(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 });
+        assert_eq!(chosen.corp.identity_copy, 2);
+        let mut turn = close_windows(chosen, &registry);
+        assert_eq!(turn.phase, GamePhase::Action(Side::Corp));
+        turn.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("hedge_fund")), crate::rules::ArchivedCard::facedown(id("ice_wall"))];
+        let r_and_d = turn.corp.r_and_d.len();
+        let flip = crate::rules::legal_actions_for(&turn, &registry, Side::Corp)
+            .into_iter()
+            .find(|action| matches!(action, PlayerAction::ActivateAbility { target, .. } if *target == InstallId::CORP_IDENTITY))
+            .expect("[click][click][click]: Flip this identity.");
+        let flipped = act(&turn, &registry, flip);
+        assert!(flipped.corp.identity_flipped);
+        assert_eq!(flipped.corp.resources.clicks, Clicks(0));
+        assert!(flipped.corp.archives.is_empty(), "the Tank: Archives shuffled into R&D");
+        assert_eq!(flipped.corp.r_and_d.len(), r_and_d + 2);
+        assert_eq!(flipped.runner.grip.len(), turn.runner.grip.len(), "not the Brewery's net damage");
+    }
+
+    /// Side 1 does 2 net damage, and a flipped Biotech cannot flip again.
+    #[test]
+    fn jinteki_biotech_side_one_does_two_net_damage_and_flips_once() {
+        let (registry, asked) = before_the_first_turn("jinteki_biotech_life_imagined", &["hedge_fund"]);
+        let turn = close_windows(act(&asked, &registry, PlayerAction::ChooseNumber { amount: 1 }), &registry);
+        let grip = turn.runner.grip.len();
+        let flipped = act(&turn, &registry, PlayerAction::ActivateAbility { target: InstallId::CORP_IDENTITY, ability_index: 0 });
+        assert_eq!(flipped.runner.grip.len(), grip - 2, "2 net damage");
+        let mut again = flipped.clone();
+        again.corp.resources.clicks = Clicks(3);
+        assert!(apply_action(&again, &registry, PlayerAction::ActivateAbility { target: InstallId::CORP_IDENTITY, ability_index: 0 }).is_err(), "the back has no flip");
+    }
+
+    /// `before_first_turn` is a Corp identity's.
+    #[test]
+    fn before_first_turn_is_refused_off_a_corp_identity() {
+        let card = CardDefinition {
+            id: id("not_an_identity"),
+            side: Side::Runner,
+            card_type: CardType::Identity,
+            before_first_turn: Some(Effect::Sequence(Vec::new())),
+            ..CardDefinition::default()
+        };
+        assert!(card.validate().is_err());
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(2);
+        state.corp.resources.credits = Credits(10);
+        state.next_install_id = 200;
+        state
+    }
+
+    fn phase(state: &GameState) -> Option<RunPhase> {
+        state.active_run.as_ref().map(|run| run.phase)
+    }
+
+    /// Passes and continues until `done`, something is parked or the run
+    /// is over.
+    fn pass_until(mut state: GameState, registry: &CardRegistry, done: impl Fn(&GameState) -> bool) -> GameState {
+        for _ in 0..64 {
+            let parked = state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.pending_payment.is_some();
+            if done(&state) || parked || state.active_run.is_none() {
+                return state;
+            }
+            let action = match (&state.paid_ability_window, phase(&state)) {
+                (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+                (None, Some(RunPhase::Initiation | RunPhase::Movement | RunPhase::EncounterIce | RunPhase::ApproachIce)) => PlayerAction::ContinueRun,
+                (None, Some(RunPhase::Success)) => PlayerAction::CompleteRun,
+                other => panic!("stuck at {other:?}"),
+            };
+            state = act(&state, registry, action);
+        }
+        panic!("never done");
+    }
+
+    fn breaching(state: &GameState) -> bool {
+        state.active_run.as_ref().is_some_and(|run| run.access_state.is_some())
+    }
+
+    /// A successful run on R&D with Eden Shard in the grip and the cards it
+    /// asks about.
+    fn eden_shard_asks() -> (CardRegistry, GameState) {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("eden_shard"), id("sure_gamble")];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall")];
+        let started = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD });
+        let asked = pass_until(started, &registry, |_| false);
+        (registry, asked)
+    }
+
+    /// "Whenever you make a successful run on R&D, instead of breaching
+    /// R&D, you may install this resource from your grip, ignoring all
+    /// costs." Heard from the grip, the 7[credit] resource lands for
+    /// nothing, and R&D is not breached.
+    #[test]
+    fn eden_shard_installs_from_the_grip_for_nothing_instead_of_the_breach() {
+        let (registry, asked) = eden_shard_asks();
+        match &asked.pending_decision {
+            Some(PendingDecision::ChooseEffect { chooser: Side::Runner, source_card, option_texts, .. }) => {
+                assert_eq!(source_card.as_ref(), Some(&id("eden_shard")));
+                assert_eq!(option_texts[0], "you may install this resource from your grip, ignoring all costs");
+            }
+            other => panic!("the shard asks: {other:?}"),
+        }
+        let installed = pass_until(act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }), &registry, breaching);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("eden_shard")), "installed");
+        assert_eq!(installed.runner.grip, vec![id("sure_gamble")]);
+        assert_eq!(installed.runner.resources.credits, Credits(2), "ignoring all costs");
+        assert!(installed.active_run.is_none(), "the run is over, and R&D was never breached");
+        assert_eq!(installed.last_completed_run.as_ref().map(|run| run.cards_accessed), Some(0));
+    }
+
+    /// Declined, the breach happens; the Corp is told a choice was made and
+    /// never which card asked it, or what it offered.
+    #[test]
+    fn eden_shard_declined_breaches_r_and_d_and_the_corp_never_learns_the_card() {
+        let (registry, asked) = eden_shard_asks();
+        let corps = crate::rules::mask_state_for_player(&asked, &registry, Side::Corp);
+        match &corps.pending_decision {
+            Some(PendingDecision::ChooseEffect { source_card, prompting_card, option_texts, .. }) => {
+                assert_eq!((source_card, prompting_card), (&None, &None), "no card named");
+                assert!(option_texts.is_empty(), "no printed words");
+            }
+            other => panic!("the Corp sees a choice being made: {other:?}"),
+        }
+        let declined = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 });
+        assert!(declined.runner.grip.contains(&id("eden_shard")), "still in the grip");
+        let fired = GameEvent::TriggerFired { card: id("eden_shard"), trigger: crate::dsl::Trigger::OnSuccessfulRun };
+        assert_eq!(crate::rules::mask_event_for_player(&fired, &declined, Side::Corp), None, "the Corp's log names no shard");
+        assert_eq!(crate::rules::mask_event_for_player(&fired, &declined, Side::Runner), Some(fired.clone()));
+        let breached = pass_until(declined, &registry, breaching);
+        assert!(breaching(&breached), "R&D is breached");
+    }
+
+    /// Only from the grip, and only R&D: installed, the shard hears no run,
+    /// and in the grip it hears no run on HQ.
+    #[test]
+    fn eden_shard_hears_only_a_successful_run_on_r_and_d_and_only_from_the_grip() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("eden_shard")];
+        state.corp.hq = vec![id("hedge_fund")];
+        let on_hq = pass_until(act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }), &registry, breaching);
+        assert!(breaching(&on_hq) && on_hq.pending_decision.is_none(), "HQ is breached unasked");
+
+        let mut installed = state.clone();
+        installed.runner.grip.clear();
+        installed.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("eden_shard"), install_id: InstallId(900), ..Default::default() }];
+        installed.corp.r_and_d = vec![id("hedge_fund")];
+        let on_rnd = pass_until(act(&installed, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }), &registry, breaching);
+        assert!(breaching(&on_rnd) && on_rnd.pending_decision.is_none(), "installed, it hears nothing");
+    }
+
+    /// "[trash]: The Corp draws 2 cards."
+    #[test]
+    fn eden_shard_trashed_has_the_corp_draw_two() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("eden_shard"), install_id: InstallId(900), ..Default::default() }];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        let trashed = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 0 });
+        assert_eq!(trashed.corp.hq.len(), 2);
+        assert!(trashed.runner.heap.contains(&id("eden_shard")));
+    }
+
+    /// "[trash]: Breach Archives. You cannot access cards in the root of
+    /// Archives during this breach." The card in Archives is accessed and
+    /// the upgrade in its root is not.
+    #[test]
+    fn hades_shard_trashed_breaches_archives_without_its_root() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("hades_shard"), install_id: InstallId(900), ..Default::default() }];
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("hostile_takeover"))];
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(101), card: id("manegarm_skunkworks"), server: ServerId::Archives, slot: InstallSlot::Root, rezzed: false, ..Default::default() }];
+        let breached = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 0 });
+        assert!(breached.runner.heap.contains(&id("hades_shard")));
+        let stolen = crate::rules::legal_actions_for(&breached, &registry, Side::Runner);
+        assert!(
+            stolen.iter().any(|action| matches!(action, PlayerAction::StealAgenda { card_id } if *card_id == id("hostile_takeover"))),
+            "the agenda in Archives is accessed: {stolen:?}"
+        );
+        let rest = stolen.iter().find(|action| matches!(action, PlayerAction::StealAgenda { .. })).cloned().expect("steal");
+        let done = act(&breached, &registry, rest);
+        assert!(done.runner.scored_agendas.iter().any(|scored| scored.card == id("hostile_takeover")));
+        assert!(done.active_run.is_none() || done.active_run.as_ref().is_some_and(|run| run.access_state.as_ref().is_none_or(|access| access.pending_install.is_none())), "the root is never accessed");
+        assert!(crate::rules::legal_actions_for(&done, &registry, Side::Runner).iter().all(|action| !matches!(action, PlayerAction::SelectCardToAccess { .. })));
+    }
+
+    /// `from_hand` is a Runner card's, and heard from nowhere else.
+    #[test]
+    fn from_hand_is_refused_off_a_runner_card() {
+        let mut card: CardDefinition = registry().get(&id("eden_shard")).expect("eden").clone();
+        card.side = Side::Corp;
+        assert!(card.validate().is_err());
+    }
+}

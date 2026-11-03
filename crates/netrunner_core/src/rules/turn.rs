@@ -468,6 +468,13 @@ pub(crate) fn begin_turn(state: &mut GameState, side: Side, registry: &CardRegis
 /// remember to clear it.
 pub(crate) fn finish_turn_beginning(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
     let GamePhase::StartOfTurn(side) = state.phase else { return Ok(Vec::new()) };
+    // Turn 0 is no turn's beginning: it is the step before the game
+    // starts (CR 1.6.7a, `setup::finish_before_first_turn`), whose first
+    // turn has not been entered — drawing here drew the Corp's mandatory
+    // card with no clicks allotted.
+    if state.turn == 0 {
+        return Ok(Vec::new());
+    }
     if state.paid_ability_window.is_some() || state.resolution_halted() || !state.deferred_triggers.is_empty() {
         return Ok(Vec::new());
     }
@@ -580,7 +587,7 @@ mod tests {
             side: Side::Corp,
             card_type: crate::dsl::CardType::Identity,
             triggers: vec![crate::dsl::TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
                 trigger: crate::dsl::Trigger::OnDiscardPhaseEnd,
                 effects: vec![crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Net, 1)],

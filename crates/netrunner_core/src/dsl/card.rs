@@ -388,6 +388,23 @@ pub struct TriggeredEffect {
     /// Runner's score area, which is right for every other agenda.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub from_runner_score_area: bool,
+    /// Heard while this Runner card is in the grip, and only there — CR
+    /// 9.1.8b again, for the shards: Eden Shard's "Whenever you make a
+    /// successful run on R&D, instead of breaching R&D, you may install
+    /// this resource from your grip, ignoring all costs". A card in the
+    /// grip listens for these triggers and no others (`listeners`,
+    /// `Heard::FromHand`), and the same card in the rig does not hear
+    /// them. `from_discard`'s shape a fourth time, and the first in a
+    /// hidden zone, so **the masking layer has a rule for it**: the
+    /// Corp is never told which card in the grip heard
+    /// (`masking::grip_card_concealed_from` — the decision's card and its
+    /// printed options, the trigger fired, the place it was ordered in).
+    /// That a decision is being made is not hidden, as it is not at a
+    /// table, where the Runner who holds a shard stops to think before
+    /// breaching. Refused on a Corp card: HQ has no such rule, and no
+    /// card in the pool listens from it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub from_hand: bool,
     /// Heard while this Corp card is installed facedown, and only then —
     /// CR 9.1.8c: an ability that changes when its card can be rezzed is
     /// active while the card is inactive. Zaibatsu Loyalty's "When a card
@@ -986,6 +1003,25 @@ pub struct CardDefinition {
     /// for a listener to hear, and the game has not begun (1.6.7).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub before_starting_hand: Option<Effect>,
+    /// What a Corp identity does "before taking your first turn" (CR
+    /// 1.6.7a: "the Corp resolves that ability immediately before taking
+    /// their first turn, and thus before the game starts") — NEXT Design's
+    /// three pieces of ice, Jinteki Biotech's choice of copy. Run by
+    /// `setup::advance_past_mulligan` once the Runner has kept a hand, with
+    /// the phase at `StartOfTurn(Corp)` and the turn counter still 0, and
+    /// the first turn is entered when nothing it parked is left
+    /// (`setup::finish_before_first_turn`, read off the state as
+    /// `turn::finish_turn_beginning` is). `before_starting_hand`'s shape,
+    /// a field and not a `Trigger` for its reason, and a second field
+    /// because the step is another one: a setup effect ahead of the draw
+    /// could not see the hand it is drawn into (NEXT Design installs out
+    /// of HQ, then draws up to 5), and one after the mulligans is the
+    /// Corp's alone. Rejected: an `OnTurnStart` trigger asking whether the
+    /// turn is the first, which would resolve inside the first turn —
+    /// after its clicks are gained and among the abilities CR 5.6.1d
+    /// orders — where the rule puts it before the game starts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before_first_turn: Option<Effect>,
     /// How many cards an identity's player draws as a starting hand, where
     /// it is not the rules' 5 (CR 1.6.6) — Andromeda: Dispossessed
     /// Ristie's "You draw a starting hand of 9 cards". A mulligan draws a
@@ -1319,6 +1355,8 @@ pub enum CardValidationError {
     CountBesideBounds(CardId),
     #[error("card {0:?}: `IceType::Other` is ice with none of the three types, never a type — refused on {1}")]
     OtherIsNotAnIceType(CardId, &'static str),
+    #[error("card {0:?}: a trigger heard from the grip (`from_hand`) is a Runner card's, and heard from nowhere else")]
+    FromHandOffARunnerCard(CardId),
     #[error("card {0:?}: a trigger active in the Runner's score area (`from_runner_score_area`) is an agenda's")]
     ScoreAreaTriggerOffAnAgenda(CardId),
     #[error("card {0:?}: a trigger heard while facedown (`while_unrezzed`) is an installed Corp card's, and no other zone's")]
@@ -1331,6 +1369,8 @@ pub enum CardValidationError {
     DeckRuleOffAnIdentity(CardId),
     #[error("card {0:?}: an ability that alters setup (`before_starting_hand`) is an identity's — CR 1.6.1a")]
     SetupOffAnIdentity(CardId),
+    #[error("card {0:?}: an ability for \"before taking your first turn\" (`before_first_turn`) is a Corp identity's — CR 1.6.7a")]
+    BeforeFirstTurnOffACorpIdentity(CardId),
     #[error("card {0:?}: an ability used from the hand (`from_hand`) must be an action — a paid ability whose cost begins with [click]")]
     HandAbilityNotAnAction(CardId),
     #[error("card {0:?}: ability {1} is `part_of` an ability that is not an earlier entry naming a `OncePerTurn`")]
@@ -1463,6 +1503,7 @@ impl Default for CardDefinition {
             persistent_after_trash: false,
             continuous: Vec::new(),
             before_starting_hand: None,
+            before_first_turn: None,
             starting_hand_size: None,
         }
     }
@@ -1644,6 +1685,9 @@ impl CardDefinition {
         }
         if self.before_starting_hand.is_some() && self.card_type != CardType::Identity {
             return Err(CardValidationError::SetupOffAnIdentity(self.id.clone()));
+        }
+        if self.before_first_turn.is_some() && (self.card_type != CardType::Identity || self.side != Side::Corp) {
+            return Err(CardValidationError::BeforeFirstTurnOffACorpIdentity(self.id.clone()));
         }
         if self.not_trashed_until_your_next_turn && self.card_type != CardType::Operation {
             return Err(CardValidationError::NotTrashedOffAnOperation(self.id.clone()));
@@ -1963,7 +2007,8 @@ impl CardDefinition {
             .chain(self.triggers.iter().flat_map(|triggered| &triggered.effects))
             .chain(self.subroutines.iter().map(|subroutine| &subroutine.effect))
             .chain(self.interactive_on_access.iter().flat_map(|interactive| &interactive.effects))
-            .chain(self.before_starting_hand.iter());
+            .chain(self.before_starting_hand.iter())
+            .chain(self.before_first_turn.iter());
         // A random reveal resolves its `then` once per card with nothing to
         // wait on, so a `then` must be one that never parks: a move into a
         // deck, or Embezzle's "trash each revealed card that has the named
@@ -2142,6 +2187,9 @@ impl CardDefinition {
         }
         if restricted_to_no_type {
             return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a breaker restricted to it"));
+        }
+        if self.triggers.iter().any(|triggered| triggered.from_hand && (self.side != Side::Runner || triggered.from_discard || triggered.from_runner_score_area || triggered.while_unrezzed)) {
+            return Err(CardValidationError::FromHandOffARunnerCard(self.id.clone()));
         }
         if self.card_type != CardType::Agenda && self.triggers.iter().any(|triggered| triggered.from_runner_score_area) {
             return Err(CardValidationError::ScoreAreaTriggerOffAnAgenda(self.id.clone()));
@@ -2518,7 +2566,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -2540,7 +2588,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Runner, 9)],
@@ -2706,7 +2754,7 @@ mod tests {
             id: CardId("homebrew".to_string()),
             side: Side::Runner,
             card_type: CardType::Resource,
-            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false, text: None, effects: vec![], requirement: None }],
+            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false, text: None, effects: vec![], requirement: None }],
             ..Default::default()
         };
         let on_hq = || Some(EventFilter::Server(vec![crate::rules::ServerId::Hq]));
@@ -2771,7 +2819,7 @@ mod tests {
             when,
             acts_on_subject: false,
             first_each_turn: true, first_each_encounter: false, granted: false,
-            from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+            from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
             text: None,
             effects: vec![],
             requirement,
@@ -2821,7 +2869,7 @@ mod tests {
             discount(Scope::Installing(CardFilter::CardType(CardType::Program)), Some(EffectRequirement::OncePerTurn)).validate(),
             Err(CardValidationError::OncePerTurnDoesNotFit(..))
         ));
-        let once = |trigger: Trigger| TriggeredEffect { first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false, ..first(trigger, None, None, Some(EffectRequirement::OncePerTurn)) };
+        let once = |trigger: Trigger| TriggeredEffect { first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false, ..first(trigger, None, None, Some(EffectRequirement::OncePerTurn)) };
         assert_eq!(card(Side::Corp, vec![once(Trigger::OnTagsGiven)]).validate(), Ok(()));
         assert!(matches!(card(Side::Corp, vec![once(Trigger::OnTagsGiven), once(Trigger::OnTagRemoved)]).validate(), Err(CardValidationError::OncePerTurnDoesNotFit(..))));
         assert!(refused(discount(Scope::Controller, None)));
@@ -3044,7 +3092,7 @@ mod tests {
                 subject: Some(Subject::This),
                 when: None,
                 acts_on_subject: false,
-                first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
                 effects: vec![Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, for_the_run: false, for_the_turn: false }],
                 requirement: None,
@@ -3069,7 +3117,7 @@ mod tests {
                 subject: Some(Subject::Any),
                 when: None,
                 acts_on_subject,
-                first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
                 effects: vec![gains.clone()],
                 requirement: None,
@@ -3153,7 +3201,7 @@ mod tests {
                 when: None,
                 acts_on_subject: false,
                 first_each_turn: false, first_each_encounter: false, granted: false,
-                from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
             }],
             ..CardDefinition::default()
@@ -3180,7 +3228,7 @@ mod tests {
                 when: Some(EventFilter::Host),
                 acts_on_subject: false,
                 first_each_turn: false, first_each_encounter: false, granted: false,
-                from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
             }],
             ..CardDefinition::default()
@@ -3206,7 +3254,7 @@ mod tests {
                 when: Some(EventFilter::InRoot),
                 acts_on_subject: false,
                 first_each_turn: true, first_each_encounter: false, granted: false,
-                from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
             }],
             ..CardDefinition::default()
@@ -3233,7 +3281,7 @@ mod tests {
                 when: Some(EventFilter::InRootOfThisServer),
                 acts_on_subject: false,
                 first_each_turn: true, first_each_encounter: false, granted: false,
-                from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
             }],
             ..CardDefinition::default()

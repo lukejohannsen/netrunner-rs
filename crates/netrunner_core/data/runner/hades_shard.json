@@ -1,0 +1,75 @@
+{
+  "id": "hades_shard",
+  "title": "Hades Shard",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 7,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Archives"
+        ]
+      },
+      "from_hand": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "SetAccessReplacement": {
+                      "effect": {
+                        "Sequence": []
+                      }
+                    }
+                  },
+                  {
+                    "InstallRunnerCardFromZone": {
+                      "from": "OwnGrip",
+                      "discount": "AllCosts"
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may install this resource from your grip, ignoring all costs",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run on Archives, instead of breaching Archives, you may install this resource from your grip, ignoring all costs."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "Sequence": [
+          {
+            "Prohibit": {
+              "what": "AccessRootOfArchives",
+              "until": "NextBreach"
+            }
+          },
+          {
+            "Breach": "Archives"
+          }
+        ]
+      },
+      "text": "[trash]: Breach Archives. You cannot access cards in the root of Archives during this breach."
+    }
+  ],
+  "built_from": 6059,
+  "is_playable": true
+}
