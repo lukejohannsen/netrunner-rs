@@ -1,0 +1,30 @@
+{
+  "id": "heinlein_grid",
+  "title": "Heinlein Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 3,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnAnyClicksLost",
+      "when": {
+        "Whose": "Runner"
+      },
+      "requirement": "RunAgainstThisServer",
+      "effects": [
+        {
+          "LoseCreditsAmount": [
+            "Runner",
+            {
+              "Credits": "Runner"
+            }
+          ]
+        }
+      ],
+      "text": "Whenever the Runner loses or spends [click] during a run on this server, they lose all credits in their credit pool."
+    }
+  ],
+  "built_from": 6023,
+  "is_playable": true
+}

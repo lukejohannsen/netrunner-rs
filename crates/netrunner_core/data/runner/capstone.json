@@ -1,0 +1,55 @@
+{
+  "id": "capstone",
+  "title": "Capstone",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "PromptChooseCards": {
+              "side": "Runner",
+              "source": "OwnGrip",
+              "filter": {
+                "Not": "CopyInstalled"
+              },
+              "min": 0,
+              "max": 99,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OwnHeap"
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Runner",
+              "source": "OwnGrip",
+              "filter": "CopyInstalled",
+              "min": 0,
+              "max": 99,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OwnHeap",
+              "then": {
+                "DrawCardsAmount": [
+                  "Runner",
+                  "CardsSelected"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "text": "[click]: Trash any number of cards from your grip. For each trashed card of which you have another copy installed, draw 1 card."
+    }
+  ],
+  "built_from": 4068,
+  "is_playable": true
+}

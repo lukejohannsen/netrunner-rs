@@ -484,6 +484,14 @@ pub enum Effect {
     /// as long as the card that declares it is active, and this one is
     /// paid for once and outlasts nothing but its duration.
     ModifyHandSize { side: Side, by: i32, until: EffectDuration },
+    /// The Runner's memory limit changes by `by` for `until` — Bad Times'
+    /// "The Runner's memory limit is reduced by 2 until the end of the
+    /// turn" (`Lingering::Memory` on the Runner). Composition didn't work:
+    /// a memory limit was only ever declared (`ContinuousKind::Memory`), for
+    /// as long as the card that declares it is active, and an operation is
+    /// active only while it resolves. `ModifyHandSize`'s shape; no `side`,
+    /// because only the Runner has a memory limit.
+    ModifyMemoryLimit { by: i32, until: EffectDuration },
     /// The encountered piece of ice's strength is lowered to `to` for
     /// `duration` — Sifr's "the strength of that ice is lowered to 0 for
     /// the remainder of the encounter". Resolved to the change that makes
@@ -1796,6 +1804,13 @@ pub enum Effect {
         for_the_run: bool,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         for_the_turn: bool,
+        /// Paintbrush's "That ice gains **sentry**, **code gate** or
+        /// **barrier** until the end of the next run this turn": the chosen
+        /// ice's sentence, as `for_the_turn` is, lasting
+        /// `EffectDuration::NextRunThisTurn`. A word beside `for_the_turn`
+        /// for the reason that one is a word.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        for_the_next_run: bool,
     },
     /// The controller looks at the top `count` cards of `deck`'s owner's
     /// deck and nobody else sees them (`GameEvent::CardsLookedAt`, masked
@@ -3556,6 +3571,13 @@ pub enum EffectDuration {
     /// that encounter and the movement after it, where the Runner may jack
     /// out again.
     UntilNextEncounter,
+    /// Through the next run to begin this turn — Paintbrush's "until the end
+    /// of the next run this turn", made outside a run by a [click] ability
+    /// (`Until::ThroughNextRun`, counted off the turn log's `OnRunStart`).
+    /// It ends as that run does, or with the turn if none begins.
+    /// Composition didn't work: `Run` needs a run under way, and `Turn`
+    /// lasts through a second run. `NextBreach`'s shape, for a run.
+    NextRunThisTurn,
 }
 
 /// What an `Effect::Prevent` prevents, as the card prints it after the word
@@ -4933,6 +4955,7 @@ impl Effect {
             | Effect::SwapApproachedIceWithCard { .. }
             | Effect::AllottedClicksNextTurn(..)
             | Effect::ModifyHandSize { .. }
+            | Effect::ModifyMemoryLimit { .. }
             | Effect::LowerEncounteredIceStrengthTo { .. }
             | Effect::EndActionPhase
             | Effect::TurnFaceup

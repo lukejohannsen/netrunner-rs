@@ -188,6 +188,16 @@ pub enum ContinuousKind {
     BadPublicity(Number),
     /// Credits to install a card; negative is a discount.
     InstallCost(Number),
+    /// The install cost is ignored — Eden Fragment's "**ignore the install
+    /// cost** of the first piece of ice you install each turn", on
+    /// `Installing(Ice)` with `first_each_turn`. Removed from the total, so
+    /// what the table adds to it goes too (CR 1.16.5a), which is why it is
+    /// a word and not a discount as large as any install cost: the order a
+    /// discount and a surcharge are summed in would decide what a "large
+    /// enough" one left. Asked by `continuous::ice_install_cost` alone,
+    /// since no card in the pool ignores a Runner card's install cost
+    /// standing.
+    IgnoreInstallCost,
     /// Credits to rez a card.
     RezCost(Number),
     /// Credits for the Runner to trash a card they access.

@@ -1,0 +1,22 @@
+{
+  "id": "eden_fragment",
+  "title": "Eden Fragment",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "continuous": [
+    {
+      "kind": "IgnoreInstallCost",
+      "applies_to": {
+        "Installing": "Ice"
+      },
+      "first_each_turn": true,
+      "text": "Ignore the install cost of the first piece of ice you install each turn."
+    }
+  ],
+  "triggers": [],
+  "built_from": 6030,
+  "is_playable": true
+}

@@ -279,6 +279,10 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
             card.side != source.side && card_matches_filter(card, filter)
         }
         (Scope::IceNotInnermost, Target::InstallingIce { innermost, .. }) => !innermost,
+        // "The first **piece of ice** you install each turn" (Eden
+        // Fragment): the one installing scope a piece of ice being installed
+        // answers, since the target names no card and "ice" is all it is.
+        (Scope::Installing(crate::dsl::CardFilter::Ice), Target::InstallingIce { .. }) => source.side == Side::Corp,
         (Scope::InstallingOntoThis(filter), Target::InstallingOnto { card, host }) => {
             source.install == Some(*host) && card.side == source.side && card_matches_filter(card, filter)
         }
@@ -1089,7 +1093,11 @@ pub(crate) fn install_cost_onto(state: &GameState, registry: &CardRegistry, card
 /// a "total" discount is taken off this (CR 1.16.2f).
 pub(crate) fn ice_install_cost(state: &GameState, registry: &CardRegistry, server: ServerId) -> u32 {
     let protecting = crate::rules::engine::ice_protecting(state, server);
-    (protecting as i32 + sum(state, registry, Target::InstallingIce { innermost: protecting == 0 }, install_cost)).max(0) as u32
+    let target = Target::InstallingIce { innermost: protecting == 0 };
+    if any(state, registry, target, |kind| *kind == ContinuousKind::IgnoreInstallCost) {
+        return 0;
+    }
+    (protecting as i32 + sum(state, registry, target, install_cost)).max(0) as u32
 }
 
 /// What the table adds to installing a piece of ice outward of another —

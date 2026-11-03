@@ -2183,7 +2183,7 @@ impl CardDefinition {
                 && match duration {
                     EffectDuration::Encounter => triggered.trigger == Trigger::OnEncounter,
                     EffectDuration::Run => matches!(triggered.trigger, Trigger::OnEncounter | Trigger::OnRez),
-                    EffectDuration::Turn | EffectDuration::ThroughYourNextTurn | EffectDuration::WhileRezzed | EffectDuration::WhileInstalled | EffectDuration::NextAction | EffectDuration::NextBreach | EffectDuration::UntilYourNextTurnBegins | EffectDuration::UntilChosenAgain | EffectDuration::NextEncounter | EffectDuration::UntilNextEncounter => false,
+                    EffectDuration::Turn | EffectDuration::ThroughYourNextTurn | EffectDuration::WhileRezzed | EffectDuration::WhileInstalled | EffectDuration::NextAction | EffectDuration::NextBreach | EffectDuration::UntilYourNextTurnBegins | EffectDuration::UntilChosenAgain | EffectDuration::NextEncounter | EffectDuration::UntilNextEncounter | EffectDuration::NextRunThisTurn => false,
                 }
         };
         if self.triggers.iter().any(|triggered| triggered.effects.iter().flat_map(gains).any(|duration| !fits(triggered, duration)))
@@ -2210,7 +2210,14 @@ impl CardDefinition {
         // so only ice can say it, and gaining `Other` would mean nothing.
         let mut gained = Vec::new();
         let mut gains = |effect: &Effect| {
-            effect.for_each_effect(&mut |e| if let Effect::GainIceSubtype { subtype, ice, for_the_run, for_the_turn } = e { gained.push((*subtype, *ice, *for_the_run, *for_the_turn)) })
+            effect.for_each_effect(&mut |e| {
+                if let Effect::GainIceSubtype { subtype, ice, for_the_run, for_the_turn, for_the_next_run } = e {
+                    // Paintbrush's "until the end of the next run this turn"
+                    // is the chosen ice's sentence, as Tinkering's turn is;
+                    // the two are never said together.
+                    gained.push((*subtype, *ice, *for_the_run || (*for_the_turn && *for_the_next_run), *for_the_turn || *for_the_next_run))
+                }
+            })
         };
         self.triggers.iter().flat_map(|triggered| &triggered.effects).for_each(&mut gains);
         self.abilities.iter().map(|ability| &ability.effect).for_each(&mut gains);
@@ -2312,6 +2319,15 @@ impl CardDefinition {
                 (ContinuousKind::MayHost, Scope::InstallingOntoThis(_)) if self.side == Side::Corp && self.card_type == CardType::Asset => {}
                 (_, Scope::InstallingOntoThis(_)) if !hosted || self.side != Side::Runner => {
                     return misfit("InstallingOntoThis", "only a Runner's installed card, or a Corp asset that may host, has cards installed onto it");
+                }
+                // Only ice has an install cost the Corp pays (CR 8.5.16d), and
+                // a piece of ice being installed is priced without its card
+                // (`continuous::Target::InstallingIce`): "ice" is all a Corp
+                // card's `Installing` can say (Eden Fragment).
+                (ContinuousKind::IgnoreInstallCost, Scope::Installing(crate::dsl::CardFilter::Ice)) if self.side == Side::Corp => {}
+                (ContinuousKind::IgnoreInstallCost, _) => return misfit("IgnoreInstallCost", "an ignored install cost is about the Corp's pieces of ice being installed (`Installing(Ice)`)"),
+                (ContinuousKind::InstallCost(_), Scope::Installing(filter)) if self.side == Side::Corp && *filter != crate::dsl::CardFilter::Ice => {
+                    return misfit("Installing", "the Corp pays an install cost only for a piece of ice, priced without the card, so a Corp card's install cost is about `Installing(Ice)`");
                 }
                 (ContinuousKind::InstallCost(_), Scope::This | Scope::Installing(_) | Scope::InstallingOntoThis(_) | Scope::OpponentInstalling(_) | Scope::IceNotInnermost) => {}
                 (ContinuousKind::InstallCost(_), _) => return misfit("InstallCost", "an install cost is this card's own or that of a card being `Installing`"),
@@ -3107,7 +3123,7 @@ mod tests {
                 acts_on_subject: false,
                 first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
-                effects: vec![Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, for_the_run: false, for_the_turn: false }],
+                effects: vec![Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, for_the_run: false, for_the_turn: false, for_the_next_run: false }],
                 requirement: None,
             }],
             ..Default::default()

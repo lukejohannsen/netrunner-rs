@@ -487,6 +487,12 @@ pub enum CardFilter {
     /// didn't work: no filter read the heap, and `CopyOfThisCard` is a copy
     /// of the card printing the effect.
     CopyInHeap,
+    /// A card of which its owner has another copy installed — Capstone's
+    /// "for each trashed card **of which you have another copy installed**",
+    /// read of a card in the grip. Instance-level: the table is state.
+    /// Composition didn't work: `CopyOfThisCard` is a copy of the card
+    /// printing the effect, and `CopyInHeap` reads the heap.
+    CopyInstalled,
     /// The one card `n` from the top of the zone, the top being 1 — Top
     /// Hat's "choose 1 of the top 5 cards in R&D and access it", the
     /// Runner choosing a position (`Effect::ChooseNumber`, written in as
@@ -1018,6 +1024,7 @@ impl CardFilter {
                 | CardFilter::TopOfZone(_)
                 | CardFilter::BottomOfZone(_)
                 | CardFilter::CopyInHeap
+                | CardFilter::CopyInstalled
                 | CardFilter::TopOf(_)
                 | CardFilter::NthFromTop(_)
                 | CardFilter::HostsCounters(crate::dsl::CounterKind::Virus)
@@ -1225,7 +1232,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::PlayableOperation => card.card_type == CardType::Operation,
         CardFilter::PlayableIgnoringAdditionalCosts => matches!(card.card_type, CardType::Operation | CardType::Event),
         // Purely instance-level: where the card sits in its zone.
-        CardFilter::TopOfZone(_) | CardFilter::BottomOfZone(_) | CardFilter::CopyInHeap | CardFilter::TopOf(_) | CardFilter::NthFromTop(_) | CardFilter::Revealed => true,
+        CardFilter::TopOfZone(_) | CardFilter::BottomOfZone(_) | CardFilter::CopyInHeap | CardFilter::CopyInstalled | CardFilter::TopOf(_) | CardFilter::NthFromTop(_) | CardFilter::Revealed => true,
         CardFilter::IceOfType(ice_type) => card.is_ice_of_type(*ice_type),
         CardFilter::InstallableRunnerCardWithDiscount(_) => card_matches_filter(card, &CardFilter::InstallableRunnerCard),
         // Instance-level, not definition-level — see the variant's doc

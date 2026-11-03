@@ -429,6 +429,8 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                     let credits = n.unsigned_abs();
                     format!("each piece of ice costs {credits} credit{} {} to rez", if credits == 1 { "" } else { "s" }, if *n >= 0 { "more" } else { "less" })
                 }
+                // Bad Times: the Runner's memory limit, for the turn.
+                (Lingering::Memory(n), _) => format!("the Runner's memory limit is {}[mu] {}", n.unsigned_abs(), if *n >= 0 { "more" } else { "less" }),
                 // Sifr: the Runner's hand, until their next turn begins.
                 (Lingering::HandSize(n), on) => {
                     let whose = if *on == On::Player(Side::Corp) { "the Corp's" } else { "the Runner's" };
@@ -530,6 +532,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 Until::EndOfEncounter(_) => ", for this encounter",
                 Until::EndOfRun => ", for the rest of this run",
                 Until::ThroughNextBreach { .. } => ", during this breach",
+                Until::ThroughNextRun { .. } => ", until the end of the next run this turn",
                 Until::ThroughEncounter(_) => ", until the next encounter ends",
                 Until::EndOfTurn(turn) if turn <= view.turn => ", for the rest of this turn",
                 // Klevetnik's "until your next turn ends": the turn of the

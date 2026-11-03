@@ -214,6 +214,14 @@ pub enum Lingering {
     /// once, for a span of the game, which a declared effect has no way
     /// to say.
     HandSize(i32),
+    /// The Runner's memory limit is this much more (or, negative, less) —
+    /// Bad Times' "The Runner's memory limit is reduced by 2 until the end
+    /// of the turn", made by `Effect::ModifyMemoryLimit` and added by
+    /// `memory::memory_balance_with` beside what the table declares
+    /// (`ContinuousKind::Memory`), so the checkpoint's memory-limit trash
+    /// (CR 3.9.3) hears it as it hears a console trashed. `HandSize`'s
+    /// shape, about the Runner alone: only the Runner has a memory limit.
+    Memory(i32),
     /// A piece of ice has this subtype on top of what it prints — Lycian
     /// Multi-Munition's "choose 1 or more subtypes among barrier, code
     /// gate, and sentry. This ice gains the chosen subtypes while it
@@ -306,6 +314,12 @@ pub enum Until {
     /// turn log). It holds until the next has begun and ended, so it is in
     /// force at that breach's first candidate and gone with its last.
     ThroughNextBreach { turn: u32, begun: u32 },
+    /// Through the run that begins after the effect is made, on the turn
+    /// numbered so (`EffectDuration::NextRunThisTurn`): `begun` is how many
+    /// runs had begun this turn when it was made (`OnRunStart` in the turn
+    /// log). It holds until the next has begun and ended — Paintbrush's
+    /// "until the end of the next run this turn".
+    ThroughNextRun { turn: u32, begun: u32 },
     /// The end of the turn numbered so, by `GameState::turn`: this turn
     /// for every duration but one, and a later one for "until your next
     /// turn ends" (Klevetnik's, `EffectDuration::ThroughYourNextTurn`),
@@ -371,6 +385,10 @@ impl LingeringEffect {
                 // and the run's own breach is a later one.
                 state.turn == turn && (now == begun || (now == begun + 1 && state.active_run.as_ref().is_some_and(|run| run.breached.is_some())))
             }
+            Until::ThroughNextRun { turn, begun } => {
+                let now = state.this_turn.times(crate::dsl::Trigger::OnRunStart);
+                state.turn == turn && (now == begun || (now == begun + 1 && state.active_run.is_some()))
+            }
             Until::EndOfTurn(turn) => state.turn <= turn,
             Until::BeforeTurn(turn) => state.turn < turn,
             Until::ChosenAgain => true,
@@ -413,6 +431,7 @@ pub(crate) fn until(state: &GameState, duration: EffectDuration, controller: Sid
         EffectDuration::WhileRezzed => made_by.map(Until::WhileRezzed).ok_or(RulesError::UnresolvedCardTarget),
         EffectDuration::WhileInstalled => made_by.map(Until::WhileInstalled).ok_or(RulesError::UnresolvedCardTarget),
         EffectDuration::NextBreach => Ok(Until::ThroughNextBreach { turn: state.turn, begun: state.this_turn.times(crate::dsl::Trigger::OnBreach) }),
+        EffectDuration::NextRunThisTurn => Ok(Until::ThroughNextRun { turn: state.turn, begun: state.this_turn.times(crate::dsl::Trigger::OnRunStart) }),
         EffectDuration::NextAction => Ok(Until::ActionsFinished { turn: state.turn, count: state.this_turn.actions_finished() + 1 }),
         EffectDuration::UntilChosenAgain => Ok(Until::ChosenAgain),
         EffectDuration::NextEncounter => run.map(|run| Until::ThroughEncounter(run.encounters + 1)).ok_or(RulesError::NoActiveRun),
@@ -457,7 +476,7 @@ pub fn strength(state: &GameState, on: InstallId) -> i32 {
         .filter(|effect| effect.on == On::Install(on) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::Prevent(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::AdditionalCost { .. } => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::Prevent(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::Memory(_) | Lingering::AdditionalCost { .. } => 0,
         })
         .sum()
 }
@@ -471,6 +490,20 @@ pub fn hand_size(state: &GameState, side: crate::rules::Side) -> i32 {
         .filter(|effect| effect.on == On::Player(side) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::HandSize(delta) => delta,
+            _ => 0,
+        })
+        .sum()
+}
+
+/// What the lingering effects that still hold add to the Runner's memory
+/// limit (`Lingering::Memory`, Bad Times).
+pub fn memory(state: &GameState) -> i32 {
+    state
+        .lingering
+        .iter()
+        .filter(|effect| effect.on == On::Player(crate::rules::Side::Runner) && effect.holds(state))
+        .map(|effect| match effect.what {
+            Lingering::Memory(delta) => delta,
             _ => 0,
         })
         .sum()
@@ -512,7 +545,7 @@ pub fn ice_strength_terms(state: &GameState, on: InstallId) -> impl Iterator<Ite
         .filter(move |effect| (effect.on == On::Install(on) || effect.on == On::EachIce || server.is_some_and(|server| effect.on == On::Server(server))) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::Prevent(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::AdditionalCost { .. } => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::Prevent(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::Memory(_) | Lingering::AdditionalCost { .. } => 0,
         })
 }
 
@@ -525,7 +558,7 @@ pub fn ice_rez_cost(state: &GameState) -> i32 {
         .filter(|effect| effect.on == On::EachIce && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::RezCost(delta) => delta,
-            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::Prevent(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::AdditionalCost { .. } => 0,
+            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::Prevent(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::Memory(_) | Lingering::AdditionalCost { .. } => 0,
         })
         .sum()
 }

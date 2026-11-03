@@ -461,7 +461,10 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::DrewCard { side, card: drawn } => vec![moment(Trigger::OnCardDrawn, &About::Card { card: drawn.clone(), install: None, installed: false }, Some(*side))],
         GameEvent::DrawFinished { side, .. } => vec![moment(Trigger::OnCardsDrawn, &About::Nothing, Some(*side))],
         // Lost to an effect; a click lost paying a cost is nothing's.
-        GameEvent::ClicksLost { side, by_cost: false, .. } => vec![moment(Trigger::OnClicksLost, &About::Nothing, Some(*side))],
+        // Lost to an effect, an occurrence of both; lost paying a cost, of
+        // Heinlein Grid's "loses or spends" alone.
+        GameEvent::ClicksLost { side, by_cost: false, .. } => vec![moment(Trigger::OnClicksLost, &About::Nothing, Some(*side)), moment(Trigger::OnAnyClicksLost, &About::Nothing, Some(*side))],
+        GameEvent::ClicksLost { side, by_cost: true, .. } => vec![moment(Trigger::OnAnyClicksLost, &About::Nothing, Some(*side))],
         // "At least 1[credit]": a loss of nothing is no loss.
         GameEvent::CreditsLost { side, amount } if *amount > 0 => vec![moment(Trigger::OnCreditsLost, &About::Nothing, Some(*side))],
         GameEvent::CreditsLost { .. } => Vec::new(),
@@ -600,7 +603,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::AdditionalAccessGranted { .. }
         | GameEvent::AccessReplacementSet { .. }
         | GameEvent::AccessReplaced { .. }
-        | GameEvent::ClicksLost { by_cost: true, .. }
         | GameEvent::ClicksGained { .. }
         | GameEvent::Prevented { .. }
         | GameEvent::CountersAdded { .. }

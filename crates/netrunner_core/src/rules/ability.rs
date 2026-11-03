@@ -1954,13 +1954,14 @@ pub fn evaluate_effect(
         Effect::GainIceSubtype { ice: crate::dsl::StrengthOf::EachIce | crate::dsl::StrengthOf::ProtectingThisServer | crate::dsl::StrengthOf::EachIcebreaker, .. } => Err(RulesError::UnresolvedCardTarget),
         // "That ice gains … until the end of the turn" (Tinkering): the ice
         // chosen, faceup or not, credited to the card whose text it is.
-        Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, for_the_turn: true, .. } => {
+        Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, for_the_turn, for_the_next_run, .. } if *for_the_turn || *for_the_next_run => {
             let Some(install) = ctx.acting_install else { return Err(RulesError::MissingActingCardContext) };
             if !state.corp.installed.iter().any(|card| card.install_id == install && card.slot == InstallSlot::Ice) {
                 return Ok(Vec::new());
             }
             let source = ctx.prompting_card.or(acting_card).cloned().ok_or(RulesError::MissingActingCardContext)?;
-            let until = lingering::until(state, crate::dsl::EffectDuration::Turn, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
+            let duration = if *for_the_next_run { crate::dsl::EffectDuration::NextRunThisTurn } else { crate::dsl::EffectDuration::Turn };
+            let until = lingering::until(state, duration, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             state.lingering.push(LingeringEffect { what: Lingering::GainSubtype(*subtype), on: On::Install(install), until, source });
             Ok(Vec::new())
         }
@@ -3760,6 +3761,13 @@ pub fn evaluate_effect(
             let source = acting_card.cloned().ok_or(RulesError::UnresolvedCardTarget)?;
             let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             state.lingering.push(LingeringEffect { what: Lingering::HandSize(*by), on: On::Player(*side), until, source });
+            Ok(Vec::new())
+        }
+
+        Effect::ModifyMemoryLimit { by, until } => {
+            let source = acting_card.cloned().ok_or(RulesError::UnresolvedCardTarget)?;
+            let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
+            state.lingering.push(LingeringEffect { what: Lingering::Memory(*by), on: On::Player(Side::Runner), until, source });
             Ok(Vec::new())
         }
 

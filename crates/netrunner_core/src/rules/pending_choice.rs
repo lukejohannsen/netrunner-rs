@@ -669,6 +669,16 @@ fn instance_matches_filter(
             });
             this.is_some_and(|this| zone_card_ids(state, chooser, zone, source).get(position) == Some(&this))
         }
+        // Capstone's "another copy installed": the card's owner's table,
+        // by id. A card in a hand or a pile is never itself installed, so
+        // any installed copy is another.
+        CardFilter::CopyInstalled => {
+            let card = zone_card_ids(state, chooser, zone, source).get(position).cloned();
+            card.is_some_and(|card| match owning_side(chooser, zone) {
+                Side::Runner => state.runner.rig.iter().any(|installed| installed.card == card),
+                Side::Corp => state.corp.installed.iter().any(|installed| installed.card == card),
+            })
+        }
         // Only a heap card can have been discarded; the list is the
         // Runner's own, so `chooser` must be the Runner for `OwnHeap` to
         // be the heap at all.
