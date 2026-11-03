@@ -1,0 +1,68 @@
+{
+  "id": "eden_shard",
+  "title": "Eden Shard",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 7,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "from_hand": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "SetAccessReplacement": {
+                      "effect": {
+                        "Sequence": []
+                      }
+                    }
+                  },
+                  {
+                    "InstallRunnerCardFromZone": {
+                      "from": "OwnGrip",
+                      "discount": "AllCosts"
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may install this resource from your grip, ignoring all costs",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run on R&D, instead of breaching R&D, you may install this resource from your grip, ignoring all costs."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "DrawCards": [
+          "Corp",
+          2
+        ]
+      },
+      "text": "[trash]: The Corp draws 2 cards."
+    }
+  ],
+  "built_from": 6020,
+  "is_playable": true
+}

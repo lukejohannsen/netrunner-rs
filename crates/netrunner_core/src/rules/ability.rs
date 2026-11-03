@@ -2026,6 +2026,16 @@ pub fn evaluate_effect(
             crate::rules::pending_choice::shuffle_decks(state, Side::Corp, &crate::dsl::CardZoneRef::OwnRAndD, None);
             Ok(Vec::new())
         }
+        // Archives, into R&D — Jinteki Biotech's Tank, "shuffle all cards
+        // in Archives into R&D". The faceup cards were public and the
+        // facedown ones the Corp's, and the shuffle hides both alike, so
+        // nothing is recorded, as for HQ: the counts say how many went.
+        Effect::ShuffleIntoDeck(zones) if zones.as_slice() == [crate::dsl::CardZoneRef::OwnArchives] => {
+            let archived = std::mem::take(&mut state.corp.archives);
+            state.corp.r_and_d.extend(archived.into_iter().map(|archived| archived.card));
+            crate::rules::pending_choice::shuffle_decks(state, Side::Corp, &crate::dsl::CardZoneRef::OwnRAndD, None);
+            Ok(Vec::new())
+        }
         // Every card in the root of the attacked server, into R&D —
         // Because I Can's "force the Corp to shuffle all cards in the root
         // of that server into R&D", in place of a breach. Each leaves the
@@ -3310,7 +3320,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, this_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, innermost, only_server, onto_this } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, this_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, innermost, only_server, onto_this, unprotected } => {
             // "Ignoring credit costs": a discount of every credit, which a
             // price never goes below 0 for.
             let discount = &if *ignore_credit_costs { u32::MAX } else { *discount };
@@ -3351,6 +3361,9 @@ pub fn evaluate_effect(
             }
             if let Some(only) = only_server {
                 allowed.retain(|server| server == only);
+            }
+            if *unprotected {
+                allowed.retain(|server| crate::rules::engine::ice_protecting(state, *server) == 0);
             }
             if *another_server {
                 let own = acting_corp_position(state, ctx).map(|position| state.corp.installed[position].server);
@@ -4069,7 +4082,7 @@ pub(crate) fn fire_card_triggers(
                 // a card in play never resolves one (`Heard::FromDiscard`).
                 && t.from_discard == (due.heard == crate::rules::state::Heard::FromDiscard)
                 && t.from_runner_score_area == (due.heard == crate::rules::state::Heard::FromRunnerScoreArea)
-            && t.while_unrezzed == (due.heard == crate::rules::state::Heard::WhileUnrezzed)
+                && t.from_hand == (due.heard == crate::rules::state::Heard::FromHand)
                 && t.while_unrezzed == (due.heard == crate::rules::state::Heard::WhileUnrezzed)
                 && !((t.first_each_turn || t.first_each_encounter) && due.not_the_first_this_turn)
                 && listeners::when_admits(state, registry, t, card_side, card_id, due.install, triggering_event)
@@ -4273,6 +4286,7 @@ pub(crate) fn would_fire(state: &GameState, registry: &CardRegistry, due: &Defer
             && due.heard.admits(t.subject)
             && t.from_discard == (due.heard == crate::rules::state::Heard::FromDiscard)
             && t.from_runner_score_area == (due.heard == crate::rules::state::Heard::FromRunnerScoreArea)
+            && t.from_hand == (due.heard == crate::rules::state::Heard::FromHand)
             && !(t.first_each_turn && due.not_the_first_this_turn)
             && listeners::when_admits(state, registry, t, card.side, &due.card, due.install, due.event.as_ref())
     };
@@ -8183,7 +8197,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "snare",
             vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
                 trigger: Trigger::OnAccessed,
                 effects: vec![Effect::GiveTags(Amount::Fixed(1)), Effect::GainCredits(Side::Corp, 2)],
@@ -8221,7 +8235,7 @@ mod tests {
         let on = |server: ServerId, credits: u32| TriggeredEffect {
             subject: Some(crate::dsl::Subject::Any),
             when: Some(crate::dsl::EventFilter::Server(vec![server])),
-            acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+            acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
             text: None,
             trigger: Trigger::OnSuccessfulRun,
             effects: vec![Effect::GainCredits(Side::Runner, credits)],
@@ -8247,7 +8261,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "hedge_fund",
             vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],

@@ -1910,6 +1910,9 @@ pub enum Heard {
     /// A Corp card installed facedown: its `while_unrezzed` triggers only
     /// (CR 9.1.8c, Zaibatsu Loyalty).
     WhileUnrezzed,
+    /// A Runner card in the grip: its `from_hand` triggers only (CR
+    /// 9.1.8b, the shards).
+    FromHand,
 }
 
 impl Heard {
@@ -1917,7 +1920,7 @@ impl Heard {
     pub fn admits(self, subject: Option<crate::dsl::Subject>) -> bool {
         use crate::dsl::Subject;
         match (self, subject) {
-            (Heard::FromDiscard | Heard::FromRunnerScoreArea | Heard::WhileUnrezzed, _) => true,
+            (Heard::FromDiscard | Heard::FromRunnerScoreArea | Heard::WhileUnrezzed | Heard::FromHand, _) => true,
             (Heard::Unfiltered | Heard::AsBoth, _) | (_, None) => true,
             (Heard::AsBystander, Some(subject)) => subject == Subject::Any,
             (Heard::AsSubject, Some(subject)) => subject == Subject::This,

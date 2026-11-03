@@ -226,7 +226,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *The Valley* (`the_valley`): tranche F7 of the FFG plan.
 pub(crate) const VAL_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("gene_conditioning_shoppe", "Gene Conditioning Shoppe"),
-    ("jinteki_biotech_life_imagined", "Jinteki Biotech: Life Imagined"),
 ];
 
 /// *Breaker Bay* (`breaker_bay`): tranche F7 of the FFG plan.
@@ -269,7 +268,6 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mutate", "Mutate"),
     ("bad_times", "Bad Times"),
-    ("eden_shard", "Eden Shard"),
 ];
 
 /// *The Spaces Between* (`the_spaces_between`): tranche F8 of the FFG plan.
@@ -287,7 +285,6 @@ pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("kitsune", "Kitsune"),
     ("chronos_project", "Chronos Project"),
     ("order_of_sol", "Order of Sol"),
-    ("hades_shard", "Hades Shard"),
 ];
 
 /// *Up and Over* (`up_and_over`): tranche F8 of the FFG plan.
@@ -325,7 +322,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Creation and Control* (`creation_and_control`): tranche F9 of the FFG plan.
 pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("next_design_guarding_the_net", "NEXT Design: Guarding the Net"),
     ("director_haas_pet_project", "Director Haas' Pet Project"),
     ("haas_arcology_ai", "Haas Arcology AI"),
     ("howler", "Howler"),

@@ -497,6 +497,10 @@ fn apply_action_once(
     // (`turn::finish_turn_beginning`, a no-op unless that is where the
     // game stands).
     events.extend(crate::rules::turn::finish_turn_beginning(&mut next, registry)?);
+    // And a `before_first_turn` effect that parked held up the first turn
+    // (`setup::finish_before_first_turn`, a no-op unless the game stands
+    // before it).
+    events.extend(crate::rules::setup::finish_before_first_turn(&mut next, registry)?);
     // What a host's cost set aside and the effect left is trashed (CR
     // 9.5.5, at the next checkpoint), once nothing it waits on is parked.
     ability::trash_set_aside_by_host(&mut next, &mut events);
@@ -4072,7 +4076,7 @@ mod tests {
                 when: None,
                 acts_on_subject: false,
                 first_each_turn: false, first_each_encounter: false, granted: false,
-                from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
                 trigger: Trigger::OnAdvance,
                 effects: vec![Effect::GainCredits(Side::Corp, 2)],
@@ -4873,7 +4877,7 @@ mod tests {
             title: "Anoetic Void".to_string(),
             side: Side::Corp,
             card_type: CardType::Upgrade,
-            triggers: vec![TriggeredEffect { subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false, text: None, trigger: Trigger::OnApproachServer, effects: vec![Effect::EndTheRun], requirement: None }],
+            triggers: vec![TriggeredEffect { subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false, text: None, trigger: Trigger::OnApproachServer, effects: vec![Effect::EndTheRun], requirement: None }],
             is_playable: true,
             ..Default::default()
         };
@@ -4883,7 +4887,7 @@ mod tests {
             side: Side::Runner,
             card_type: CardType::Resource,
             triggers: vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
                 trigger: Trigger::OnSuccessfulRun,
                 effects: vec![Effect::GainCredits(Side::Runner, 1)],
@@ -5598,7 +5602,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut card = test_card("sure_gamble", Side::Runner, CardType::Event, 5, None);
         card.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
             text: None,
             trigger: Trigger::OnPlay,
             effects: vec![Effect::GainCredits(Side::Runner, 9)],
@@ -5699,7 +5703,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut card = test_card("hedge_fund", Side::Corp, CardType::Operation, 5, None);
         card.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
             text: None,
             trigger: Trigger::OnPlay,
             effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -5847,7 +5851,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut card = test_card("sea_source", Side::Corp, CardType::Operation, 0, None);
         card.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
             text: None,
             trigger: Trigger::OnPlay,
             effects: vec![Effect::Trace { base: crate::dsl::Amount::Fixed(2), on_success: Box::new(Effect::GiveTags(crate::dsl::Amount::Fixed(1))), on_failure: None }],
@@ -7267,7 +7271,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         registry.insert(CardDefinition {
             triggers: vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::PresentChoice {
@@ -7281,7 +7285,7 @@ mod tests {
         });
         registry.insert(CardDefinition {
             triggers: vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::GainCredits(Side::Corp, 1)],
@@ -7341,7 +7345,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let reactor = |id: &str, amount: u32| CardDefinition {
             triggers: vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::GainCredits(Side::Corp, amount)],
@@ -7428,7 +7432,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let reactor = |id: &str, amount: u32| CardDefinition {
             triggers: vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::GainCredits(Side::Corp, amount)],
@@ -7510,14 +7514,14 @@ mod tests {
         registry.insert(CardDefinition {
             triggers: vec![
                 TriggeredEffect {
-                    subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                    subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                     text: None,
                     trigger: Trigger::OnInstall,
                     effects: vec![Effect::GainCredits(Side::Runner, 1)],
                     requirement: None,
                 },
                 TriggeredEffect {
-                    subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
+                    subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false,
                     text: None,
                     trigger: Trigger::OnCardInstalled,
                     effects: vec![Effect::GainCredits(Side::Runner, 3)],
@@ -8454,7 +8458,7 @@ mod tests {
         state.corp.hq = vec![CardId("hedge_fund".to_string())];
         state.active_run = Some(RunState { phase: RunPhase::Success, ..Default::default() });
         let asks = crate::dsl::TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false, text: None,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, from_hand: false, while_unrezzed: false, text: None,
             trigger: Trigger::OnSuccessfulRun,
             effects: vec![Effect::PresentChoice {
                 chooser: Side::Runner,
