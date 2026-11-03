@@ -1,0 +1,77 @@
+{
+  "id": "power_shutdown",
+  "title": "Power Shutdown",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "play_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesLastTurn": "OnRunStart"
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Corp",
+            "min": 0,
+            "max": {
+              "InZone": {
+                "zone": "OwnRAndD",
+                "filter": "Any"
+              }
+            },
+            "then": {
+              "Sequence": [
+                {
+                  "Mill": {
+                    "deck": "Corp",
+                    "amount": "ChosenNumber"
+                  }
+                },
+                {
+                  "PromptChooseCards": {
+                    "side": "Runner",
+                    "source": "OwnInstalled",
+                    "filter": {
+                      "All": [
+                        {
+                          "AnyOf": [
+                            {
+                              "CardType": "Program"
+                            },
+                            {
+                              "CardType": "Hardware"
+                            }
+                          ]
+                        },
+                        {
+                          "PrintedCostAtMost": "ChosenNumber"
+                        }
+                      ]
+                    },
+                    "min": 1,
+                    "max": 1,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "destination": "OwnHeap"
+                  }
+                }
+              ]
+            },
+            "text": "Trash any number of cards from the top of R&D"
+          }
+        }
+      ],
+      "text": "Trash any number of cards from the top of R&D. The Runner trashes an installed program or piece of hardware with an install cost equal to or less than the number of cards you trashed this way."
+    }
+  ],
+  "built_from": 4058,
+  "is_playable": true
+}

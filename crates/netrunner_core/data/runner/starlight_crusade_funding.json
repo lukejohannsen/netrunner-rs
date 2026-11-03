@@ -1,0 +1,42 @@
+{
+  "id": "starlight_crusade_funding",
+  "title": "Starlight Crusade Funding",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "PlayClicks": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "Playing": {
+          "All": [
+            {
+              "CardType": "Event"
+            },
+            {
+              "HasSubtype": "Double"
+            }
+          ]
+        }
+      },
+      "text": "Ignore any additional costs on each double event you play."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "LoseClicks": 1
+        }
+      ],
+      "text": "When your turn begins, lose [click]."
+    }
+  ],
+  "built_from": 4069,
+  "is_playable": true
+}

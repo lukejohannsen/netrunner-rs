@@ -280,7 +280,6 @@ pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *First Contact* (`first_contact`): tranche F8 of the FFG plan.
 pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("chronos_project", "Chronos Project"),
     ("order_of_sol", "Order of Sol"),
 ];
 
@@ -307,7 +306,6 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Honor and Profit* (`honor_and_profit`): tranche F8 of the FFG plan.
 pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("medical_breakthrough", "Medical Breakthrough"),
     ("shi_kyu", "Shi.Kyū"),
     ("plan_b", "Plan B"),
     ("unregistered_s_w_35", "Unregistered S&W '35"),
@@ -336,14 +334,11 @@ pub(crate) const ST_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Mala Tempora* (`mala_tempora`): tranche F10 of the FFG plan.
 pub(crate) const MT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sundew", "Sundew"),
-    ("snoop", "Snoop"),
-    ("power_shutdown", "Power Shutdown"),
 ];
 
 /// *True Colors* (`true_colors`): tranche F10 of the FFG plan.
 pub(crate) const TC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("capstone", "Capstone"),
-    ("starlight_crusade_funding", "Starlight Crusade Funding"),
 ];
 
 /// *Fear and Loathing* (`fear_and_loathing`): tranche F10 of the FFG plan.
@@ -376,7 +371,6 @@ pub(crate) const CE_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *A Study in Static* (`a_study_in_static`): tranche F11 of the FFG plan.
 pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("net_police", "Net Police"),
 ];
 
 /// *Humanity's Shadow* (`humanitys_shadow`): tranche F11 of the FFG plan.

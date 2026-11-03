@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Spark Agency: Worldswide Reach, whose first advertisement rezzed each turn costs the Runner a credit. Spin Cycle's list, its identity swapped: its Tiered Subscription, Congratulations! and Ubiquitous Vig are the advertisements it rezzes. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words, Stage 4. Engine words Stage 16 took its two Lethe for two TL;DR, which doubles the subroutines of the next ice encountered; other decks keep Lethe. Engine words Stage 19 brought two Full Immersion RecStudio in for the two The Powers That Be, which four other decks keep, so the sweep installs assets and agendas onto a Corp card with the install action.",
+  "description": "Not a published list: built so the sweeps reach Spark Agency: Worldswide Reach, whose first advertisement rezzed each turn costs the Runner a credit. Spin Cycle's list, its identity swapped: its Tiered Subscription, Congratulations! and Ubiquitous Vig are the advertisements it rezzes. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words, Stage 4. Engine words Stage 16 took its two Lethe for two TL;DR, which doubles the subroutines of the next ice encountered; other decks keep Lethe. Engine words Stage 19 brought two Full Immersion RecStudio in for the two The Powers That Be, which four other decks keep, so the sweep installs assets and agendas onto a Corp card with the install action. Engine words Stage 23 swapped one of its Klevetnik, which three other decks keep, for a Snoop, a tracer that reveals the grip and spends its counters to trash from it.",
   "style": [
     "fast-advance"
   ],
@@ -71,7 +71,7 @@
     },
     {
       "card": "klevetnik",
-      "count": 2
+      "count": 1
     },
     {
       "card": "unsmiling_tsarevna",
@@ -104,6 +104,10 @@
     {
       "card": "full_immersion_recstudio",
       "count": 2
+    },
+    {
+      "card": "snoop",
+      "count": 1
     }
   ]
 }

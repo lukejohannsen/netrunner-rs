@@ -1,0 +1,38 @@
+{
+  "id": "chronos_project",
+  "title": "Chronos Project",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OpponentDiscard",
+            "filter": "Any",
+            "min": 0,
+            "max": 0,
+            "reveal": true,
+            "shuffle_after": false,
+            "destination": "OpponentRemovedFromGame",
+            "count": {
+              "InZone": {
+                "zone": "OpponentDiscard",
+                "filter": "Any"
+              }
+            }
+          }
+        }
+      ],
+      "text": "When you score this agenda, the Runner removes all cards in the heap from the game."
+    }
+  ],
+  "built_from": 6049,
+  "is_playable": true
+}

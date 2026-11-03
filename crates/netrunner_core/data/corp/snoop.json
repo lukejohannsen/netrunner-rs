@@ -1,0 +1,66 @@
+{
+  "id": "snoop",
+  "title": "Snoop",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 6,
+  "strength": 6,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "RevealHand": "Runner"
+        }
+      ],
+      "text": "When the Runner encounters Snoop, reveal all cards in the Runner's grip."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "RevealHand": "Runner"
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OpponentHand",
+              "filter": "Any",
+              "min": 1,
+              "max": 1,
+              "reveal": true,
+              "shuffle_after": false,
+              "destination": "OpponentDiscard"
+            }
+          }
+        ]
+      },
+      "text": "Hosted power counter: Reveal all cards in the Runner's grip. Trash 1 of those cards."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trace[3]. If successful, place 1 power counter on Snoop.",
+      "effect": {
+        "Trace": {
+          "base": 3,
+          "on_success": {
+            "AddCounters": 1
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 4056,
+  "is_playable": true
+}

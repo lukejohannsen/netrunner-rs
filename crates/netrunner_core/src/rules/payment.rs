@@ -1235,7 +1235,7 @@ fn raise_to(
     };
     let ice = |server| state.corp.installed.iter().filter(|installed| installed.server == server && installed.slot == crate::rules::InstallSlot::Ice).count() as u32;
     let remotes = crate::rules::legal_actions::existing_remote_ids(state).len() as u32;
-    let credits = recurring.of(ability::counters_of(state, &ctx).unwrap_or(0), ice, remotes);
+    let credits = recurring.of(ability::counters_of(state, &ctx).unwrap_or(0), ice, remotes, crate::rules::continuous::link(state, registry));
     let held = match install {
         Some(install) => hosted_credits(state, registry, side, install),
         None => identity_counters(state, side),
@@ -1254,7 +1254,7 @@ pub(crate) fn spent_recurring(state: &GameState, registry: &CardRegistry, side: 
     let ctx = ResolutionContext::for_parked(Some(install), Some(card));
     let ice = |server| state.corp.installed.iter().filter(|installed| installed.server == server && installed.slot == crate::rules::InstallSlot::Ice).count() as u32;
     let remotes = crate::rules::legal_actions::existing_remote_ids(state).len() as u32;
-    recurring.of(ability::counters_of(state, &ctx).unwrap_or(0), ice, remotes).saturating_sub(hosted_credits(state, registry, side, install))
+    recurring.of(ability::counters_of(state, &ctx).unwrap_or(0), ice, remotes, crate::rules::continuous::link(state, registry)).saturating_sub(hosted_credits(state, registry, side, install))
 }
 
 /// Mirror's "replace 1 spent recurring credit": 1 credit back on the card
