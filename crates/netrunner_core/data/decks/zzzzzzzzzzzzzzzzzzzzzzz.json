@@ -1,0 +1,193 @@
+{
+  "id": "zzzzzzzzzzzzzzzzzzzzzzz",
+  "name": "Zzzzzzzzzzzzzzzzzzzzzzz",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Seidr Laboratories: Destiny Defined, the Haas-Bioroid identity that adds a card from Archives to the top of R&D the first time each turn the Runner spends or loses clicks during a run. Zzzzzzzzzzz's list, its identity swapped: its bioroids Enforcer 1.0, Markus 1.0, Heimdall 2.0, Ichi 2.0 and Viktor 2.0 are ice the Runner may break by spending clicks. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words Stage 34 (FFG).",
+  "style": [
+    "glacier"
+  ],
+  "identity": "seidr_laboratories_destiny_defined",
+  "cards": [
+    {
+      "card": "project_vacheron",
+      "count": 2
+    },
+    {
+      "card": "self_destruct_chips",
+      "count": 1
+    },
+    {
+      "card": "oaktown_grid",
+      "count": 1
+    },
+    {
+      "card": "lab_dog",
+      "count": 1
+    },
+    {
+      "card": "quicksand",
+      "count": 1
+    },
+    {
+      "card": "little_engine",
+      "count": 1
+    },
+    {
+      "card": "clairvoyant_monitor",
+      "count": 1
+    },
+    {
+      "card": "pachinko",
+      "count": 1
+    },
+    {
+      "card": "expose",
+      "count": 1
+    },
+    {
+      "card": "early_premiere",
+      "count": 1
+    },
+    {
+      "card": "vanity_project",
+      "count": 1
+    },
+    {
+      "card": "enforcer_1_0",
+      "count": 1
+    },
+    {
+      "card": "cybernetics_court",
+      "count": 1
+    },
+    {
+      "card": "team_sponsorship",
+      "count": 1
+    },
+    {
+      "card": "product_placement",
+      "count": 1
+    },
+    {
+      "card": "defective_brainchips",
+      "count": 1
+    },
+    {
+      "card": "research_grant",
+      "count": 2
+    },
+    {
+      "card": "markus_1_0",
+      "count": 1
+    },
+    {
+      "card": "iq",
+      "count": 1
+    },
+    {
+      "card": "elizas_toybox",
+      "count": 1
+    },
+    {
+      "card": "peak_efficiency",
+      "count": 1
+    },
+    {
+      "card": "bastion",
+      "count": 1
+    },
+    {
+      "card": "datapike",
+      "count": 1
+    },
+    {
+      "card": "heimdall_2_0",
+      "count": 1
+    },
+    {
+      "card": "ichi_2_0",
+      "count": 1
+    },
+    {
+      "card": "viktor_2_0",
+      "count": 1
+    },
+    {
+      "card": "sentinel_defense_program",
+      "count": 1
+    },
+    {
+      "card": "gila_hands_arcology",
+      "count": 1
+    },
+    {
+      "card": "alix_t4lb07",
+      "count": 1
+    },
+    {
+      "card": "levy_university",
+      "count": 1
+    },
+    {
+      "card": "director_haas",
+      "count": 1
+    },
+    {
+      "card": "thomas_haas",
+      "count": 1
+    },
+    {
+      "card": "server_diagnostics",
+      "count": 1
+    },
+    {
+      "card": "fenris",
+      "count": 1
+    },
+    {
+      "card": "wotan",
+      "count": 1
+    },
+    {
+      "card": "paper_wall",
+      "count": 1
+    },
+    {
+      "card": "blue_level_clearance",
+      "count": 1
+    },
+    {
+      "card": "draco",
+      "count": 1
+    },
+    {
+      "card": "private_contracts",
+      "count": 1
+    },
+    {
+      "card": "corporate_war",
+      "count": 1
+    },
+    {
+      "card": "guard",
+      "count": 1
+    },
+    {
+      "card": "lag_time",
+      "count": 1
+    },
+    {
+      "card": "isabel_mcguire",
+      "count": 1
+    },
+    {
+      "card": "eden_fragment",
+      "count": 1
+    },
+    {
+      "card": "self_destruct",
+      "count": 1
+    }
+  ]
+}

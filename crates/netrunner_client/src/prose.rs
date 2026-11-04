@@ -754,6 +754,11 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::HostRigCardOnInstall { .. } => "host it on an installed card".to_string(),
         Effect::HostThisAsCondition { .. } => "install this on it as a hosted condition counter".to_string(),
         Effect::HostOtherIdentity { .. } => "host it on this card, which gains its text".to_string(),
+        Effect::GainTextOf { .. } => "this card gains the text of the chosen card".to_string(),
+        Effect::RevealUntilAndInstallInPlace { filter } => format!(
+            "reveal cards from the top of R&D until you reveal one ({}), install and rez it where the trashed ice was, ignoring all costs, then shuffle R&D",
+            humanize(format!("{filter:?}")).to_lowercase()
+        ),
         Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice, attacked_server, of_type } => {
             if let (Prohibition::BreakSubroutinesOnIce, Some(kind)) = (what, of_type) {
                 return format!("Runner card abilities cannot break subroutines on {} {}", crate::board::facts::ice_type_words(&[*kind]), duration(until));
@@ -853,8 +858,15 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::LimitBreaks { at_most, until } => {
             format!("during each encounter with this ice, the Runner cannot break more than {at_most} of its printed subroutines, {}", duration(until))
         }
-        Effect::ChooseServer { only_protected_by_ice, other_than_attacked, then } => format!(
-            "choose a server{}{}{}",
+        Effect::ChooseServer { only_protected_by_ice, other_than_attacked, only_in, then } => format!(
+            "choose {}{}{}{}",
+            match only_in {
+                Some(netrunner_core::dsl::ServerKind::Central) => "a central server",
+                Some(netrunner_core::dsl::ServerKind::Remote) => "a remote server",
+                Some(netrunner_core::dsl::ServerKind::Hq) => "HQ",
+                Some(netrunner_core::dsl::ServerKind::RnD) => "R&D",
+                None => "a server",
+            },
             if *only_protected_by_ice { " protected by ice" } else { "" },
             if *other_than_attacked { " other than the attacked server" } else { "" },
             then.as_ref().map(|then| format!(", then: {}", describe_effect(then, registry))).unwrap_or_default()
@@ -1216,6 +1228,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::GripRevealed => "plays with the grip revealed".to_string(),
         ContinuousKind::TrashedFacedown => "is turned facedown instead of going to the heap when trashed, still trashed".to_string(),
         ContinuousKind::LendsVirusCounters => "has its virus counters considered hosted on them too, and spent as if on them".to_string(),
+        ContinuousKind::GainsPaidAbilitiesOfHosted(filter) => format!("has the paid abilities of each hosted card ({}), used as its own", humanize(format!("{filter:?}")).to_lowercase()),
         ContinuousKind::AlsoTheSecondTime => "also triggers the second time each turn its trigger condition is met".to_string(),
         ContinuousKind::TraceBase(number) => format!("gets {} base trace strength", signed(number)),
         ContinuousKind::DrawsEachTurnAtMost(most) => format!("the Runner cannot draw more than {} during each of their turns", plural(*most, "card", "cards")),

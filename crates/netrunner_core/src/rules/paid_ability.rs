@@ -288,7 +288,7 @@ fn close_window(
 /// `EffectRequirement::DuringEncounter`: before it, every icebreaker in the
 /// rig answered "yes" here on every action of every turn.
 pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry, side: Side) -> bool {
-    active_cards_of(state, side).into_iter().any(|(install, card_id)| {
+    active_cards_of(state, registry, side).into_iter().any(|(install, card_id)| {
         let Some(card) = registry.get(&card_id) else { return false };
         if card.abilities.is_empty() || crate::rules::active::lost_abilities(state, registry, install) {
             return false;
@@ -349,7 +349,7 @@ pub fn ability_is_usable(state: &GameState, registry: &CardRegistry, side: Side,
 /// for a New World's "Trash the unrezzed piece of ice the Runner is
 /// approaching:" is used in the approach's window, which a Corp with no
 /// credits to rez with never had opened for it.
-pub(crate) fn active_cards_of(state: &GameState, side: Side) -> Vec<(InstallId, CardId)> {
+pub(crate) fn active_cards_of(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<(InstallId, CardId)> {
     match side {
         Side::Corp => state
             .corp
@@ -359,12 +359,17 @@ pub(crate) fn active_cards_of(state: &GameState, side: Side) -> Vec<(InstallId, 
             .map(|c| (c.install_id, c.card.clone()))
             .chain(state.corp.scored_agendas.iter().filter(|scored| scored.as_agenda.is_none()).map(|scored| (scored.install_id, scored.card.clone())))
             .chain(state.corp.identity.iter().map(|identity| (InstallId::CORP_IDENTITY, identity.clone())))
+            // A current's gained text (Media Blitz's agenda), by its handle.
+            .chain(state.corp.play_area.iter().filter_map(|played| played.text_of.clone().map(|text| (played.handle, text))))
             .collect(),
+        // Each text a rig card has (`active::ability_texts`): its own, or
+        // the identity it hosts, and the icebreakers it gains the paid
+        // abilities of (Baba Yaga) — each asked as that install.
         Side::Runner => state
             .runner
             .rig
             .iter()
-            .map(|c| (c.install_id, state.rig_abilities_card(c.install_id).unwrap_or(&c.card).clone()))
+            .flat_map(|c| crate::rules::active::ability_texts(state, registry, c.install_id).into_iter().map(move |text| (c.install_id, text.clone())))
             .chain(state.runner.identity.iter().map(|identity| (InstallId::RUNNER_IDENTITY, identity.clone())))
             // A condition counter the Runner's event became, by its handle
             // (On the Lam's interrupt).

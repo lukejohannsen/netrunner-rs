@@ -476,6 +476,24 @@ fn apply_action_once(
     // A no-op in the overwhelmingly common case: the queue is empty unless
     // a trigger actually parked something.
     let (mut next, mut events) = resolved;
+    // The Runner's [click] this action took while a run was under way —
+    // spent on a bioroid's subroutine, lost to Eli 1.0's cost — once for
+    // the action (Seidr Laboratories). A run the action began is not under
+    // way as its click is spent (CR 6.3.4: the run begins once the server is
+    // announced and its costs are paid).
+    if state.active_run.is_some() {
+        let gone: u32 = events
+            .iter()
+            .map(|event| match event {
+                GameEvent::ClickSpent { side: Side::Runner } => 1,
+                GameEvent::ClicksLost { side: Side::Runner, amount, .. } => *amount,
+                _ => 0,
+            })
+            .sum();
+        if gone > 0 {
+            dispatcher::emit(&mut next, registry, &mut events, GameEvent::ClicksGoneDuringRun { side: Side::Runner, amount: gone })?;
+        }
+    }
     // The action is finished once its handler returned — what Petty Cash's
     // "have not finished an action yet this turn" counts. Before the drain:
     // a deferred trigger is part of the same action, not a new one.
@@ -722,19 +740,8 @@ fn same_action(state: &GameState, registry: &CardRegistry, action: &PlayerAction
 /// index that names nothing, which `activate_ability` then refuses on its
 /// own terms.
 fn ability_is_action(state: &GameState, registry: &CardRegistry, target: InstallId, ability_index: usize) -> bool {
-    let card = match target {
-        InstallId::CORP_IDENTITY => state.corp.identity.as_ref(),
-        InstallId::RUNNER_IDENTITY => state.runner.identity.as_ref(),
-        InstallId::RUN_EVENT => run::run_event(state, registry),
-        _ => state
-            .find_corp_install(target)
-            .map(|c| &c.card)
-            .or_else(|| state.corp.find_scored(target).map(|s| &s.card))
-            .or_else(|| state.rig_abilities_card(target))
-            .or_else(|| state.runner.find_stolen(target).map(|s| &s.card)),
-    };
-    card.and_then(|card| registry.get(card))
-        .and_then(|def| def.abilities.get(ability_index))
+    crate::rules::active::ability_at(state, registry, target, ability_index)
+        .and_then(|(card, index)| registry.get(card)?.abilities.get(index))
         .is_some_and(AbilityDef::is_action)
 }
 
@@ -2142,6 +2149,13 @@ pub(crate) fn play_operation_card(
     // is what makes `legal_actions`' probe drop it.
     let mut cost_events = Vec::new();
     let mut x = None;
+    // Where each piece of ice stood before the cost, so the one it trashes
+    // is placed: Mutate's "in the same position as the ice that was
+    // trashed" (`OperationPlayed::in_place_of`).
+    let ice_before: Vec<(InstallId, crate::rules::event::IcePlace)> = match &additional {
+        Some(_) => ice_places(next),
+        None => Vec::new(),
+    };
     if let Some(additional) = &additional {
         // "Psychographics costs X": X is the first answer the payment will
         // take (CR 1.16.2c), read before paying takes it, as an ability's
@@ -2174,7 +2188,7 @@ pub(crate) fn play_operation_card(
         // there too, while it resolves, until it is hosted
         // (`Effect::HostThisAsCondition`, CR 8.6.6b: not trashed).
         let handle = next.allocate_install_id();
-        next.corp.play_area.push(crate::rules::PlayedOperation { card: card_id.clone(), handle, counters: 0 });
+        next.corp.play_area.push(crate::rules::PlayedOperation { card: card_id.clone(), handle, counters: 0, text_of: None });
     } else {
         crate::rules::turn_log::file_in_archives(next, ArchivedCard::faceup(card_id.clone()));
     }
@@ -2183,7 +2197,8 @@ pub(crate) fn play_operation_card(
     // identity reaction (unconditional — no per-turn gate, unlike
     // `OnSuccessfulRun`/`OnInstall` above) from this one event.
     let forfeited = ability::forfeited_by(&cost_events);
-    let played_event = GameEvent::OperationPlayed { side, card: card_id.clone(), from_archives, x, forfeited };
+    let in_place_of = ice_before.iter().find(|(install, _)| next.find_corp_install(*install).is_none()).map(|(_, place)| *place);
+    let played_event = GameEvent::OperationPlayed { side, card: card_id.clone(), from_archives, x, forfeited, in_place_of };
     dispatcher::emit(next, registry, &mut events, played_event)?;
     // The additional cost's own events, after the effect as every payer
     // dispatches them (`ability::dispatch_cost_events`): Unleash's "remove
@@ -2194,6 +2209,28 @@ pub(crate) fn play_operation_card(
     dispatcher::finished_resolving(next, registry, &mut events, side, card_id)?;
 
     Ok(events)
+}
+
+/// Every installed piece of ice and where it stands among the ice of its
+/// server, outermost 0 (`corp.installed`'s order is install order, which
+/// is the ice's order outward in: `run::build_run_ice`).
+fn ice_places(state: &GameState) -> Vec<(InstallId, crate::rules::event::IcePlace)> {
+    let mut counts: Vec<(ServerId, u32)> = Vec::new();
+    let mut places = Vec::new();
+    for card in state.corp.installed.iter().filter(|card| card.slot == InstallSlot::Ice) {
+        let position = match counts.iter_mut().find(|(server, _)| *server == card.server) {
+            Some((_, count)) => {
+                *count += 1;
+                *count - 1
+            }
+            None => {
+                counts.push((card.server, 1));
+                0
+            }
+        };
+        places.push((card.install_id, crate::rules::event::IcePlace { server: card.server, position }));
+    }
+    places
 }
 
 /// Seeds a newly-installed rig card's `base_strength` from the registry's
@@ -3034,14 +3071,22 @@ fn activate_ability(
     // MCA Informant's "[click], 2[credit]: Trash this resource", which the
     // Runner uses (`AbilityDef::used_by`).
     let condition = state.corp.conditions.iter().find(|condition| condition.handle == target);
+    // …or a current in the play area, active there, with the text of an
+    // agenda it gained (Media Blitz's Government Takeover).
+    let in_play = state.corp.play_area.iter().find(|played| played.handle == target);
     let corp_card = if target == InstallId::CORP_IDENTITY {
         state.corp.identity.clone()
     } else {
-        corp_install.map(|c| c.card.clone()).or_else(|| scored.map(|s| s.card.clone())).or_else(|| condition.map(|c| c.card.clone()))
+        corp_install
+            .map(|c| c.card.clone())
+            .or_else(|| scored.map(|s| s.card.clone()))
+            .or_else(|| condition.map(|c| c.card.clone()))
+            .or_else(|| in_play.map(|played| played.card.clone()))
     };
     let corp_active = corp_install.is_some_and(|c| c.rezzed)
         || scored.is_some()
         || condition.is_some()
+        || in_play.is_some()
         || (target == InstallId::CORP_IDENTITY && corp_card.is_some());
     let runner_card = match target {
         InstallId::RUNNER_IDENTITY => state.runner.identity.clone(),
@@ -3112,6 +3157,12 @@ fn activate_ability(
     if crate::rules::active::lost_abilities(state, registry, target) {
         return Err(RulesError::AbilitiesLost { card: card_id });
     }
+    // Whose words the index names (`active::ability_texts`): the card's
+    // own, or a text it has gained — Media Blitz's agenda, an icebreaker
+    // Baba Yaga hosts — resolved as this install from here on.
+    let Some((card_id, ability_index)) = crate::rules::active::ability_at(state, registry, target, ability_index).map(|(card, index)| (card.clone(), index)) else {
+        return Err(RulesError::InvalidAbilityIndex(ability_index));
+    };
 
     let card_def = registry
         .get(&card_id)
@@ -5856,7 +5907,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 5 },
-                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false, x: None, forfeited: None },
+                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false, x: None, forfeited: None, in_place_of: None },
                 GameEvent::TriggerFired { card: CardId("hedge_fund".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Corp, amount: 9 },
                 GameEvent::AbilityGainedCredits { side: Side::Corp, card: CardId("hedge_fund".to_string()) },
@@ -5998,7 +6049,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 0 },
-                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false, x: None, forfeited: None },
+                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false, x: None, forfeited: None, in_place_of: None },
                 GameEvent::TriggerFired { card: CardId("sea_source".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::TraceInitiated { base: 2, initiating_card: Some(card_id) },
             ]
@@ -6309,6 +6360,8 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true, ap: false },
+                // The click was spent during a run (Seidr Laboratories hears it).
+                GameEvent::ClicksGoneDuringRun { side: Side::Runner, amount: 1 },
             ]
         );
     }

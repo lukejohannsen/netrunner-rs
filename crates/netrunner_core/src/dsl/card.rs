@@ -2475,6 +2475,8 @@ impl CardDefinition {
                 (ContinuousKind::HostsMemory(_), Scope::This) if matches!(self.card_type, CardType::Program | CardType::Hardware) => {}
                 (ContinuousKind::KeptThroughPurge(_), Scope::Hosted) => {}
                 (ContinuousKind::LendsVirusCounters, Scope::Rig(_)) if self.side == Side::Runner && self.counter_kind == Some(crate::dsl::CounterKind::Virus) => {}
+                (ContinuousKind::GainsPaidAbilitiesOfHosted(_), Scope::This) if self.side == Side::Runner => {}
+                (ContinuousKind::GainsPaidAbilitiesOfHosted(_), _) => return misfit("GainsPaidAbilitiesOfHosted", "a Runner card that hosts says it of itself (`This`): Baba Yaga"),
                 (ContinuousKind::LendsVirusCounters, _) => return misfit("LendsVirusCounters", "a Runner card whose counters are virus counters lends them to the rig cards it names (`Rig(filter)`)"),
                 (ContinuousKind::KeptThroughPurge(_), _) => return misfit("KeptThroughPurge", "a host says of the program it hosts (`Hosted`) how many virus counters a purge leaves on it"),
                 (ContinuousKind::HostsMemory(_), _) => return misfit("HostsMemory", "a program or a piece of hardware says of itself (`This`) how many [mu] of programs it hosts"),

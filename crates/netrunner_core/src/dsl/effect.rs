@@ -1941,6 +1941,26 @@ pub enum Effect {
     /// one zone on a rig card (`HostedOnSource`, Madani's) holds cards that
     /// are inactive, where this one's text is the host's.
     HostOtherIdentity { identity: CardId, host: crate::rules::InstallId },
+    /// The current in play `on` gains the text of the card `card` — Media
+    /// Blitz's "Choose an agenda in the Runner's score area. Media Blitz
+    /// gains the text of that agenda", the `then` of a selection of the
+    /// agenda, both placeholders written in as `HostOtherIdentity`'s are:
+    /// `card` the agenda chosen, `on` the copy of the current resolving.
+    /// Written into `PlayedOperation::text_of`, which `rules::active` reads
+    /// as that copy's text. Composition didn't work: `HostOtherIdentity`
+    /// takes its identity out of a pile, and this agenda stays where it is.
+    GainTextOf { card: CardId, on: crate::rules::InstallId },
+    /// Reveals R&D from the top until a card `filter` admits, installs that
+    /// card where the ice the operation's additional cost trashed stood
+    /// and rezzes it, ignoring all costs, then shuffles R&D — Mutate's
+    /// "Reveal cards from the top of R&D until you reveal a piece of ice.
+    /// Install and rez that ice in the same position as the ice that was
+    /// trashed, ignoring all costs. Shuffle R&D." The position is read off
+    /// the play (`GameEvent::OperationPlayed::in_place_of`); with none, or
+    /// nothing found, R&D is only revealed and shuffled. Composition didn't
+    /// work: `SetAsideFromTopUntil` takes the cards out of R&D, and no
+    /// install names a position a trashed card left.
+    RevealUntilAndInstallInPlace { filter: crate::dsl::CardFilter },
     /// "The Runner cannot steal or trash Corp cards for the remainder of
     /// this run" (Ansel 1.0), "You cannot score agendas for the remainder
     /// of the turn" (Luminal Transubstantiation): a `rules::lingering`
@@ -2624,6 +2644,11 @@ pub enum Effect {
         only_protected_by_ice: bool,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         other_than_attacked: bool,
+        /// Offer only servers of this kind — An Offer You Can't Refuse's
+        /// "Choose a **central** server", as `PromptChooseServer::only_in`
+        /// narrows a run's.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        only_in: Option<crate::dsl::ServerKind>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         then: Option<Box<Effect>>,
     },
@@ -5199,6 +5224,8 @@ impl Effect {
             | Effect::HostRigCardOnInstall { .. }
             | Effect::HostThisAsCondition { .. }
             | Effect::HostOtherIdentity { .. }
+            | Effect::GainTextOf { .. }
+            | Effect::RevealUntilAndInstallInPlace { .. }
             | Effect::DrawCardsAmount(..)
             | Effect::Prohibit { .. }
             | Effect::ImposeAdditionalCost { .. }

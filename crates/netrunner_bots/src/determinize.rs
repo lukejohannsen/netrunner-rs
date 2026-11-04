@@ -905,6 +905,7 @@ fn determinize_run(
         // whether it is a run event.
         initiated_by: run.initiated_by.clone(),
         begun_as_the_turn_began: run.begun_as_the_turn_began,
+        begun_in_the_corps_turn: run.begun_in_the_corps_turn,
         // Not in the view: whether the encountered ice was bypassed. A
         // rollout starting mid-encounter sees no bypass, which only ever
         // makes the searcher pay for subroutines the real game will not

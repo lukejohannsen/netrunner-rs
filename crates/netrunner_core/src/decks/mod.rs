@@ -677,6 +677,8 @@ mod tests {
             ("zzzzzzzzzzzzzzzzzzzzz", &neither),
             // Engine words, Stage 33: Harishchandra Ent., on Pay to Win's list.
             ("zzzzzzzzzzzzzzzzzzzzzz", &neither),
+            // Engine words, Stage 34: Seidr Laboratories, on Zzzzzzzzzzz's list.
+            ("zzzzzzzzzzzzzzzzzzzzzzz", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.

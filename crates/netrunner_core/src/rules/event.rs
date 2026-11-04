@@ -31,6 +31,14 @@ impl TrashedInstall {
     }
 }
 
+/// A position among the ice protecting a server (CR 6.2.2): `position` 0
+/// is the outermost — `GameEvent::OperationPlayed::in_place_of`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IcePlace {
+    pub server: ServerId,
+    pub position: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GameEvent {
     ClickSpent { side: Side },
@@ -388,6 +396,13 @@ pub enum GameEvent {
         x: Option<u32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         forfeited: Option<CardId>,
+        /// Where the rezzed piece of ice its additional cost trashed stood
+        /// — Mutate's "in the same position as the ice that was trashed",
+        /// read by `Effect::RevealUntilAndInstallInPlace` in the card's own
+        /// `OnPlay`. On the event for `forfeited`'s reason: the ice was
+        /// rezzed, so where it was is public.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        in_place_of: Option<IcePlace>,
     },
     /// `credits_paid` is what the install actually cost after every
     /// discount — Bling's "whenever you install a card without spending
@@ -985,6 +1000,12 @@ pub enum GameEvent {
     /// action's handler returns, ahead of `ActionFinished`. Public: every
     /// [click] spent, and on what, is.
     ThirdClickOnOneAction { side: Side, action: crate::rules::turn_log::SameAction },
+    /// An action taken while a run was under way took `amount` [click]
+    /// from `side`, spent or lost — Seidr Laboratories' "loses or spends
+    /// [click] during a run". Recorded once for the action as its handler
+    /// returns, beside `ThirdClickOnOneAction`, off the action's own
+    /// `ClickSpent` and `ClicksLost`. Public, as each of those is.
+    ClicksGoneDuringRun { side: Side, amount: u32 },
     /// Fired only by `engine::draw_card_click` — the *basic* click-to-draw
     /// action specifically, not `Effect::DrawCards` (e.g. Sure Gamble
     /// still only emits `CardDrawn`). Feeds `Trigger::OnBasicDrawAction`.
@@ -1141,7 +1162,7 @@ impl GameEvent {
             | GameEvent::AccessReplaced { .. } | GameEvent::CreditsLost { .. } | GameEvent::ClicksLost { .. }
             | GameEvent::ClicksGained { .. }
             | GameEvent::AgendaScored { .. } | GameEvent::AboutToResolve { .. } | GameEvent::AboutToBeUninstalled { .. }
-            | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. } | GameEvent::AgendaCounterSpent { .. } | GameEvent::DeckSearched { .. } | GameEvent::ThirdClickOnOneAction { .. }
+            | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. } | GameEvent::AgendaCounterSpent { .. } | GameEvent::DeckSearched { .. } | GameEvent::ThirdClickOnOneAction { .. } | GameEvent::ClicksGoneDuringRun { .. }
             | GameEvent::BasicDrawActionTaken { .. } | GameEvent::BasicCreditActionTaken { .. } | GameEvent::MandatoryDrawMade { .. }
             | GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. }
             | GameEvent::NumberChoiceOffered { .. } | GameEvent::NumberChosen { .. } | GameEvent::CardNameChosen { .. }

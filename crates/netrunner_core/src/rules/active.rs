@@ -108,12 +108,16 @@ pub(crate) fn corp<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl
     });
     // A lockdown in the play area (CR 1.8.3a), after the table: it was
     // played after anything installed there.
-    let in_play = state.corp.play_area.iter().map(|played| ActiveCard {
-        side: Side::Corp,
-        card: &played.card,
-        install: Some(played.handle),
-        server: None,
-        place: Place::PlayArea,
+    // And the text it gained, as that copy (Media Blitz's agenda,
+    // `PlayedOperation::text_of`): heard, and applying, as the current.
+    let in_play = state.corp.play_area.iter().flat_map(|played| {
+        std::iter::once(&played.card).chain(played.text_of.iter()).map(move |card| ActiveCard {
+            side: Side::Corp,
+            card,
+            install: Some(played.handle),
+            server: None,
+            place: Place::PlayArea,
+        })
     });
     identity.chain(scored).chain(installed).chain(conditions).chain(in_play)
 }
@@ -147,12 +151,14 @@ pub(crate) fn runner<'a>(state: &'a GameState, registry: &'a CardRegistry) -> im
         place: Place::PlayArea,
     });
     // A current in the play area (CR 1.8.3a, `RunnerState::in_play`).
-    let in_play = state.runner.in_play.iter().map(|played| ActiveCard {
-        side: Side::Runner,
-        card: &played.card,
-        install: Some(played.handle),
-        server: None,
-        place: Place::PlayArea,
+    let in_play = state.runner.in_play.iter().flat_map(|played| {
+        std::iter::once(&played.card).chain(played.text_of.iter()).map(move |card| ActiveCard {
+            side: Side::Runner,
+            card,
+            install: Some(played.handle),
+            server: None,
+            place: Place::PlayArea,
+        })
     });
     // A condition counter the Runner's event became (CR 1.9.5j), active
     // while it is hosted: on a rig card (On the Lam), on a Corp install
@@ -335,4 +341,88 @@ fn host_takes(state: &GameState, registry: &CardRegistry, install: InstallId, ki
 
 fn host_says(registry: &CardRegistry, card: &CardId, kind: ContinuousKind) -> bool {
     registry.get(card).is_some_and(|definition| definition.continuous.iter().any(|effect| effect.kind == kind && effect.applies_to == crate::dsl::Scope::Host))
+}
+
+/// The cards whose text the abilities of the install (or handle) `id` are
+/// printed on, in the order its ability indices run
+/// (`PlayerAction::ActivateAbility::ability_index`): **the one lookup of a
+/// card's text**, which `activate_ability`, the action list, the windows'
+/// "could anyone act" and the action mask all ask, so they cannot disagree
+/// about what an index names.
+///
+/// Usually one card, the install's own. A card can have another's text as
+/// well or instead:
+/// - a rig card hosting an identity it gains the text of (DJ Fenris's,
+///   `GameState::rig_abilities_card`), instead;
+/// - a current that gained an agenda's text (Media Blitz's,
+///   `PlayedOperation::text_of`), after its own;
+/// - a program that gains the paid abilities of what it hosts (Baba Yaga's,
+///   `ContinuousKind::GainsPaidAbilitiesOfHosted`), after its own, each
+///   hosted card that the filter admits in the order it was hosted.
+///
+/// Whatever is gained resolves as `id`: the install the effect boosts and
+/// compares, the copy a use limit is spent on. Empty for a handle that
+/// names nothing.
+pub(crate) fn ability_texts<'a>(state: &'a GameState, registry: &'a CardRegistry, id: InstallId) -> Vec<&'a CardId> {
+    match id {
+        InstallId::CORP_IDENTITY => return state.corp.identity.iter().collect(),
+        InstallId::RUNNER_IDENTITY => return state.runner.identity.iter().collect(),
+        InstallId::RUN_EVENT => return crate::rules::run::run_event(state, registry).into_iter().collect(),
+        _ => {}
+    }
+    if let Some(card) = state.find_corp_install(id).map(|card| &card.card).or_else(|| state.corp.find_scored(id).map(|scored| &scored.card)).or_else(|| state.runner.find_stolen(id).map(|scored| &scored.card)) {
+        return vec![card];
+    }
+    if let Some(played) = state.corp.play_area.iter().chain(state.runner.in_play.iter()).find(|played| played.handle == id) {
+        return std::iter::once(&played.card).chain(played.text_of.iter()).collect();
+    }
+    if let Some(card) = state.rig_abilities_card(id) {
+        let mut texts = vec![card];
+        if let Some(filter) = gained_from_hosted(registry, card) {
+            texts.extend(
+                state
+                    .runner
+                    .rig
+                    .iter()
+                    .filter(|hosted| hosted.hosted_on_rig_card == Some(id))
+                    .filter(|hosted| registry.get(&hosted.card).is_some_and(|definition| card_matches_filter(definition, filter)))
+                    .map(|hosted| &hosted.card),
+            );
+        }
+        return texts;
+    }
+    state.find_condition(id).map(|condition| &condition.card).into_iter().collect()
+}
+
+/// The filter of what `card` gains the paid abilities of, when it says so
+/// of itself (`ContinuousKind::GainsPaidAbilitiesOfHosted`). Read off the
+/// printed card, as `host_says` reads a host: whether the card has its
+/// abilities at all is asked where they are used (`lost_abilities`).
+pub fn gained_from_hosted<'a>(registry: &'a CardRegistry, card: &CardId) -> Option<&'a CardFilter> {
+    registry.get(card)?.continuous.iter().find_map(|effect| match (&effect.kind, &effect.applies_to) {
+        (ContinuousKind::GainsPaidAbilitiesOfHosted(filter), Scope::This) => Some(filter),
+        _ => None,
+    })
+}
+
+/// Which card's text, and which of its abilities, the `index`th ability of
+/// a card with the texts `texts` is ([`ability_texts`]): the indices run
+/// through each card's printed abilities in turn. Over a list rather than
+/// the state, so a client reads the same answer off a view.
+pub fn ability_in<'a>(registry: &CardRegistry, texts: impl IntoIterator<Item = &'a CardId>, index: usize) -> Option<(&'a CardId, usize)> {
+    let mut index = index;
+    for card in texts {
+        let count = registry.get(card).map_or(0, |definition| definition.abilities.len());
+        if index < count {
+            return Some((card, index));
+        }
+        index -= count;
+    }
+    None
+}
+
+/// [`ability_in`] over [`ability_texts`]: the card and printed index the
+/// `index`th ability of `id` resolves.
+pub(crate) fn ability_at<'a>(state: &'a GameState, registry: &'a CardRegistry, id: InstallId, index: usize) -> Option<(&'a CardId, usize)> {
+    ability_in(registry, ability_texts(state, registry, id), index)
 }

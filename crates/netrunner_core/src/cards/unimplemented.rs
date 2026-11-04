@@ -150,7 +150,6 @@ pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Martial Law* (`martial_law`): tranche F5 of the FFG plan.
 pub(crate) const ML_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("baba_yaga", "Baba Yaga"),
 ];
 
 /// *Quorum* (`quorum`): tranche F5 of the FFG plan.
@@ -162,7 +161,6 @@ pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// plan. Not in Eternal's or Snapshot's set lists, but most of its cards are
 /// in both pools.
 pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
     ("skorpios_defense_systems_persuasive_power", "Skorpios Defense Systems: Persuasive Power"),
 ];
 
@@ -196,7 +194,6 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.
 pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("media_blitz", "Media Blitz"),
     ("surveillance_sweep", "Surveillance Sweep"),
     ("apex_invasive_predator", "Apex: Invasive Predator"),
     ("apocalypse", "Apocalypse"),
@@ -222,7 +219,6 @@ pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Old Hollywood* (`old_hollywood`): tranche F7 of the FFG plan.
 pub(crate) const OH_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("an_offer_you_cant_refuse", "An Offer You Can’t Refuse"),
 ];
 
 /// *The Universe of Tomorrow* (`the_universe_of_tomorrow`): tranche F7 of the FFG plan.
@@ -235,7 +231,6 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Upstalk* (`upstalk`): tranche F8 of the FFG plan.
 pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("mutate", "Mutate"),
 ];
 
 /// *The Spaces Between* (`the_spaces_between`): tranche F8 of the FFG plan.
@@ -332,6 +327,5 @@ pub(crate) const MO_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *System Core 2019* (`system_core_2019`): tranche F12 of the FFG plan.
 pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
     ("sundew", "Sundew"),
 ];

@@ -45,6 +45,7 @@ pub use pending_choice::eligible_positions;
 // could still pay for later in a run (Phase 5 §43) is the window's own
 // question of one ability.
 pub use paid_ability::ability_is_usable;
+pub use active::{ability_in, gained_from_hosted};
 pub use action::{PlayerAction, ServerTarget, TargetZone};
 pub use action_mask::{get_action_mask, ActionSpace, MAX_NAME_OPTIONS};
 pub use damage::apply_damage;

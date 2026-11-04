@@ -873,8 +873,9 @@ fn bounded_position<T: PartialEq>(zone: &[T], item: &T, cap: usize) -> Option<us
 /// through the mask. Searching by `InstallId` makes each copy its own slot.
 /// No segment moved: this is the same position arithmetic, now correct.
 /// The Corp's ability-addressable cards, in slot order: its installs, then
-/// its score area (Proprionegation's counter ability is used from there).
-/// One list for both directions, so `index_of` and `action_at` cannot
+/// its score area (Proprionegation's counter ability is used from there),
+/// the Runner's stolen agendas, the condition counters, and last a current
+/// that gained an agenda's text (Media Blitz). One list for both directions, so `index_of` and `action_at` cannot
 /// disagree about which slot names which card. The identity keeps the last
 /// slot, and the cap is unchanged — the segment did not grow.
 fn corp_ability_slot(state: &GameState, id: InstallId) -> Option<usize> {
@@ -886,6 +887,7 @@ fn corp_ability_slot(state: &GameState, id: InstallId) -> Option<usize> {
         .chain(state.corp.scored_agendas.iter().map(|s| s.install_id))
         .chain(runner_scored_corp_cards(state))
         .chain(state.corp.conditions.iter().map(|condition| condition.handle))
+        .chain(state.corp.play_area.iter().filter(|played| played.text_of.is_some()).map(|played| played.handle))
         .position(|candidate| candidate == id)?;
     (position < IDENTITY_ABILITY_SLOT).then_some(position)
 }
@@ -900,6 +902,7 @@ fn corp_ability_target(state: &GameState, slot: usize) -> Option<InstallId> {
         .chain(state.corp.scored_agendas.iter().map(|s| s.install_id))
         .chain(runner_scored_corp_cards(state))
         .chain(state.corp.conditions.iter().map(|condition| condition.handle))
+        .chain(state.corp.play_area.iter().filter(|played| played.text_of.is_some()).map(|played| played.handle))
         .nth(slot)
 }
 

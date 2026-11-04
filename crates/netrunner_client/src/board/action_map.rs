@@ -472,6 +472,10 @@ fn targets_of(action: &PlayerAction, view: &ClientView) -> Vec<Target> {
         PlayerAction::ActivateAbility { target, .. } if view.corp.conditions.iter().chain(view.runner.conditions.iter()).any(|condition| condition.handle == *target) => {
             view.corp.conditions.iter().chain(view.runner.conditions.iter()).filter(|condition| condition.handle == *target).map(|condition| Target::Install(condition.host)).collect()
         }
+        // A current in play has no place on the board either: the text it
+        // gained (Media Blitz's agenda) is used from its side's identity,
+        // whose menu names the current.
+        PlayerAction::ActivateAbility { target, .. } if view.corp.play_area.iter().any(|played| played.handle == *target) => vec![Target::Identity(Side::Corp)],
         PlayerAction::RezIce { ice: target }
         | PlayerAction::ActivateAbility { target, .. }
         | PlayerAction::AdvanceCard { target }

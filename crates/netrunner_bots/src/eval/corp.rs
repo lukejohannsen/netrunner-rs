@@ -943,7 +943,7 @@ mod tests {
         state.corp.installed.push(InstalledCard { card: CardId("ice_wall".to_string()), install_id: InstallId(1), server: ServerId::RnD, slot: InstallSlot::Ice, rezzed: true, ..Default::default() });
         assert_eq!(lockdown_break_tax(&state, &pool, &w), 0.0, "no lockdown in play");
         let bare = server_break_cost(&state, ServerId::RnD, &pool).expect("Corroder breaks Ice Wall");
-        state.corp.play_area = vec![PlayedOperation { card: CardId("next_activation_command".to_string()), handle: InstallId(90), counters: 0 }];
+        state.corp.play_area = vec![PlayedOperation { card: CardId("next_activation_command".to_string()), handle: InstallId(90), counters: 0, text_of: None }];
         let taxed = server_break_cost(&state, ServerId::RnD, &pool).expect("and a stronger one");
         assert!(taxed > bare, "{bare} -> {taxed}");
         assert!((lockdown_break_tax(&state, &pool, &w) - f64::from(taxed - bare) * w.opponent_credit_weight).abs() < 1e-9);
@@ -1902,7 +1902,7 @@ mod tests {
         state.runner.resources.credits = Credits(5);
         assert_eq!(read::steal_credits(&state, &pool, &state.corp.installed[0]), Some(0));
         assert_eq!(agendas_under_the_window(&state, &pool), 0, "a naked remote is open");
-        state.corp.play_area.push(PlayedOperation { card: CardId("napd_cordon".to_string()), handle: InstallId(2), counters: 0 });
+        state.corp.play_area.push(PlayedOperation { card: CardId("napd_cordon".to_string()), handle: InstallId(2), counters: 0, text_of: None });
         assert_eq!(read::steal_credits(&state, &pool, &state.corp.installed[0]), Some(6), "4 and 2 for the token");
         assert_eq!(agendas_under_the_window(&state, &pool), 1, "5[c] does not pay 6");
         state.runner.resources.credits = Credits(6);
