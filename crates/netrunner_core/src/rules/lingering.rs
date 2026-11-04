@@ -87,6 +87,11 @@ pub struct DelayedAbility {
     /// while `install`, the copy's handle, is there, and spent as it goes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub while_in_play: bool,
+    /// For the rest of the game (`Effect::LaterThisTurn::
+    /// until_the_game_ends`): heard on every turn, every time, and never
+    /// spent — Watch the World Burn's copies of the card it removed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub for_the_game: bool,
     pub effect: crate::dsl::Effect,
     /// What resolves it, as the card that made it would.
     pub card: CardId,

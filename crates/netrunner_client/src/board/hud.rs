@@ -583,9 +583,11 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         // in the words the card inspector uses, since it is a sentence of
         // the card's that has not resolved yet.
         .chain(view.delayed.iter().map(|delayed| {
-            let words = crate::prose::describe_later_this_turn(delayed.when, delayed.filter.as_ref(), delayed.every_time, delayed.turn > view.turn, &delayed.effect, registry);
-            // Targeted Marketing's lasts as long as the current does.
+            let words = crate::prose::describe_later_this_turn(delayed.when, delayed.filter.as_ref(), delayed.every_time || delayed.for_the_game, delayed.turn > view.turn && !delayed.for_the_game, &delayed.effect, registry);
+            // Targeted Marketing's lasts as long as the current does, and
+            // Watch the World Burn's as long as the game.
             let words = if delayed.while_in_play { words.replace("for the rest of this turn", "while it is in play") } else { words };
+            let words = if delayed.for_the_game { words.replace("for the rest of this turn", "until the game ends") } else { words };
             format!("{}: {}", title(&delayed.card), words)
         }))
         // A card revealed in a hand and not moved yet (Burner's three out

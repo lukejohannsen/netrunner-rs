@@ -1026,12 +1026,17 @@ pub(crate) fn place_corp_card(
     // used to pay `card_def.cost` here as well, so every Corp card cost
     // double and the escalating ICE tax did not exist (ROADMAP Rules
     // Audit T3).
+    // A root install has no install cost (CR 1.16.6c), but the table may
+    // add one as an additional cost (Diwan's server), which a hosted card
+    // is not installed in the root of.
     let install_cost = match (pay_cost, slot) {
         (true, InstallSlot::Ice) => continuous::ice_install_cost(next, registry, zone).saturating_sub(discount),
+        (true, InstallSlot::Root) if host.is_none() => continuous::additional_install_cost_in(next, registry, zone).saturating_sub(discount),
         _ => 0,
     };
     if install_cost > 0 {
-        events.extend(ability::pay_cost(next, registry, side, &Cost::Credits(install_cost), Purpose::InstallIce(card_def, zone), Some(&card_id))?);
+        let purpose = if slot == InstallSlot::Ice { Purpose::InstallIce(card_def, zone) } else { Purpose::Install(card_def) };
+        events.extend(ability::pay_cost(next, registry, side, &Cost::Credits(install_cost), purpose, Some(&card_id))?);
     }
     let install_id = next.allocate_install_id();
     let new_card = InstalledCard {
@@ -1127,12 +1132,27 @@ pub(crate) fn corp_install_destinations(state: &GameState, registry: &CardRegist
     if super::legal_actions::may_add_remote(state, registry) {
         remotes.push(ServerId::Remote(super::legal_actions::fresh_remote_id(&existing)));
     }
+    // A root destination the table taxes (Diwan) is offered only where the
+    // Corp can pay, as an ice destination is.
+    let affordable_root = |zones: &mut Vec<ServerId>| {
+        if !ignore_costs {
+            zones.retain(|zone| {
+                let cost = continuous::additional_install_cost_in(state, registry, *zone).saturating_sub(discount);
+                cost == 0 || cost <= state.corp.resources.credits.0 || cost <= payment::available(state, registry, Side::Corp, Purpose::Install(card_def))
+            });
+        }
+    };
     match card_def.card_type {
-        CardType::Agenda | CardType::Asset => remotes,
+        CardType::Agenda | CardType::Asset => {
+            let mut zones = remotes;
+            affordable_root(&mut zones);
+            zones
+        }
         CardType::Upgrade => {
             let mut zones = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
             zones.extend(remotes);
             zones.retain(|zone| card_def.may_be_installed_in(*zone));
+            affordable_root(&mut zones);
             zones
         }
         CardType::Ice(_) => {
@@ -2188,6 +2208,7 @@ fn seed_rig_card(
         counters: 0,
         credits: 0,
         virus_counters: 0,
+        virus_placed_on_turn: None,
         hosted_on_ice: None,
         hosted_on_rig_card: None,
         hosted_cards: Vec::new(),

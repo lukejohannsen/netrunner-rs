@@ -1113,6 +1113,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
             counters: card.counters,
             credits: card.credits,
             virus_counters: card.virus_counters,
+            virus_placed_on_turn: card.virus_placed_on_turn,
             hosted_on_ice: card.hosted_on_ice,
             hosted_on_rig_card: card.hosted_on_rig_card,
             // Cards hosted facedown are only counted for this viewer, and

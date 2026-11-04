@@ -1,0 +1,53 @@
+{
+  "id": "surge",
+  "title": "Surge",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "play_requirement": {
+    "ZoneHasAtLeast": {
+      "zone": "OwnInstalled",
+      "filter": {
+        "All": [
+          {
+            "CardType": "Program"
+          },
+          "VirusCounterPlacedThisTurn"
+        ]
+      },
+      "count": 1
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                {
+                  "CardType": "Program"
+                },
+                "VirusCounterPlacedThisTurn"
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "AddVirusCounters": 2
+            }
+          }
+        }
+      ],
+      "text": "Place 2 virus counters on that program."
+    }
+  ],
+  "built_from": 2081,
+  "is_playable": true
+}

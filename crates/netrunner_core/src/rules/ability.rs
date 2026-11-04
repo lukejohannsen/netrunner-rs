@@ -892,6 +892,15 @@ pub fn evaluate_effect(
 
         Effect::AddCounters(amount) => {
             let amount = resolve_amount(amount, ctx, state, registry);
+            // A virus card's own counters are virus counters (Surge's "that
+            // program": Cookbook's and Hivemind's are placed this way).
+            if let Some(position) = acting_rig_position(state, ctx) {
+                let turn = state.turn;
+                let installed = &mut state.runner.rig[position];
+                if registry.get(&installed.card).and_then(|card| card.counter_kind) == Some(crate::dsl::CounterKind::Virus) {
+                    note_virus_placed(installed, turn, amount);
+                }
+            }
             modify_counters(state, ctx, i64::from(amount))
         }
 
@@ -906,10 +915,12 @@ pub fn evaluate_effect(
         Effect::AddVirusCounters(amount) => {
             let amount = resolve_amount(amount, ctx, state, registry);
             let Some(position) = acting_rig_position(state, ctx) else { return modify_counters(state, ctx, i64::from(amount)) };
+            let turn = state.turn;
             let installed = &mut state.runner.rig[position];
             let own = registry.get(&installed.card).and_then(|card| card.counter_kind) == Some(crate::dsl::CounterKind::Virus);
             let held = if own { &mut installed.counters } else { &mut installed.virus_counters };
             *held = held.saturating_add(amount);
+            note_virus_placed(installed, turn, amount);
             Ok(vec![GameEvent::CountersAdded { card: installed.card.clone(), amount }])
         }
         Effect::RemoveVirusCounters(amount) => {
@@ -1322,7 +1333,7 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
-        Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn, while_in_play } => {
+        Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn, while_in_play, until_the_game_ends } => {
             let card = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
             let effect = match state.active_run.as_ref() {
                 Some(run) => (**effect).clone().with_attacked_server(run.server),
@@ -1335,6 +1346,7 @@ pub fn evaluate_effect(
                 turn: state.turn + u32::from(*next_turn),
                 this_run: *this_run && state.active_run.is_some(),
                 while_in_play: *while_in_play,
+                for_the_game: *until_the_game_ends,
                 effect,
                 card,
                 install: ctx.acting_install,
@@ -3221,11 +3233,16 @@ pub fn evaluate_effect(
                 // `min: 0` offer (Bumi 1.0 with no trojan in the rig):
                 // parking a choice whose only resolution is an empty
                 // confirmation costs the player a decision for nothing.
-                // A search that finds nothing still shuffles (CR 8.7.3).
+                // A search that finds nothing still shuffles (CR 8.7.3),
+                // and was still a search.
                 if *shuffle_after {
                     crate::rules::pending_choice::shuffle_decks(state, *side, source, destination.as_ref());
                 }
-                return Ok(Vec::new());
+                let mut events = Vec::new();
+                if crate::rules::pending_choice::searches_own_deck(source, filter, *shuffle_after) {
+                    dispatcher::emit(state, registry, &mut events, GameEvent::DeckSearched { side: *side })?;
+                }
+                return Ok(events);
             }
             // "This server" in the continuation is written in now: the
             // continuation keeps no triggering event to read it from.
@@ -4697,6 +4714,17 @@ fn gain_credits_from_ability(
 /// `trash_this_card`'s "try Corp installed, then Runner rig" search order,
 /// but doesn't need `trash_this_card`'s hand/deck arms — counters only ever
 /// live on an installed/rigged card, never in a hand or deck zone.
+/// Dates a placement of `amount` virus counters on a rig card
+/// (`InstalledRunnerCard::virus_placed_on_turn`): the one door, called by
+/// every effect that places one, so Surge's "you placed at least 1 virus
+/// counter on a program this turn" is read off the copy. Nothing placed,
+/// nothing dated.
+pub(crate) fn note_virus_placed(installed: &mut crate::rules::InstalledRunnerCard, turn: u32, amount: u32) {
+    if amount > 0 {
+        installed.virus_placed_on_turn = Some(turn);
+    }
+}
+
 pub(crate) fn modify_counters(
     state: &mut GameState,
     ctx: &ResolutionContext<'_>,
@@ -5365,6 +5393,7 @@ pub(crate) fn cost_is_affordable(
                 && crate::rules::pending_choice::virus_counters(state, registry).iter().map(|(_, held)| held).sum::<u32>()
                     >= resolve_amount(amount, ctx, state, registry)
         }
+        Cost::AgendaCounters(amount) => side == Side::Corp && crate::rules::pending_choice::agenda_counters(state).iter().map(|(_, held)| held).sum::<u32>() >= *amount,
         Cost::RemoveAdvancementCounters(amount) => acting_corp_install(state, ctx).is_some_and(|installed| installed.advancement_tokens >= *amount),
         // Word on the Street's card is its own price: payable while it is
         // in the rig.
@@ -5841,7 +5870,31 @@ pub(crate) fn pay_cost_ctx(
             if available < *amount {
                 return Err(RulesError::InsufficientCounters { card: card_id.clone(), required: *amount, available });
             }
-            modify_counters(state, ctx, -i64::from(*amount))
+            // A scored agenda's own counters are agenda counters, spent
+            // (CR 4.7.3) — Mark Yale's "whenever you spend an agenda
+            // counter", once for each.
+            let agenda = side == Side::Corp && ctx.acting_install.is_some_and(|install| state.corp.scored_agendas.iter().any(|scored| scored.install_id == install));
+            let mut events = modify_counters(state, ctx, -i64::from(*amount))?;
+            if agenda {
+                events.extend((0..*amount).map(|_| GameEvent::AgendaCounterSpent { card: card_id.clone() }));
+            }
+            Ok(events)
+        }
+        Cost::AgendaCounters(amount) => {
+            let held: u32 = crate::rules::pending_choice::agenda_counters(state).iter().map(|(_, held)| held).sum();
+            if side != Side::Corp || held < *amount {
+                let card = acting_card.cloned().unwrap_or_else(|| CardId(String::new()));
+                return Err(RulesError::InsufficientCounters { card, required: *amount, available: held });
+            }
+            let taken = crate::rules::pending_choice::pick_agenda_counters(state, *amount)?;
+            let mut events = Vec::new();
+            for (position, amount) in taken {
+                let scored = &mut state.corp.scored_agendas[position];
+                scored.agenda_counters = scored.agenda_counters.saturating_sub(amount);
+                events.push(GameEvent::CountersRemoved { card: scored.card.clone(), amount });
+                events.extend((0..amount).map(|_| GameEvent::AgendaCounterSpent { card: scored.card.clone() }));
+            }
+            Ok(events)
         }
         Cost::VirusCounters(amount) => {
             let amount = resolve_amount(amount, ctx, state, registry);

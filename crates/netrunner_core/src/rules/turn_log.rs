@@ -379,6 +379,8 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         Trigger::OnAdvancementCounterPlaced => true,
         // About no card: a credit pool, and a trace, are public.
         Trigger::OnCreditsLost | Trigger::OnTraceInitiated | Trigger::OnLinkBoosted => false,
+        // A scored agenda's counter, and a search, are public.
+        Trigger::OnAgendaCounterSpent | Trigger::OnDeckSearched => false,
         // Played, rezzed, encountered, scored, stolen, forfeited, trashed
         // faceup by the Runner, or a faceup card's ability: on the table.
         Trigger::OnPlay

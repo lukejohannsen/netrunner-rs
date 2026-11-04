@@ -625,6 +625,14 @@ pub enum CardFilter {
     /// decides (`is_about_the_copy_alone`) and `Not` says "with no hosted
     /// virus counters".
     HostsCounters(crate::dsl::CounterKind),
+    /// A rig card a virus counter was placed on this turn — Surge's "Play
+    /// only if you placed at least 1 virus counter on a program this turn.
+    /// Place 2 virus counters on **that program**". Instance-level, read
+    /// off the copy (`InstalledRunnerCard::virus_placed_on_turn`); a Corp
+    /// card never is. Composition didn't work: the turn log counts
+    /// occurrences by class and no counter placement is a moment, and
+    /// "that program" is one copy.
+    VirusCounterPlacedThisTurn,
     /// A card with "N[recurring-credit]" holding fewer than N — Mirror's
     /// "you may replace 1 spent recurring credit", which may go only where
     /// one was spent (CR 1.10.5). The definition says the card prints
@@ -1018,6 +1026,7 @@ impl CardFilter {
                 | CardFilter::NotRelaying
                 | CardFilter::TrashableBy(_)
                 | CardFilter::InChosenServer
+                | CardFilter::VirusCounterPlacedThisTurn
                 | CardFilter::Rezzed
                 | CardFilter::Unrezzed
                 | CardFilter::Facedown
@@ -1069,6 +1078,21 @@ impl CardFilter {
             CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_attacked_server(server)).collect()),
             CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_attacked_server(server))),
             other => other,
+        }
+    }
+
+    /// Whether this filter admits cards by where they lie in a deck — the
+    /// top N, the bottom one, the Nth — through `All`, `AnyOf` and `Not`.
+    /// A selection over a deck that names none looks at all of it, which
+    /// is a search (CR 8.7.1) when it shuffles after (8.7.3); one that
+    /// names a position is a look at those cards (Express Delivery's "look
+    /// at the top 4 cards of your stack").
+    pub fn names_a_position(&self) -> bool {
+        match self {
+            CardFilter::TopOfZone(_) | CardFilter::BottomOfZone(_) | CardFilter::TopOf(_) | CardFilter::NthFromTop(_) => true,
+            CardFilter::All(filters) | CardFilter::AnyOf(filters) => filters.iter().any(CardFilter::names_a_position),
+            CardFilter::Not(filter) => filter.names_a_position(),
+            _ => false,
         }
     }
 
@@ -1287,6 +1311,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::InstalledThisTurn => true,
         CardFilter::RezzedThisTurn => true,
         CardFilter::ScoredThisTurn => true,
+        CardFilter::VirusCounterPlacedThisTurn => card.side == crate::rules::Side::Runner,
         CardFilter::AmongCards(cards) => cards.contains(&card.id),
         CardFilter::TrashedThisWay | CardFilter::ThatCard | CardFilter::ChosenName | CardFilter::ChosenThisWay => false,
         CardFilter::AmongInstalls(_) => true,

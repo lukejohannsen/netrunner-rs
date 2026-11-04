@@ -230,6 +230,18 @@ pub enum Cost {
     VirusCounters(
         #[serde(deserialize_with = "super::effect::number_or_amount", serialize_with = "super::effect::write_number_or_amount")] Amount,
     ),
+    /// Remove `u32` agenda counters from among the Corp's scored agendas,
+    /// whichever hold them — Mark Yale's "**any agenda counter**: Gain
+    /// 2[credit]". `VirusCounters`' Corp twin: which agenda each counter
+    /// comes from is the Corp's, asked one counter at a time inside the
+    /// payment by replay (`payment::Ask::Card` over `OwnScoreArea`,
+    /// `pending_choice::pick_agenda_counters`) only where the answer
+    /// changes what it is left with. Spent, so each counter is a
+    /// `GameEvent::AgendaCounterSpent`, as one a scored agenda's own
+    /// `RemoveCounters` cost spends is. Composition didn't work:
+    /// `RemoveCounters` is the acting card's own counters, and Mark Yale is
+    /// an asset.
+    AgendaCounters(u32),
     /// Remove `u32` advancement counters hosted on the acting card —
     /// Sacrifice Zone Expansion's "you may remove 1 hosted advancement
     /// counter to do 1 meat damage". Not `RemoveCounters`: advancement
@@ -441,7 +453,7 @@ impl Cost {
 
     pub fn may_ask(&self) -> bool {
         match self {
-            Cost::Trash { .. } | Cost::Forfeit(_) | Cost::Derez { .. } | Cost::CreditsX { .. } | Cost::AddInstalledToHand { .. } | Cost::ShuffleInstalledIntoDeck { .. } | Cost::AddInstalledToBottomOfDeck { .. } | Cost::RemoveInstalledFromGame { .. } | Cost::VirusCounters(_) => true,
+            Cost::Trash { .. } | Cost::Forfeit(_) | Cost::Derez { .. } | Cost::CreditsX { .. } | Cost::AddInstalledToHand { .. } | Cost::ShuffleInstalledIntoDeck { .. } | Cost::AddInstalledToBottomOfDeck { .. } | Cost::RemoveInstalledFromGame { .. } | Cost::VirusCounters(_) | Cost::AgendaCounters(_) => true,
             Cost::AnyOf(costs) | Cost::AllOf(costs) => costs.iter().any(Cost::may_ask),
             _ => false,
         }

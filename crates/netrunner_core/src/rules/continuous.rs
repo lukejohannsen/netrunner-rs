@@ -44,6 +44,11 @@ pub(crate) enum Target<'a> {
     /// (Network Exchange, `Scope::IceNotInnermost`). No card: no card in
     /// the pool prices ice by what it is, and its own text is not asked.
     InstallingIce { innermost: bool },
+    /// A Corp card being installed in the root of, or protecting, `server`
+    /// — the destination an additional install cost is about (Diwan,
+    /// `Scope::InstallingInChosenServer`). No card, as `InstallingIce` has
+    /// none: the price is the server's.
+    InstallingInServer { server: ServerId },
     /// A card in the rig.
     Rig { card: &'a CardDefinition, install: InstallId },
     /// A Corp install, in the root of `server` or protecting it.
@@ -79,7 +84,7 @@ pub(crate) enum Target<'a> {
 impl<'a> Target<'a> {
     fn card(&self) -> Option<&'a CardDefinition> {
         match self {
-            Target::Player(_) | Target::Run { .. } | Target::Bound(_) | Target::InstallingIce { .. } => None,
+            Target::Player(_) | Target::Run { .. } | Target::Bound(_) | Target::InstallingIce { .. } | Target::InstallingInServer { .. } => None,
             Target::Card(card)
             | Target::InstallingOnto { card, .. }
             | Target::Rig { card, .. }
@@ -99,6 +104,7 @@ impl<'a> Target<'a> {
             | Target::Card(_)
             | Target::InstallingOnto { .. }
             | Target::InstallingIce { .. }
+            | Target::InstallingInServer { .. }
             | Target::Run { .. }
             | Target::Bound(_)
             | Target::Stealing { .. } => None,
@@ -281,6 +287,10 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
             card.side != source.side && card_matches_filter(card, filter)
         }
         (Scope::IceNotInnermost, Target::InstallingIce { innermost, .. }) => !innermost,
+        // Diwan's server, the one this copy chose while it is installed.
+        (Scope::InstallingInChosenServer, Target::InstallingInServer { server }) => {
+            source.side == Side::Runner && lingering::chosen_server(state, source.card, source.install) == Some(*server)
+        }
         // "The first **piece of ice** you install each turn" (Eden
         // Fragment): the one installing scope a piece of ice being installed
         // answers, since the target names no card and "ice" is all it is.
@@ -1163,10 +1173,22 @@ pub(crate) fn install_cost_onto(state: &GameState, registry: &CardRegistry, card
 pub(crate) fn ice_install_cost(state: &GameState, registry: &CardRegistry, server: ServerId) -> u32 {
     let protecting = crate::rules::engine::ice_protecting(state, server);
     let target = Target::InstallingIce { innermost: protecting == 0 };
+    let additional = additional_install_cost_in(state, registry, server);
     if any(state, registry, target, |kind| *kind == ContinuousKind::IgnoreInstallCost) {
-        return 0;
+        return additional;
     }
-    (protecting as i32 + sum(state, registry, target, install_cost)).max(0) as u32
+    (protecting as i32 + sum(state, registry, target, install_cost)).max(0) as u32 + additional
+}
+
+/// What the table adds, as an additional cost, to installing any Corp card
+/// in the root of or protecting `server` — Diwan's 1[credit] there
+/// (`Scope::InstallingInChosenServer`). Part of `ice_install_cost` for a
+/// piece of ice, and the whole price of a root install, which has no
+/// install cost of its own (CR 1.16.6c). Not removed by an ignored install
+/// cost (CR 1.16.5a), only by "ignoring all costs" (1.16.5c), which every
+/// caller reads as not paying at all.
+pub fn additional_install_cost_in(state: &GameState, registry: &CardRegistry, server: ServerId) -> u32 {
+    sum(state, registry, Target::InstallingInServer { server }, install_cost).max(0) as u32
 }
 
 /// What the table adds to installing a piece of ice outward of another —

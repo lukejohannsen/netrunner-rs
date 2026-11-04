@@ -1,0 +1,47 @@
+{
+  "id": "personality_profiles",
+  "title": "Personality Profiles",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnDeckSearched",
+      "when": {
+        "Whose": "Runner"
+      },
+      "effects": [
+        {
+          "TrashCard": {
+            "RandomFromHand": "Runner"
+          }
+        }
+      ],
+      "text": "Whenever the Runner searches the stack or installs a card from the heap, they trash 1 card from the grip at random."
+    },
+    {
+      "trigger": "OnInstall",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Whose": "Runner"
+          },
+          "InstalledFromHeap"
+        ]
+      },
+      "effects": [
+        {
+          "TrashCard": {
+            "RandomFromHand": "Runner"
+          }
+        }
+      ],
+      "text": "Whenever the Runner searches the stack or installs a card from the heap, they trash 1 card from the grip at random."
+    }
+  ],
+  "built_from": 10066,
+  "is_playable": true
+}

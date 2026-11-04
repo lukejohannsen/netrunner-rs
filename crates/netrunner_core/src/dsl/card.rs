@@ -1629,8 +1629,15 @@ impl CardDefinition {
             // which server's root it sits in (Gagarin Deep Space's "a card
             // in the root of a remote server").
             EventFilter::InstalledIn(_) => (triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp) || triggered.trigger == Trigger::OnAccessAboutToResolve,
-            // …and only a Runner install's whether it left the heap.
-            EventFilter::InstalledFromHeap => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Runner,
+            // …and only a Runner install's whether it left the heap, heard
+            // by a Runner card or by a Corp card that names the Runner's
+            // installs (Personality Profiles' "whenever the Runner installs
+            // a card from the heap", `Whose(Runner)`).
+            EventFilter::InstalledFromHeap => {
+                triggered.trigger == Trigger::OnInstall
+                    && (self.side == crate::rules::Side::Runner
+                        || matches!(&triggered.when, Some(EventFilter::All(parts)) if parts.contains(&EventFilter::Whose(crate::rules::Side::Runner))))
+            }
             // …or the grip.
             EventFilter::InstalledFromGrip => matches!(triggered.trigger, Trigger::OnInstall | Trigger::OnCardInstalled) && self.side == crate::rules::Side::Runner,
             // Only an install is in a root or not.
@@ -2334,6 +2341,11 @@ impl CardDefinition {
                 (ContinuousKind::IgnoreInstallCost, _) => return misfit("IgnoreInstallCost", "an ignored install cost is about the Corp's pieces of ice being installed (`Installing(Ice)`)"),
                 (ContinuousKind::InstallCost(_), Scope::Installing(filter)) if self.side == Side::Corp && *filter != crate::dsl::CardFilter::Ice => {
                     return misfit("Installing", "the Corp pays an install cost only for a piece of ice, priced without the card, so a Corp card's install cost is about `Installing(Ice)`");
+                }
+                // Diwan's: a Runner program's choice, kept while it is installed.
+                (ContinuousKind::InstallCost(_), Scope::InstallingInChosenServer) if self.side == Side::Runner => {}
+                (_, Scope::InstallingInChosenServer) => {
+                    return misfit("InstallingInChosenServer", "only an additional install cost, from a Runner card that chose a server, is asked of a Corp card installed there");
                 }
                 (ContinuousKind::InstallCost(_), Scope::This | Scope::Installing(_) | Scope::InstallingOntoThis(_) | Scope::OpponentInstalling(_) | Scope::IceNotInnermost) => {}
                 (ContinuousKind::InstallCost(_), _) => return misfit("InstallCost", "an install cost is this card's own or that of a card being `Installing`"),

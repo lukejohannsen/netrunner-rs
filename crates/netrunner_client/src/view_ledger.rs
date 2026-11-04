@@ -63,6 +63,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         delayed: _,            // drawn: hud::in_effect ("when this turn ends, …"), both clients
         standing_cannot: _,    // drawn: hud::in_effect ("Attini: the Runner cannot spend credits"), both clients
         outer_ice_install_surcharge: _, // drawn: placement::Placement's price of ice outward of another ("costs 2 credits"), both clients
+        install_surcharges: _, // drawn: placement::Placement's price of any install in a server a card chose (Diwan's "costs 1 credit"), both clients
         run_costs: _,          // drawn: actions::describe_action ("Run HQ (+1 credit)") and explain_action, on the server's menu and the panel in both clients
         revealed: _,           // drawn: hud::in_effect ("revealed in HQ: …"), both clients; the chooser's pop-up draws them as its cards
         selection: _,          // drawn: selection::Selection (the pop-up's cards, the terminal's card in question)
@@ -184,6 +185,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         counters: _,              // drawn: the rig's chip line, board::facts
         credits: _,               // drawn: a credit badge on the desktop rig, ", N credits" on the terminal's rig line, board::facts
         virus_counters: _,        // drawn: a virus badge on the desktop rig, ", N virus counters" on the terminal's rig line, board::facts
+        virus_placed_on_turn: _,  // drawn: board::facts ("A virus counter was placed on it this turn"), both clients' sheets
     } in rig
     {}
 

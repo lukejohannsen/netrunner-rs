@@ -480,6 +480,12 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // something (Net Quarantine's "spends credits to increase their
         // link strength").
         GameEvent::TraceRunnerBidSubmitted { runner_bid, .. } if *runner_bid > 0 => vec![moment(Trigger::OnLinkBoosted, &About::Nothing, Some(Side::Runner))],
+        // CR 4.7.3: a counter spent paying a cost, the Corp's (Mark Yale's
+        // "whenever you spend an agenda counter").
+        GameEvent::AgendaCounterSpent { .. } => vec![moment(Trigger::OnAgendaCounterSpent, &About::Nothing, Some(Side::Corp))],
+        // CR 8.7: Personality Profiles' "whenever the Runner searches the
+        // stack", the searcher's.
+        GameEvent::DeckSearched { side } => vec![moment(Trigger::OnDeckSearched, &About::Nothing, Some(*side))],
         // A selection that reveals what it chose (Hyoubu Institute's own
         // "reveal the top card of the stack") is its chooser revealing
         // each card.
@@ -726,6 +732,9 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
 /// Whether the delayed ability `delayed` waits for a moment of `trigger`
 /// now: its moment, on the turn it was made for.
 pub(crate) fn delayed_hears(state: &GameState, delayed: &crate::rules::lingering::DelayedAbility, trigger: Trigger) -> bool {
+    if delayed.for_the_game {
+        return delayed.when == trigger;
+    }
     match delayed.while_in_play {
         true => delayed.when == trigger && delayed.source_in_play(state),
         false => delayed_hears_on(delayed, trigger, state.turn),
@@ -765,6 +774,9 @@ pub(crate) fn delayed_admits(state: &GameState, registry: &CardRegistry, delayed
 /// Whether the delayed ability `delayed` is done with once `event` has
 /// been heard: one from an earlier turn, or one heard once (CR 9.6.13c).
 pub(crate) fn delayed_spent_by(state: &GameState, registry: &CardRegistry, delayed: &crate::rules::lingering::DelayedAbility, event: &GameEvent) -> bool {
+    if delayed.for_the_game {
+        return false;
+    }
     if delayed.while_in_play {
         return !delayed.source_in_play(state);
     }

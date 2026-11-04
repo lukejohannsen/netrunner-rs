@@ -740,6 +740,20 @@ pub enum Scope {
     /// `OpponentInstalling` is asked of a card with no destination, and a
     /// Corp ice install was never priced by the scan at all.
     IceNotInnermost,
+    /// A Corp card being installed in the root of, or protecting, the
+    /// server this card chose (`Effect::ChooseServer`, kept while the copy
+    /// is installed) — Diwan's "choose a server. **As an additional cost to
+    /// install a card in the root of or protecting that server**, the Corp
+    /// must pay 1[credit]". Only `InstallCost` is about it, and it is
+    /// asked apart from the install cost (`continuous::
+    /// additional_install_cost_in`, `Target::InstallingInServer`): an
+    /// additional cost stays when the install cost is ignored (CR 1.16.5a,
+    /// Eden Fragment) and goes only with "all costs" (1.16.5c), and an
+    /// agenda, asset or upgrade, which has no install cost (1.16.6c), pays
+    /// it too. Composition didn't work: `IceNotInnermost` knows the ice's
+    /// position and not its server, and no Corp root install was priced by
+    /// the scan at all.
+    InstallingInChosenServer,
     /// An event or operation the *other* player is playing, matching the
     /// filter — Rolling Brownout's "the play cost of each operation and
     /// event is increased by 1", a Corp current about the Runner's events

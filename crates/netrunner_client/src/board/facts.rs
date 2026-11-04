@@ -431,6 +431,10 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
             if rig.virus_counters > 0 {
                 lines.push(counter_word(Some(CounterKind::Virus), rig.virus_counters));
             }
+            // Surge's "that program".
+            if rig.virus_placed_on_turn == Some(view.turn) {
+                lines.push("A virus counter was placed on it this turn".to_string());
+            }
             if let Some(ice) = rig.hosted_on_ice {
                 lines.push(format!("Hosted on {}", crate::actions::install_label(&ice, registry, Some(view))));
             }

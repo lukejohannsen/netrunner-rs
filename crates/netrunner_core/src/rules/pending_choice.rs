@@ -438,6 +438,10 @@ fn instance_matches_filter(
         }
         CardFilter::ScoredThisTurn => scored.is_some_and(|scored| scored_this_turn(state, scored)),
         CardFilter::RezzedThisTurn => corp_install.is_some_and(|c| c.rezzed && c.this_turn.count(state.turn, crate::dsl::Trigger::OnRez) > 0),
+        CardFilter::VirusCounterPlacedThisTurn => {
+            (installed_zone && owning_side(chooser, zone) == Side::Runner)
+                && state.runner.rig.get(position).is_some_and(|c| c.virus_placed_on_turn == Some(state.turn))
+        }
         // An install is advanced by the copy's own record; a scored one by
         // what it kept as it left the table.
         CardFilter::NotAdvancedThisTurn => {
@@ -835,6 +839,7 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
             CardFilter::All(parts) => parts.iter().all(|part| copy_matches(state, part, Some(install))),
             CardFilter::InstalledThisTurn => installed_now,
             CardFilter::NotInstalledThisTurn => !installed_now,
+            CardFilter::VirusCounterPlacedThisTurn => rig.virus_placed_on_turn == Some(state.turn),
             _ => true,
         };
     }
@@ -1055,6 +1060,28 @@ pub(crate) fn remove_virus_on(installed: &mut crate::rules::InstalledRunnerCard,
 /// taken, or when one card holds them all.
 pub(crate) fn pick_virus_counters(state: &mut GameState, registry: &CardRegistry, count: u32) -> Result<Vec<(usize, u32)>, RulesError> {
     let held = virus_counters(state, registry);
+    pick_counters(state, Side::Runner, CardZoneRef::OwnInstalled, &held, count)
+}
+
+/// The Corp's scored agendas holding agenda counters, as `(score-area
+/// position, how many)` — what `Cost::AgendaCounters` takes from (Mark
+/// Yale's "any agenda counter"). The score area is where an agenda counter
+/// is kept (CR 1.9.5i: "used primarily on scored agendas").
+pub(crate) fn agenda_counters(state: &GameState) -> Vec<(usize, u32)> {
+    state.corp.scored_agendas.iter().enumerate().map(|(position, scored)| (position, scored.agenda_counters)).filter(|&(_, held)| held > 0).collect()
+}
+
+/// Which scored agendas `Cost::AgendaCounters` takes its `count` counters
+/// from, asked as `pick_virus_counters` asks.
+pub(crate) fn pick_agenda_counters(state: &mut GameState, count: u32) -> Result<Vec<(usize, u32)>, RulesError> {
+    let held = agenda_counters(state);
+    pick_counters(state, Side::Corp, CardZoneRef::OwnScoreArea, &held, count)
+}
+
+/// `count` counters taken from `held`, `(position in zone, how many)`, one
+/// counter at a time, asking `side` only where the answer changes what
+/// they are left with.
+fn pick_counters(state: &mut GameState, side: Side, zone: CardZoneRef, held: &[(usize, u32)], count: u32) -> Result<Vec<(usize, u32)>, RulesError> {
     let mut taken: Vec<(usize, u32)> = held.iter().map(|&(position, _)| (position, 0)).collect();
     let mut needed = count;
     while needed > 0 {
@@ -1078,11 +1105,11 @@ pub(crate) fn pick_virus_counters(state: &mut GameState, registry: &CardRegistry
         }
         if state.payment_answers.is_empty() {
             let question = crate::rules::payment::CardQuestion {
-                zone: CardZoneRef::OwnInstalled,
+                zone,
                 eligible: left.iter().map(|&(position, _)| position as u32).collect(),
                 remaining: needed,
             };
-            return Err(RulesError::PaymentChoiceNeeded { side: Side::Runner, amount: count, question: crate::rules::payment::Ask::Card(question) });
+            return Err(RulesError::PaymentChoiceNeeded { side, amount: count, question: crate::rules::payment::Ask::Card(question) });
         }
         let answer = state.payment_answers.remove(0) as usize;
         let Some(slot) = taken.iter_mut().find(|(position, _)| *position == answer).filter(|_| left.iter().any(|&(position, _)| position == answer)) else {
@@ -1285,6 +1312,14 @@ fn is_discard_pile(zone: &CardZoneRef) -> bool {
 /// card to and left the deck searched in the order the searcher saw it.
 /// The top of the stack is looked at, not searched, so it is never a
 /// deck to shuffle here.
+/// Whether a selection by `chooser` over `source` through `filter` is a
+/// search of their own deck (CR 8.7): the whole deck looked at, and
+/// shuffled after (8.7.3) — `GameEvent::DeckSearched`, heard by
+/// Personality Profiles' "whenever the Runner searches the stack".
+pub(crate) fn searches_own_deck(source: &CardZoneRef, filter: &CardFilter, shuffle_after: bool) -> bool {
+    shuffle_after && matches!(source, CardZoneRef::OwnRAndD | CardZoneRef::OwnStack) && !filter.names_a_position()
+}
+
 pub(crate) fn shuffle_decks(state: &mut GameState, chooser: Side, source: &CardZoneRef, destination: Option<&CardZoneRef>) {
     let is_deck = |zone: &CardZoneRef| matches!(zone, CardZoneRef::OwnRAndD | CardZoneRef::OwnStack | CardZoneRef::OpponentDeck);
     for zone in std::iter::once(source).chain(destination).filter(|zone| is_deck(zone)) {
@@ -1735,6 +1770,7 @@ pub(crate) fn resolve_confirm_card_selection(
     let PendingDecision::ChooseCards {
         side,
         source,
+        filter,
         min,
         max,
         reveal,
@@ -1746,7 +1782,6 @@ pub(crate) fn resolve_confirm_card_selection(
         prompting_card,
         source_install,
         resume,
-        ..
     } = state.pending_decision.take().ok_or(RulesError::NoPendingDecision)?
     else {
         return Err(RulesError::NoPendingDecision);
@@ -2010,6 +2045,15 @@ pub(crate) fn resolve_confirm_card_selection(
         dispatcher::emit(state, registry, &mut events, batch)?;
     }
     ability::emit_grip_or_stack_batch(state, registry, &mut events)?;
+    // The search is heard once the selection's own trashes and batches
+    // have been: what it sets off (Personality Profiles' random trash
+    // from the grip) dispatches its own events, and recorded among the
+    // selection's ones above it would have been dispatched again.
+    if searches_own_deck(&source, &filter, shuffle_after) {
+        let mut searched = Vec::new();
+        dispatcher::emit(state, registry, &mut searched, GameEvent::DeckSearched { side })?;
+        events.extend(searched);
+    }
 
     if let Some(effect) = then {
         // "The chosen cards", for a second chooser (Jua).
@@ -2353,6 +2397,7 @@ fn install_parked(
     // before the card lands and changes the count.
     let install_takes = match (pending_install.pay_cost, slot) {
         (true, InstallSlot::Ice) => crate::rules::continuous::ice_install_cost(state, registry, server).min(pending_install.discount),
+        (true, InstallSlot::Root) => crate::rules::continuous::additional_install_cost_in(state, registry, server).min(pending_install.discount),
         _ => 0,
     };
     let mut events = Vec::new();
