@@ -854,6 +854,12 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
+        Effect::Used(requirement) => {
+            let side = acting_side(acting_card, registry);
+            consume_requirement(state, requirement, side, ctx);
+            Ok(Vec::new())
+        }
+
         Effect::TrashCard(target) => {
             // Hosted, uninstalled cards (Bling's) have no prevention
             // window of their own and no single owner: each goes to its
@@ -1076,7 +1082,7 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
-        Effect::InstallFromZoneIgnoringCost { card_id, origin_zone, into, slot, insert_after } => {
+        Effect::InstallFromZoneIgnoringCost { card_id, origin_zone, into, slot, insert_after, rez, then } => {
             // Archives is a `Vec<ArchivedCard>` while HQ is a plain
             // `Vec<CardId>`, so the removal is done per-zone rather than
             // through one shared `&mut Vec<CardId>` handle. Orientation is
@@ -1157,6 +1163,13 @@ pub fn evaluate_effect(
                     from_hq: matches!(origin_zone, crate::dsl::CardZoneRef::OwnHq),
                 },
             )?;
+            // Howler's "install **and rez**", ignoring all costs.
+            if *rez && state.find_corp_install(install_id).is_some_and(|installed| !installed.rezzed) {
+                events.extend(evaluate_effect(state, &Effect::RezInstalled { install: install_id, pay_cost: false, discount: Amount::Fixed(0), refuse_unaffordable: false }, ctx, registry)?);
+            }
+            if let Some(then) = then {
+                events.extend(evaluate_effect(state, &(**then).clone().with_each_install(install_id), ctx, registry)?);
+            }
             Ok(events)
         }
 
@@ -3136,7 +3149,7 @@ pub fn evaluate_effect(
             // is not on the parked choice.
             let cost = match ctx.triggering_event {
                 Some(_) => cost.clone().filled(&|amount| match amount {
-                    Amount::TriggeringCardPrintedCost | Amount::TriggeringCardTrashCost | Amount::TriggeringAgendaAdvancementRequirement => {
+                    Amount::TriggeringCardPrintedCost | Amount::TriggeringCardTrashCost | Amount::TriggeringAgendaAdvancementRequirement | Amount::PassedIceStrength => {
                         Some(resolve_amount(amount, ctx, state, registry))
                     }
                     _ => None,
@@ -3148,6 +3161,13 @@ pub fn evaluate_effect(
             // takes it out again for whoever did not draw it.
             let (if_paid, if_declined) = match ctx.triggering_event {
                 Some(GameEvent::DrewCard { side: drawer, card }) => ((**if_paid).clone().with_drawn_card(*drawer, card), (**if_declined).clone().with_drawn_card(*drawer, card)),
+                // Prey's "If you do, trash **that ice**": the ice the pass
+                // was of, by its install, as a choice's options are
+                // (`Effect::with_passed_ice`).
+                Some(GameEvent::IcePassed { server, position, .. }) => {
+                    let ice = state.active_run.as_ref().filter(|run| run.server == *server).and_then(|run| run.ice.get(*position as usize)).map(|ice| ice.install_id);
+                    ((**if_paid).clone().with_passed_ice(*server, *position, ice), (**if_declined).clone().with_passed_ice(*server, *position, ice))
+                }
                 _ => ((**if_paid).clone(), (**if_declined).clone()),
             };
             state.pending_paid_choice = Some(PendingPaidChoice {
@@ -3198,6 +3218,7 @@ pub fn evaluate_effect(
                         Amount::TriggeringCardPrintedCost
                         | Amount::TriggeringCardTrashCost
                         | Amount::PassedIceSubroutinesResolved
+                        | Amount::PassedIceStrength
                         | Amount::UnbrokenSubroutinesThatEncounter
                         | Amount::RevealedBid(_)
                         | Amount::TriggeringAgendaAdvancementRequirement
@@ -3453,6 +3474,7 @@ pub fn evaluate_effect(
             last_run_server,
             chosen_server,
             ignore_additional_costs,
+            server_of,
         } => {
             // A parked `ChooseServer` is only ever resolved by
             // `run::start_run`, which rejects a second concurrent run — so
@@ -3479,6 +3501,10 @@ pub fn evaluate_effect(
             // A Corp card's offer is made in the Corp's turn (An Offer You
             // Can't Refuse, `run::start_run_for_the_corp`).
             let for_the_corp = acting_card.and_then(|card| registry.get(card)).is_some_and(|card| card.side == Side::Corp);
+            // Rigged Results' run is made only if it can be (`server_of`).
+            if server_of.is_some() && run::check_run_may_begin_by(state, registry, for_the_corp).is_err() {
+                return Ok(Vec::new());
+            }
             run::check_run_may_begin_by(state, registry, for_the_corp)?;
             // Narrow the offer here, for the same reason as the check
             // above: an offer with nothing in it is a decision nothing can
@@ -3511,7 +3537,21 @@ pub fn evaluate_effect(
                 }
                 Ok(Some(vec![server]))
             };
-            let allowed_servers = if *last_run_server {
+            // "Run that server" (Rigged Results): the server the chosen ice
+            // protects, or no run at all when it cannot be run — the
+            // choice that named it is answered after a secret spend was
+            // revealed, and refusing it would leave nothing to do.
+            if let Some(ice) = server_of {
+                let Some(server) = state.find_corp_install(*ice).filter(|installed| installed.slot == crate::rules::InstallSlot::Ice).map(|installed| installed.server) else {
+                    return Ok(Vec::new());
+                };
+                if runnable(server).is_err() || (!*ignore_additional_costs && !run::may_pay_run_cost(state, registry, server)) {
+                    return Ok(Vec::new());
+                }
+            }
+            let allowed_servers = if let Some(ice) = server_of {
+                state.find_corp_install(*ice).map(|installed| vec![installed.server])
+            } else if *last_run_server {
                 runnable(state.last_completed_run.as_ref().map(|run| run.server).ok_or(RulesError::NoServerLeftToRun)?)?
             } else if *chosen_server {
                 // "Run the chosen server" (Tracker): the server the card chose.
@@ -5611,7 +5651,8 @@ pub(crate) fn cost_is_affordable(
         Cost::ForfeitSelf => side == Side::Corp && forfeitable_self(state, ctx).is_some(),
         // The same scan the payment picks from.
         Cost::Trash { from, filter, count, .. } => {
-            *count == Cost::ALL || crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install, ctx.acting_card).len() >= *count as usize
+            let count = resolve_amount(count, ctx, state, registry);
+            count == Cost::ALL || crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install, ctx.acting_card).len() >= count as usize
         }
         Cost::AddInstalledToHand { filter, count } | Cost::ShuffleInstalledIntoDeck { filter, count } | Cost::AddInstalledToBottomOfDeck { filter, count } | Cost::RemoveInstalledFromGame { filter, count } => {
             let zone = crate::dsl::CardZoneRef::OwnInstalled;
@@ -5925,7 +5966,8 @@ pub(crate) fn pay_cost_ctx(
         Cost::Trash { from, filter, count, reveal } => {
             let eligible = crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install, ctx.acting_card);
             // "All": every card that matches, none asked about.
-            let count = if *count == Cost::ALL { eligible.len() as u32 } else { *count };
+            let count = resolve_amount(count, ctx, state, registry);
+            let count = if count == Cost::ALL { eligible.len() as u32 } else { count };
             if eligible.len() < count as usize {
                 return Err(RulesError::NotEnoughCardsToTrash { required: count, available: eligible.len() as u32 });
             }
@@ -7347,6 +7389,15 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             Some(GameEvent::IcePassed { subroutines_resolved, .. }) => *subroutines_resolved,
             _ => 0,
         },
+        Amount::PassedIceStrength => match ctx.triggering_event {
+            Some(GameEvent::IcePassed { server, position, .. }) => state
+                .active_run
+                .as_ref()
+                .filter(|run| run.server == *server)
+                .and_then(|run| run.ice.get(*position as usize))
+                .map_or(0, |ice| crate::rules::continuous::ice_strength(state, registry, ice).max(0) as u32),
+            _ => 0,
+        },
         Amount::UnbrokenSubroutinesThatEncounter => match ctx.triggering_event {
             Some(GameEvent::EncounterEnded { unbroken, .. }) => *unbroken,
             _ => 0,
@@ -7544,6 +7595,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::RunnerTags => crate::rules::continuous::tags(state, registry),
         Amount::BadPublicity => crate::rules::continuous::bad_publicity(state, registry),
         Amount::CoreDamageTaken => state.runner.brain_damage as u32,
+        Amount::RunsOnThisServerThisTurn => acting_corp_install(state, ctx).map_or(0, |installed| state.runner.servers_run_this_turn.iter().filter(|server| **server == installed.server).count() as u32),
         Amount::IceProtectingThisServer => acting_corp_install(state, ctx).map_or(0, |installed| {
             state.corp.installed.iter().filter(|other| other.server == installed.server && other.slot == InstallSlot::Ice).count() as u32
         }),

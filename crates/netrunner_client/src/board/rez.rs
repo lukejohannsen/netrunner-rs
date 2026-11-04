@@ -1,6 +1,6 @@
 //! A rez that gives the card nothing to do: a trap's.
 //!
-//! Aggressive Secretary, Byte!, Cerebral Overwriter, Chekist Scion, Esca, Ganked!, Ghost Branch, Increased Drop Rates, Project Junebug, Snare! and Urtica Cipher do their work when the Runner accesses
+//! Aggressive Secretary, Byte!, Cerebral Overwriter, Chekist Scion, Esca, Ganked!, Ghost Branch, Increased Drop Rates, Project Junebug, Shi.Kyū, Snare! and Urtica Cipher do their work when the Runner accesses
 //! them, face down — the subject of a moment hears it wherever it is (the
 //! Listener Rule), and an access interaction resolves on the card as
 //! accessed. Rezzing one gains the Corp nothing and shows the Runner what
@@ -67,7 +67,7 @@ mod tests {
         let registry = crate::decks::sample_deck_registry();
         let mut idle: Vec<&str> = registry.iter().filter(|card| card.side == Side::Corp && card.card_type != CardType::Agenda && card.card_type != CardType::Identity && gains_nothing(card)).map(|card| card.id.0.as_str()).collect();
         idle.sort_unstable();
-        assert_eq!(idle, ["aggressive_secretary", "behold", "breached_dome", "byte", "cerebral_overwriter", "chekist_scion", "disposable_hq", "edge_of_world", "esca", "forced_connection", "ganked", "ghost_branch", "honeyfarm", "increased_drop_rates", "intake", "mr_hendrik", "neurostasis", "news_team", "nightmare_archive", "plan_b", "prisec", "product_placement", "project_junebug", "psychic_field", "shattered_remains", "shock", "snare", "space_camp", "tempus", "toshiyuki_sakai", "urtica_cipher"]);
+        assert_eq!(idle, ["aggressive_secretary", "behold", "breached_dome", "byte", "cerebral_overwriter", "chekist_scion", "disposable_hq", "edge_of_world", "esca", "forced_connection", "ganked", "ghost_branch", "honeyfarm", "increased_drop_rates", "intake", "mr_hendrik", "neurostasis", "news_team", "nightmare_archive", "plan_b", "prisec", "product_placement", "project_junebug", "psychic_field", "shattered_remains", "shi_kyu", "shock", "snare", "space_camp", "tempus", "toshiyuki_sakai", "urtica_cipher"]);
     }
 
     /// The Corp's view of an unrezzed Urtica Cipher (install 1) and an

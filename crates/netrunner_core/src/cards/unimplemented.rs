@@ -188,7 +188,6 @@ pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Fear the Masses* (`fear_the_masses`): tranche F6 of the FFG plan.
 pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("rigged_results", "Rigged Results"),
 ];
 
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.
@@ -196,7 +195,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("surveillance_sweep", "Surveillance Sweep"),
     ("apex_invasive_predator", "Apex: Invasive Predator"),
     ("apocalypse", "Apocalypse"),
-    ("prey", "Prey"),
     ("adam_compulsive_hacker", "Adam: Compulsive Hacker"),
 ];
 
@@ -254,12 +252,10 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Honor and Profit* (`honor_and_profit`): tranche F8 of the FFG plan.
 pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("shi_kyu", "Shi.Kyū"),
 ];
 
 /// *Creation and Control* (`creation_and_control`): tranche F9 of the FFG plan.
 pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("howler", "Howler"),
     ("awakening_center", "Awakening Center"),
 ];
 
@@ -273,7 +269,6 @@ pub(crate) const ST_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Mala Tempora* (`mala_tempora`): tranche F10 of the FFG plan.
 pub(crate) const MT_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("sundew", "Sundew"),
 ];
 
 /// *True Colors* (`true_colors`): tranche F10 of the FFG plan.
@@ -323,5 +318,4 @@ pub(crate) const MO_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *System Core 2019* (`system_core_2019`): tranche F12 of the FFG plan.
 pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("sundew", "Sundew"),
 ];

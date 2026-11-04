@@ -386,6 +386,26 @@ fn apply_action_once(
     if state.active_run.is_some() && matches!(action_kind, ActionKind::Action) {
         return Err(RulesError::ActionBlockedByActiveRun);
     }
+    // The [click] an action costs is paid before it does anything, and a
+    // checkpoint follows (CR 1.16.3), so "the first time the Runner spends
+    // 1 or more [click] during their turn" (Sundew) resolves ahead of the
+    // run the action begins — the run Sundew's second sentence is about.
+    // Announced for the turn's first action alone: "the first time" is
+    // all any card prints of it, and a later action would only cost a
+    // clone of the state. Every action `counts_as_turn_action` counts
+    // costs at least one [click] (CR 5.2.1); one the handler refuses
+    // refuses the whole action, this with it.
+    let spent;
+    let (state, mut spent_events) = match finishes_action {
+        Some((side, _)) if state.this_turn.times(crate::dsl::Trigger::OnClicksSpent) == 0 => {
+            let mut next = state.clone();
+            let mut events = Vec::new();
+            dispatcher::emit(&mut next, registry, &mut events, GameEvent::ClicksSpentOnAction { side })?;
+            spent = next;
+            (&spent, events)
+        }
+        _ => (state, Vec::new()),
+    };
     let resolved = match action {
         PlayerAction::GainCreditClick { side } => gain_credit_click(state, registry, side),
         PlayerAction::DrawCardClick { side } => draw_card_click(state, registry, side),
@@ -476,6 +496,11 @@ fn apply_action_once(
     // A no-op in the overwhelmingly common case: the queue is empty unless
     // a trigger actually parked something.
     let (mut next, mut events) = resolved;
+    // Recorded beside the [click] it announces.
+    if !spent_events.is_empty() {
+        let at = usize::from(matches!(events.first(), Some(GameEvent::ClickSpent { .. })));
+        events.splice(at..at, spent_events.drain(..));
+    }
     // The Runner's [click] this action took while a run was under way —
     // spent on a bioroid's subroutine, lost to Eli 1.0's cost — once for
     // the action (Seidr Laboratories). A run the action began is not under
@@ -4406,6 +4431,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::ClicksSpentOnAction { side: Side::Corp },
                 GameEvent::AboutToResolve { what: crate::rules::state::WouldHappen::Draw { side: Side::Corp, amount: 1 } },
                 GameEvent::CardDrawn { side: Side::Corp },
                 GameEvent::DrewCard { side: Side::Corp, card: CardId("top".to_string()) },
@@ -4437,6 +4463,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::ClicksSpentOnAction { side: Side::Corp },
                 GameEvent::CreditsGained {
                     side: Side::Corp,
                     amount: 1
@@ -4464,6 +4491,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::ClicksSpentOnAction { side: Side::Runner },
                 GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Draw { side: Side::Runner, amount: 1 } },
                 GameEvent::CardDrawn { side: Side::Runner },
                 GameEvent::DrewCard { side: Side::Runner, card: CardId("stack_card_9".to_string()) },
@@ -4516,6 +4544,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::ClicksSpentOnAction { side: Side::Runner },
                 GameEvent::BasicDrawActionTaken { side: Side::Runner, card: None },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Draw },
             ]
@@ -4564,6 +4593,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::ClicksSpentOnAction { side: Side::Corp },
                 GameEvent::CardInstalled {
                     side: Side::Corp,
                     install: next.corp.installed[0].install_id,
@@ -5157,6 +5187,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::ClicksSpentOnAction { side: Side::Runner },
                 GameEvent::RunInitiated { server: ServerId::Hq },
                 // The initiation's paid ability window (CR 6.9.1e).
                 GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
@@ -5781,6 +5812,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::ClicksSpentOnAction { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
                 GameEvent::EventPlayed { side: Side::Runner, card: card_id.clone(), paid_with: Vec::new(), x: None },
                 GameEvent::FinishedResolving { side: Side::Runner, card: card_id.clone() },
@@ -5818,6 +5850,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::ClicksSpentOnAction { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
                 GameEvent::EventPlayed { side: Side::Runner, card: card_id, paid_with: Vec::new(), x: None },
                 GameEvent::TriggerFired { card: CardId("sure_gamble".to_string()), trigger: crate::dsl::Trigger::OnPlay },
@@ -5924,6 +5957,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::ClicksSpentOnAction { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 5 },
                 GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false, x: None, forfeited: None, in_place_of: None },
                 GameEvent::TriggerFired { card: CardId("hedge_fund".to_string()), trigger: crate::dsl::Trigger::OnPlay },
@@ -6066,6 +6100,7 @@ mod tests {
             play_events,
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::ClicksSpentOnAction { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 0 },
                 GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false, x: None, forfeited: None, in_place_of: None },
                 GameEvent::TriggerFired { card: CardId("sea_source".to_string()), trigger: crate::dsl::Trigger::OnPlay },
@@ -6130,6 +6165,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::ClicksSpentOnAction { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 0 },
                 GameEvent::HardwareInstalled { side: Side::Runner, card: card_id, credits_paid: 0, from_heap: false, from_grip: true },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Install },
@@ -6196,6 +6232,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::ClicksSpentOnAction { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 0 },
                 GameEvent::ProgramInstalled {
                     side: Side::Runner,
@@ -7200,6 +7237,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::ClicksSpentOnAction { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 1 },
                 GameEvent::CardAdvanced {
                     install: InstallId(1059),
@@ -7300,6 +7338,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::ClicksSpentOnAction { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 2 },
                 GameEvent::TagRemoved { side: Side::Runner, by: Side::Runner },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::RemoveTag },
@@ -7382,6 +7421,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::ClicksSpentOnAction { side: Side::Corp },
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::VirusCountersPurged {
@@ -8150,6 +8190,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::ClicksSpentOnAction { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 2 },
                 GameEvent::CardTrashed { side: Side::Runner, card: card_id, from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Corp), install: None, damage: None },
                 GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::TrashResource },

@@ -1379,6 +1379,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::DeckSearched { .. }
         // Every [click] spent, and on what, is public.
         | GameEvent::ThirdClickOnOneAction { .. }
+        | GameEvent::ClicksSpentOnAction { .. }
         | GameEvent::ClicksGoneDuringRun { .. }
         | GameEvent::TraceAvoided { .. }
         | GameEvent::TraceSuccessful { .. }

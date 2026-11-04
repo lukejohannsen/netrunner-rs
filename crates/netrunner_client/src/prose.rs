@@ -116,6 +116,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::TriggeringCardPrintedCost => "the printed cost of the trashed card".to_string(),
         Amount::TriggeringCardTrashCost => "the trashed card's trash cost".to_string(),
         Amount::PassedIceSubroutinesResolved => "the number of subroutines that resolved on the passed ice".to_string(),
+        Amount::PassedIceStrength => "the strength of the passed ice".to_string(),
         Amount::UnbrokenSubroutinesThatEncounter => "the number of unbroken subroutines on the encountered ice".to_string(),
         Amount::RevealedBid(side) => format!("the credits {} revealed they had secretly spent", who(*side)),
         Amount::RemotesWithRootCards { protected: true } => "the number of remote servers with a card in the root and protected by ice".to_string(),
@@ -149,6 +150,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::InHeapWithSubtype(subtype) => format!("the number of {} cards in the heap", subtype.printed().to_lowercase()),
         Amount::InScoreAreaWithSubtype(subtype) => format!("the number of {} agendas in your score area", subtype.printed().to_lowercase()),
         Amount::IceProtectingThisServer => "the number of pieces of ice protecting this server".to_string(),
+        Amount::RunsOnThisServerThisTurn => "the number of runs on this server this turn".to_string(),
         Amount::IceProtecting(server) => format!("the number of pieces of ice protecting {}", describe_server(*server)),
         Amount::OtherUnrezzedIce => "the number of other unrezzed pieces of ice".to_string(),
         Amount::Link => "the Runner's link".to_string(),
@@ -233,8 +235,9 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::Forfeit(n) => format!("forfeit {}", plural(*n, "agenda", "agendas")),
         Cost::ForfeitSelf => "forfeit this agenda".to_string(),
         Cost::Derez { count, .. } => format!("derez {}", plural(*count, "card", "cards")),
-        Cost::Trash { from, count: Cost::ALL, .. } => format!("trash all cards from {}", describe_zone(from)),
-        Cost::Trash { from, count, .. } => format!("trash {} from {}", plural(*count, "card", "cards"), describe_zone(from)),
+        Cost::Trash { from, count: Amount::Fixed(Cost::ALL), .. } => format!("trash all cards from {}", describe_zone(from)),
+        Cost::Trash { from, count: Amount::Fixed(count), .. } => format!("trash {} from {}", plural(*count, "card", "cards"), describe_zone(from)),
+        Cost::Trash { from, count, .. } => format!("trash {} cards from {}", describe_amount(count), describe_zone(from)),
         Cost::TakeTags(n) => format!("take {}", plural(*n, "tag", "tags")),
         Cost::TakeBadPublicity(n) => format!("take {n} bad publicity"),
         Cost::RemoveCounters(n) => format!("remove {}", plural(*n, "counter", "counters")),
@@ -545,6 +548,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             };
             format!("{} chooses {how_many} from {}", who(*side), describe_zone(source))
         }
+        Effect::PromptChooseServer { server_of: Some(_), .. } => "run the server the chosen ice protects".to_string(),
         Effect::PromptChooseServer { .. } => "choose a server".to_string(),
         Effect::RezInstalled { .. } => "rez a card".to_string(),
         Effect::TakeAllCountersAsCredits(side) => format!("{} takes the counters as credits", who(*side)),
@@ -563,6 +567,11 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::SwapAccessedWithHq { access: Some(_), .. } => "access the new card".to_string(),
         Effect::SwapAccessedWithHq { .. } => "swap the accessed card with the chosen agenda or asset from HQ, keeping its advancement tokens; the Runner may choose not to access the new card".to_string(),
         Effect::TakeAdditionalTurn => "take an additional turn after this one".to_string(),
+        Effect::InstallFromZoneIgnoringCost { rez: true, then, .. } => match then {
+            Some(then) => format!("install and rez a card, ignoring all costs; then {}", describe_effect(then, registry)),
+            None => "install and rez a card, ignoring all costs".to_string(),
+        },
+        Effect::InstallFromZoneIgnoringCost { then: Some(then), .. } => format!("install a card, ignoring its cost; then {}", describe_effect(then, registry)),
         Effect::InstallFromZoneIgnoringCost { .. } => "install a card, ignoring its cost".to_string(),
         Effect::PromptInstallCorpCard { new_remote: true, .. } => "install a card in a new remote server".to_string(),
         Effect::PromptInstallCorpCard { not_in_root_of: Some(_), .. } => "install a card, not in the root of this server".to_string(),
@@ -879,6 +888,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::RevealHand(Side::Corp) => "reveal HQ".to_string(),
         Effect::RevealHand(Side::Runner) => "reveal the grip".to_string(),
         Effect::Expose => "expose it".to_string(),
+        // Prey's "once": spent when the cost is paid, never when declined.
+        Effect::Used(requirement) => format!("this counts as its use ({})", humanize(format!("{requirement:?}")).to_lowercase()),
         Effect::Remember { what: netrunner_core::dsl::Remembered::SelectedCard, until } => format!("remember the chosen card {}", duration(until)),
         Effect::Remember { what: netrunner_core::dsl::Remembered::ApproachedIce, until } => format!("remember the ice being approached {}", duration(until)),
         Effect::Remember { what: netrunner_core::dsl::Remembered::EncounteredIce, until } => format!("remember the ice being encountered {}", duration(until)),

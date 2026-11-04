@@ -1006,6 +1006,13 @@ pub enum GameEvent {
     /// returns, beside `ThirdClickOnOneAction`, off the action's own
     /// `ClickSpent` and `ClicksLost`. Public, as each of those is.
     ClicksGoneDuringRun { side: Side, amount: u32 },
+    /// `side` has paid the [click] an action costs — Sundew's "the first
+    /// time the Runner spends 1 or more [click] during their turn"
+    /// (`Trigger::OnClicksSpent`). Announced once for the action, ahead of
+    /// what the action does (CR 1.16.3), by `engine::apply_action` for each
+    /// action `counts_as_turn_action` counts, every one of which costs at
+    /// least one [click] (CR 5.2.1). Public, as each `ClickSpent` is.
+    ClicksSpentOnAction { side: Side },
     /// Fired only by `engine::draw_card_click` — the *basic* click-to-draw
     /// action specifically, not `Effect::DrawCards` (e.g. Sure Gamble
     /// still only emits `CardDrawn`). Feeds `Trigger::OnBasicDrawAction`.
@@ -1162,7 +1169,7 @@ impl GameEvent {
             | GameEvent::AccessReplaced { .. } | GameEvent::CreditsLost { .. } | GameEvent::ClicksLost { .. }
             | GameEvent::ClicksGained { .. }
             | GameEvent::AgendaScored { .. } | GameEvent::AboutToResolve { .. } | GameEvent::AboutToBeUninstalled { .. }
-            | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. } | GameEvent::AgendaCounterSpent { .. } | GameEvent::DeckSearched { .. } | GameEvent::ThirdClickOnOneAction { .. } | GameEvent::ClicksGoneDuringRun { .. }
+            | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. } | GameEvent::AgendaCounterSpent { .. } | GameEvent::DeckSearched { .. } | GameEvent::ThirdClickOnOneAction { .. } | GameEvent::ClicksGoneDuringRun { .. } | GameEvent::ClicksSpentOnAction { .. }
             | GameEvent::BasicDrawActionTaken { .. } | GameEvent::BasicCreditActionTaken { .. } | GameEvent::MandatoryDrawMade { .. }
             | GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. }
             | GameEvent::NumberChoiceOffered { .. } | GameEvent::NumberChosen { .. } | GameEvent::CardNameChosen { .. }

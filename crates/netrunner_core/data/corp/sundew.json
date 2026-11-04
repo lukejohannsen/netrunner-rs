@@ -1,0 +1,90 @@
+{
+  "id": "sundew",
+  "title": "Sundew",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnClicksSpent",
+      "when": {
+        "Whose": "Runner"
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        }
+      ],
+      "text": "The first time the Runner spends 1 or more [click] during their turn, gain 2[credit]."
+    },
+    {
+      "trigger": "OnRunStart",
+      "subject": "This",
+      "requirement": {
+        "And": [
+          {
+            "AmountAtLeast": [
+              {
+                "TimesThisTurnWhen": {
+                  "trigger": "OnClicksSpent",
+                  "when": {
+                    "Whose": "Runner"
+                  }
+                }
+              },
+              1
+            ]
+          },
+          {
+            "And": [
+              {
+                "Not": {
+                  "AmountAtLeast": [
+                    {
+                      "TimesThisTurn": "OnActionFinished"
+                    },
+                    1
+                  ]
+                }
+              },
+              {
+                "Not": {
+                  "AmountAtLeast": [
+                    "RunsOnThisServerThisTurn",
+                    2
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Credits": 2
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "pay 2[credit]",
+            "if_able": true
+          }
+        }
+      ],
+      "text": "If those [click] were spent to take an action, the first time during that action a run on this server begins, pay 2[credit]."
+    }
+  ],
+  "built_from": 25092,
+  "is_playable": true
+}

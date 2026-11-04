@@ -357,6 +357,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::MarkIdentified { .. } => Vec::new(),
         GameEvent::BasicDrawActionTaken { side, .. } => vec![moment(Trigger::OnBasicDrawAction, &About::Nothing, Some(*side))],
         GameEvent::BasicCreditActionTaken { side } => vec![moment(Trigger::OnBasicCreditAction, &About::Nothing, Some(*side))],
+        GameEvent::ClicksSpentOnAction { side } => vec![moment(Trigger::OnClicksSpent, &About::Nothing, Some(*side))],
         GameEvent::MandatoryDrawMade { side } => vec![moment(Trigger::OnMandatoryDraw, &About::Nothing, Some(*side))],
 
         GameEvent::RunInitiated { server } => {

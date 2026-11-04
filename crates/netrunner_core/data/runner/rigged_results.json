@@ -1,0 +1,57 @@
+{
+  "id": "rigged_results",
+  "title": "Rigged Results",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PsiGame": {
+            "guess": "Amount",
+            "on_match": {
+              "Sequence": []
+            },
+            "on_differ": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OpponentInstalled",
+                "filter": "Ice",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "AsThisCard": {
+                    "PromptChooseServer": {
+                      "chooser": "Runner",
+                      "rez_cost_delta": 0,
+                      "bonus_run_credits": 0,
+                      "server_of": 0,
+                      "on_start": {
+                        "LaterThisTurn": {
+                          "when": "OnEncounter",
+                          "filter": {
+                            "Card": "ChosenThisWay"
+                          },
+                          "this_run": true,
+                          "effect": "BypassEncounteredIce"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Secretly spend up to 2[credit]. The Corp guesses how much you spent. Reveal spent credits. If the Corp guessed incorrectly, choose a piece of ice protecting a server and run that server. The first time during this run you encounter the chosen ice, bypass it."
+    }
+  ],
+  "built_from": 10102,
+  "is_playable": true
+}
