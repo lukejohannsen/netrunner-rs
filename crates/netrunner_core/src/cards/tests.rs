@@ -60736,3 +60736,315 @@ mod engine_words_stage_34 {
         assert_eq!(rnd, vec![id("hedge_fund"), id("pad_campaign")], "the rest back in R&D");
     }
 }
+
+mod engine_words_stage_35 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.next_install_id = 100;
+        state
+    }
+
+    fn ice(card: &str, install: u32, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    fn root(card: &str, install: u32, server: ServerId, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Root, rezzed, ..Default::default() }
+    }
+
+    /// Passes for whoever holds priority while something is parked on the
+    /// point of happening.
+    fn pass_the_window(mut state: GameState, registry: &CardRegistry) -> GameState {
+        while state.pending_prevention.is_some() && state.pending_decision.is_none() {
+            let side = crate::rules::current_actor(&state).expect("somebody is asked");
+            state = act(&state, registry, PlayerAction::PassPriority { side });
+        }
+        state
+    }
+
+    /// Runs HQ and passes the approach's window to the encounter with its
+    /// outermost ice.
+    fn encounter_hq(state: GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach");
+        let state = act(&state, registry, PlayerAction::PassPriority { side: Side::Runner });
+        let state = act(&state, registry, PlayerAction::PassPriority { side: Side::Corp });
+        assert_eq!(state.active_run.as_ref().map(|run| run.phase), Some(crate::rules::RunPhase::EncounterIce));
+        state
+    }
+
+    /// The Runner at the movement phase's jack-out decision on HQ, past an
+    /// Ice Wall, with Labyrinthine Servers in the Corp's score area holding
+    /// `counters` power counters.
+    fn at_the_jack_out(counters: u32, registry: &CardRegistry) -> GameState {
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("ice_wall", 5, ServerId::Hq)];
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda { install_id: InstallId(60), agenda_counters: counters, ..crate::rules::ScoredAgenda::plain(id("labyrinthine_servers")) }];
+        let mut state = encounter_hq(state, registry);
+        // Ice Wall's "End the run" taken off, so the encounter ends with the
+        // run still going and the movement phase offers a jack-out.
+        state.active_run.as_mut().expect("run").ice[0].subroutines.clear();
+        for _ in 0..8 {
+            if crate::rules::legal_actions(&state, registry).contains(&PlayerAction::JackOut) {
+                return state;
+            }
+            let side = crate::rules::current_actor(&state).expect("somebody acts");
+            state = match &state.paid_ability_window {
+                Some(_) => act(&state, registry, PlayerAction::PassPriority { side }),
+                None => act(&state, registry, PlayerAction::ContinueRun),
+            };
+        }
+        panic!("never offered a jack-out: {:?}", state.active_run.as_ref().map(|run| run.phase));
+    }
+
+    /// "When you score this agenda, place 2 power counters on it."
+    #[test]
+    fn labyrinthine_servers_scores_with_two_counters() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 5, ..root("labyrinthine_servers", 7, ServerId::Remote(0), false) }];
+        let state = pass_until_settled(act(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(7) }), &registry).0;
+        assert_eq!(state.corp.scored_agendas.first().map(|scored| scored.agenda_counters), Some(2));
+    }
+
+    /// "[interrupt] → Hosted power counter: Prevent the Runner from jacking
+    /// out. The Runner cannot jack out for the remainder of this run": the
+    /// jack-out is chosen, the Corp spends a counter, and the run goes on
+    /// with no jack-out left to choose.
+    #[test]
+    fn labyrinthine_servers_prevents_a_jack_out_and_forbids_it_for_the_run() {
+        let registry = registry();
+        let state = at_the_jack_out(2, &registry);
+        let asked = act(&state, &registry, PlayerAction::JackOut);
+        assert!(asked.active_run.is_some(), "not yet: the Corp is asked");
+        assert!(matches!(asked.pending_prevention.as_ref().map(|pending| &pending.what), Some(crate::rules::WouldHappen::JackOut { server: ServerId::Hq })));
+        let use_it = PlayerAction::ActivateAbility { target: InstallId(60), ability_index: 0 };
+        let mut asked = asked;
+        if crate::rules::current_actor(&asked) == Some(Side::Runner) {
+            asked = act(&asked, &registry, PlayerAction::PassPriority { side: Side::Runner });
+        }
+        assert!(crate::rules::legal_actions(&asked, &registry).contains(&use_it), "the Corp's interrupt is offered");
+        let (prevented, _) = apply_action(&asked, &registry, use_it).expect("spend a power counter");
+        let prevented = pass_the_window(prevented, &registry);
+        assert!(prevented.pending_prevention.is_none());
+        assert!(prevented.active_run.is_some(), "the run goes on");
+        assert_eq!(prevented.corp.scored_agendas[0].agenda_counters, 1);
+        assert!(!crate::rules::legal_actions(&prevented, &registry).contains(&PlayerAction::JackOut), "for the remainder of this run");
+        assert_eq!(apply_action(&prevented, &registry, PlayerAction::JackOut).err(), Some(RulesError::JackOutProhibited));
+    }
+
+    /// With no counter left, nobody can prevent it, and nobody is asked.
+    #[test]
+    fn labyrinthine_servers_with_no_counter_lets_the_runner_jack_out() {
+        let registry = registry();
+        let state = at_the_jack_out(0, &registry);
+        let out = act(&state, &registry, PlayerAction::JackOut);
+        assert!(out.active_run.is_none());
+        assert!(out.pending_prevention.is_none());
+    }
+
+    /// The Corp passing lets the jack-out happen as chosen.
+    #[test]
+    fn labyrinthine_servers_not_used_lets_the_jack_out_happen() {
+        let registry = registry();
+        let state = at_the_jack_out(2, &registry);
+        let out = pass_the_window(act(&state, &registry, PlayerAction::JackOut), &registry);
+        assert!(out.active_run.is_none(), "jacked out");
+        assert_eq!(out.corp.scored_agendas[0].agenda_counters, 2);
+    }
+
+    fn eli_at_hq_with_tyrs_hand(rezzed: bool) -> GameState {
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("eli_1_0", 5, ServerId::Hq), root("tyrs_hand", 6, ServerId::Hq, rezzed)];
+        state
+    }
+
+    /// "[trash]: Prevent 1 subroutine from being broken on a piece of
+    /// bioroid ice protecting this server": Eli 1.0's "Lose [click]: Break 1
+    /// subroutine" is spent, and the subroutine stays unbroken.
+    #[test]
+    fn tyrs_hand_prevents_a_subroutine_on_bioroid_ice_from_being_broken() {
+        let registry = registry();
+        let state = encounter_hq(eli_at_hq_with_tyrs_hand(true), &registry);
+        let clicks = state.runner.resources.clicks;
+        let lose = PlayerAction::ActivateAbility { target: InstallId(5), ability_index: 0 };
+        let mut asked = act(&state, &registry, lose);
+        assert_eq!(asked.runner.resources.clicks, Clicks(clicks.0 - 1), "the cost is paid");
+        assert!(matches!(asked.pending_prevention.as_ref().map(|pending| &pending.what), Some(crate::rules::WouldHappen::SubroutinesBroken { ice: InstallId(5), .. })));
+        if crate::rules::current_actor(&asked) == Some(Side::Runner) {
+            asked = act(&asked, &registry, PlayerAction::PassPriority { side: Side::Runner });
+        }
+        let prevent = PlayerAction::ActivateAbility { target: InstallId(6), ability_index: 0 };
+        assert!(crate::rules::legal_actions(&asked, &registry).contains(&prevent), "{:?}", crate::rules::legal_actions(&asked, &registry));
+        let done = pass_the_window(act(&asked, &registry, prevent), &registry);
+        let run = done.active_run.as_ref().expect("the run goes on");
+        assert!(run.ice[run.position].subroutines.iter().all(|subroutine| subroutine.status == crate::rules::SubroutineStatus::Pending), "nothing broken");
+        assert!(done.corp.installed.iter().all(|installed| installed.card != id("tyrs_hand")), "trashed to pay");
+        assert!(done.corp.archives.iter().any(|archived| archived.card == id("tyrs_hand")));
+    }
+
+    /// "When a subroutine would be broken on a piece of bioroid ice
+    /// protecting this server, you may rez this upgrade": heard facedown,
+    /// rezzed for 1[credit], and then used.
+    #[test]
+    fn tyrs_hand_facedown_may_rez_as_a_subroutine_would_be_broken() {
+        let registry = registry();
+        let state = encounter_hq(eli_at_hq_with_tyrs_hand(false), &registry);
+        let asked = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(5), ability_index: 0 });
+        assert_eq!(crate::rules::current_actor(&asked), Some(Side::Corp), "the Corp may rez: {:?}", asked.pending_decision);
+        let credits = asked.corp.resources.credits;
+        let rezzed = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        assert!(rezzed.corp.installed.iter().any(|installed| installed.card == id("tyrs_hand") && installed.rezzed));
+        assert_eq!(rezzed.corp.resources.credits, Credits(credits.0 - 1));
+        let mut rezzed = rezzed;
+        if crate::rules::current_actor(&rezzed) == Some(Side::Runner) {
+            rezzed = act(&rezzed, &registry, PlayerAction::PassPriority { side: Side::Runner });
+        }
+        let done = pass_the_window(act(&rezzed, &registry, PlayerAction::ActivateAbility { target: InstallId(6), ability_index: 0 }), &registry);
+        let run = done.active_run.as_ref().expect("the run goes on");
+        assert_eq!(run.ice[run.position].subroutines[0].status, crate::rules::SubroutineStatus::Pending);
+
+        // Declined, nothing prevents it, and the break is made.
+        let declined = pass_the_window(act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }), &registry);
+        let run = declined.active_run.as_ref().expect("the run goes on");
+        assert_eq!(run.ice[run.position].subroutines[0].status, crate::rules::SubroutineStatus::Broken);
+    }
+
+    /// Ice that is not a bioroid, or in another server, is no Tyr's Hand's:
+    /// the break is made with nobody asked.
+    #[test]
+    fn tyrs_hand_ignores_a_break_on_other_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![id("corroder")];
+        state.corp.installed = vec![ice("ice_wall", 5, ServerId::Hq), root("tyrs_hand", 6, ServerId::Hq, true)];
+        let state = act(&state, &registry, PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false, host: None });
+        let corroder = state.runner.rig.iter().find(|installed| installed.card == id("corroder")).expect("installed").install_id;
+        let state = encounter_hq(state, &registry);
+        let broken = act(&state, &registry, PlayerAction::ActivateAbility { target: corroder, ability_index: 1 });
+        assert!(broken.pending_prevention.is_none(), "not bioroid ice");
+        let run = broken.active_run.as_ref().expect("run");
+        assert_eq!(run.ice[run.position].subroutines[0].status, crate::rules::SubroutineStatus::Broken);
+
+        let mut elsewhere = eli_at_hq_with_tyrs_hand(true);
+        elsewhere.corp.installed[1].server = ServerId::RnD;
+        let state = encounter_hq(elsewhere, &registry);
+        let broken = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(5), ability_index: 0 });
+        assert!(broken.pending_prevention.is_none(), "not protecting its server");
+    }
+
+    /// A Runner breaking a remote's root with Toshiyuki Sakai in it, two
+    /// advancement tokens on him, and `hq` in HQ.
+    fn accessing_toshiyuki(hq: &[&str], registry: &CardRegistry) -> GameState {
+        let mut state = runner_turn();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 2, ..root("toshiyuki_sakai", 7, ServerId::Remote(0), true) }];
+        state.corp.hq = hq.iter().map(|card| id(card)).collect();
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("to the server");
+        act(&state, registry, PlayerAction::CompleteRun)
+    }
+
+    /// "You may swap him with an agenda or asset from HQ. The new agenda or
+    /// asset is installed unrezzed, and keeps all advancement tokens on
+    /// Toshiyuki Sakai": an operation is not offered, and the agenda takes
+    /// his place and tokens while he goes to HQ.
+    #[test]
+    fn toshiyuki_sakai_swaps_himself_with_an_agenda_from_hq() {
+        let registry = registry();
+        let state = accessing_toshiyuki(&["hedge_fund", "project_atlas"], &registry);
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { side: Side::Corp, .. })), "{:?}", state.pending_decision);
+        assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).is_err(), "an operation is not an agenda or asset");
+        let state = act(&state, &registry, PlayerAction::ToggleCardSelection { position: 1 });
+        let state = act(&state, &registry, PlayerAction::ConfirmCardSelection);
+        let atlas = state.corp.installed.iter().find(|installed| installed.card == id("project_atlas")).expect("installed in his place");
+        assert_eq!((atlas.server, atlas.rezzed, atlas.advancement_tokens), (ServerId::Remote(0), false, 2));
+        assert!(state.corp.installed.iter().all(|installed| installed.card != id("toshiyuki_sakai")));
+        assert!(state.corp.hq.contains(&id("toshiyuki_sakai")), "he goes to HQ");
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "the Runner chooses: {:?}", state.pending_decision);
+
+        // "The Runner can choose not to access the new card."
+        let declined = pass_until_settled(act(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }), &registry).0;
+        assert!(declined.active_run.is_none(), "the run is over");
+        assert!(declined.runner.scored_agendas.is_empty());
+        assert!(declined.corp.installed.iter().any(|installed| installed.card == id("project_atlas")));
+
+        // …or access it, and steal the agenda.
+        let accessed = act(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        let accessing = accessed.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| access.phase.card().cloned());
+        assert_eq!(accessing, Some(Some(id("project_atlas"))), "accessed: {:?}", accessed.active_run);
+        let stolen = act(&accessed, &registry, PlayerAction::StealAgenda { card_id: id("project_atlas") });
+        assert!(stolen.runner.scored_agendas.iter().any(|scored| scored.card == id("project_atlas")));
+    }
+
+    /// The "may" declined: nothing is chosen, and he is accessed as he was.
+    #[test]
+    fn toshiyuki_sakai_not_swapped_is_accessed_himself() {
+        let registry = registry();
+        let state = accessing_toshiyuki(&["project_atlas"], &registry);
+        let state = act(&state, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(state.pending_decision.is_none());
+        assert!(state.corp.installed.iter().any(|installed| installed.card == id("toshiyuki_sakai")));
+        let phase = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| access.phase.card().cloned());
+        assert_eq!(phase, Some(Some(id("toshiyuki_sakai"))));
+    }
+
+    fn succeeded_on_centrals(state: &mut GameState, servers: &[ServerId]) {
+        for server in servers {
+            let event = crate::rules::GameEvent::RunSucceeded { server: *server };
+            crate::rules::turn_log::record(state, &CardRegistry::default(), &event);
+        }
+    }
+
+    /// "Play only if you made a successful run on R&D, HQ, and Archives
+    /// this turn. Take an additional turn after this one. Remove Encore
+    /// from the game instead of trashing it."
+    #[test]
+    fn encore_is_played_after_all_three_centrals_and_the_runner_goes_again() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("encore")];
+        let play = PlayerAction::PlayEvent { card_id: id("encore") };
+        succeeded_on_centrals(&mut state, &[ServerId::Hq, ServerId::RnD]);
+        assert!(apply_action(&state, &registry, play.clone()).is_err(), "not Archives yet");
+        succeeded_on_centrals(&mut state, &[ServerId::Archives]);
+        let state = pass_until_settled(act(&state, &registry, play), &registry).0;
+        assert_eq!(state.runner.additional_turns, 1);
+        assert!(state.runner.heap.is_empty(), "removed from the game instead");
+        assert!(state.runner.removed_from_game.contains(&id("encore")), "{:?}", state.runner.removed_from_game);
+
+        let mut state = state;
+        state.runner.resources.clicks = Clicks(0);
+        let turn = state.turn;
+        let ended = pass_until_settled(act(&state, &registry, PlayerAction::EndTurn), &registry).0;
+        assert_eq!(ended.turn, turn + 1);
+        assert!(matches!(ended.phase, GamePhase::Action(Side::Runner) | GamePhase::StartOfTurn(Side::Runner)), "the Runner's again: {:?}", ended.phase);
+        assert_eq!(ended.runner.additional_turns, 0);
+        assert_eq!(ended.runner.resources.clicks, Clicks(4), "a whole turn");
+    }
+
+    /// The turns dated ahead move to make room: the Runner's "next turn"
+    /// is the additional one, and the Corp's is one later than it was.
+    #[test]
+    fn an_additional_turn_moves_the_turns_dated_after_it() {
+        use crate::rules::lingering::{LingeringEffect, Lingering, On, Until};
+        let mut state = runner_turn();
+        state.turn = 10;
+        let entry = |until| LingeringEffect { what: Lingering::Cannot(crate::dsl::Prohibition::Run), on: On::Player(Side::Runner), until, source: id("encore") };
+        state.lingering = vec![entry(Until::BeforeTurn(12)), entry(Until::BeforeTurn(11)), entry(Until::EndOfTurn(10))];
+        crate::rules::lingering::insert_turn(&mut state);
+        let untils: Vec<_> = state.lingering.iter().map(|effect| effect.until).collect();
+        assert_eq!(untils, vec![Until::BeforeTurn(11), Until::BeforeTurn(12), Until::EndOfTurn(10)]);
+    }
+}

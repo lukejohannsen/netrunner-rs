@@ -356,6 +356,20 @@ impl Search<'_> {
             // answer: a card question takes its first card the same way.
             next = question.answers().into_iter().find_map(|value| apply_action(&next, self.registry, question.action_for(value)).ok())?.0;
         }
+        // **A break the Corp could prevent is passed through, to see the
+        // route.** Tyr's Hand makes a break on bioroid ice an imminent
+        // instruction (`WouldHappen::SubroutinesBroken`) and asks both
+        // players; left there, the next step is refused — only an interrupt
+        // or a pass is legal — and the card had no route. The route is
+        // priced as if nobody prevents it, as it is priced as if the Corp
+        // rezzes nothing; when the person carries it out the window is
+        // theirs and the Corp's, and `AutoBreak::next` waits for it.
+        let mut passes = 0;
+        while next.pending_prevention.is_some() && next.pending_decision.is_none() && passes < 4 {
+            let side = next.paid_ability_window.as_ref().map(|window| window.active_priority)?;
+            next = apply_action(&next, self.registry, PlayerAction::PassPriority { side }).ok()?.0;
+            passes += 1;
+        }
         if pending_on(&next, self.ice) != Some(true) {
             return Some(next);
         }
@@ -374,8 +388,9 @@ pub enum Next {
     /// Submit this action; it is in the view's `legal_actions`.
     Submit(PlayerAction),
     /// Nothing for the driver to do on this view — it is not the Runner's
-    /// priority, or the person is answering where a payment comes from —
-    /// so ask again on the next one.
+    /// priority, the person is answering where a payment comes from, or a
+    /// break is waiting on a prevention window — so ask again on the next
+    /// one.
     Wait,
     /// Every subroutine is broken. The person moves on.
     Done,
@@ -423,6 +438,12 @@ impl AutoBreak {
         // only the answer is legal — and tell them the card "can no longer
         // break this ICE" while it was halfway through doing so.
         if view.pending_payment.is_some() {
+            return Next::Wait;
+        }
+        // A break parked on the point of happening (Tyr's Hand) is a window
+        // the person and the Corp answer; the route goes on from the view
+        // after it.
+        if view.pending_prevention.is_some() {
             return Next::Wait;
         }
         let runner_priority = view
@@ -693,6 +714,47 @@ mod tests {
         assert_eq!((submitted, asked), (route.steps.len(), 2), "a pump and a break, each asked about once");
         assert_eq!(state.active_run.as_ref().unwrap().bonus_run_credits, 5, "the run's credits were never touched: the person said The Toolbox's, twice");
         assert_eq!(state.runner.rig[1].counters, 2 - route.credits, "and it cost what the route said");
+    }
+
+    /// Tyr's Hand rezzed in HQ's root: every break on Eli 1.0, a bioroid,
+    /// is parked on the point of happening while both players are asked.
+    /// The route is still found, priced as if nobody prevents a break, and
+    /// the driver waits through each window and ends where it said.
+    #[test]
+    fn a_break_the_corp_could_prevent_is_still_a_route_and_the_driver_waits_out_each_window() {
+        let registry = whole_pool();
+        let mut state = encounter(&registry, "eli_1_0", &["corroder"], 10);
+        state.corp.installed.push(InstalledCard {
+            install_id: InstallId(2),
+            card: CardId("tyrs_hand".to_string()),
+            server: ServerId::Hq,
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        });
+        let first = view(&state, &registry);
+        let found = routes(&first, &registry);
+        let corroder = found.iter().find(|route| route.card.0 == "corroder").expect("Corroder is still a route").clone();
+        assert_eq!(corroder.credits, 4, "two pumps and two breaks");
+        let driver = AutoBreak::new(&corroder, &first, &registry);
+        let mut windows = 0;
+        for _ in 0..40 {
+            let now = view(&state, &registry);
+            match driver.next(&now, &registry) {
+                Next::Submit(action) => state = apply_action(&state, &registry, action).expect("the step is legal").0,
+                Next::Wait => {
+                    windows += usize::from(state.pending_prevention.is_some());
+                    let side = state.paid_ability_window.as_ref().expect("a window").active_priority;
+                    state = apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("nobody prevents it").0;
+                }
+                Next::Done => break,
+                Next::Stopped(why) => panic!("the driver gave up: {why}"),
+            }
+        }
+        assert!(windows >= 2, "each break was asked about");
+        assert_eq!(state.runner.resources.credits.0, 10 - corroder.credits);
+        let run = state.active_run.as_ref().expect("the run goes on");
+        assert!(run.ice[0].subroutines.iter().all(|subroutine| subroutine.status == SubroutineStatus::Broken));
     }
 
     #[test]

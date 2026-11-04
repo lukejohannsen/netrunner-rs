@@ -1,0 +1,45 @@
+{
+  "id": "labyrinthine_servers",
+  "title": "Labyrinthine Servers",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "When you score this agenda, place 2 power counters on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "Prevent": "JackOut"
+          },
+          {
+            "Prohibit": {
+              "what": "JackOut",
+              "until": "Run"
+            }
+          }
+        ]
+      },
+      "text": "Hosted power counter: Prevent the Runner from jacking out. The Runner cannot jack out for the remainder of this run."
+    }
+  ],
+  "built_from": 6063,
+  "is_playable": true
+}

@@ -7,7 +7,7 @@ pub use access::{
     access_server, resolve_decline_access_trigger, resolve_pass, resolve_pay_access_trigger, resolve_select_card,
     resolve_steal, resolve_trash, trash_currently_accessed_card_without_cost,
 };
-pub(crate) use access::steal_accessed_ignoring_costs;
+pub(crate) use access::{add_access_candidate, steal_accessed_ignoring_costs, swap_accessed_with_hq};
 pub(crate) use access::{access_cards, accessing_during_an_encounter, accessing_outside_the_runners_turn, at_mid_access_window, move_on_if_left, breach, breaching, host_currently_accessed_card, is_being_accessed, move_currently_accessed_card, AccessedTo};
 pub use action::RunAction;
 pub use engine::{advance_run, start_run, start_run_by_the_basic_action, start_run_for_the_corp, start_run_ignoring_costs};

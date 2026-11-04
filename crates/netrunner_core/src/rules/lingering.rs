@@ -848,6 +848,39 @@ pub(crate) fn take_allotted_clicks(state: &mut GameState, side: Side) -> i32 {
     total
 }
 
+/// An additional turn of the side whose turn this is comes next
+/// (`Effect::TakeAdditionalTurn`): every turn dated past this one moves, so
+/// that each still names the turn it meant. Turns alternated, so a date
+/// `t` past this turn `N` was the active side's own when `t - N` is even
+/// and the other side's when it is odd; with a turn of the active side's
+/// put in at `N + 1`, the active side's k-th next turn is `N + 2k - 1`
+/// and the other side's `N + 2k` — one earlier and one later. "Until your
+/// next turn begins", made by the Runner, now ends as the additional turn
+/// begins; made by the Corp, it still holds through it. Asked of every
+/// dated duration and every delayed ability, which are the only things
+/// that name a turn ahead (`until`, `Effect::LaterThisTurn::next_turn`).
+pub(crate) fn insert_turn(state: &mut GameState) {
+    let now = state.turn;
+    let moved = |turn: u32| match turn.checked_sub(now) {
+        None | Some(0) => turn,
+        Some(ahead) if ahead % 2 == 0 => turn - 1,
+        Some(_) => turn + 1,
+    };
+    for effect in state.lingering.iter_mut() {
+        effect.until = match effect.until {
+            Until::EndOfTurn(turn) => Until::EndOfTurn(moved(turn)),
+            Until::BeforeTurn(turn) => Until::BeforeTurn(moved(turn)),
+            Until::ThroughNextBreach { turn, begun } => Until::ThroughNextBreach { turn: moved(turn), begun },
+            Until::ThroughNextRun { turn, begun } => Until::ThroughNextRun { turn: moved(turn), begun },
+            Until::ActionsFinished { turn, count } => Until::ActionsFinished { turn: moved(turn), count },
+            other => other,
+        };
+    }
+    for delayed in state.delayed.iter_mut() {
+        delayed.turn = moved(delayed.turn);
+    }
+}
+
 /// Drops what no longer holds.
 pub(crate) fn sweep(state: &mut GameState) {
     if state.lingering.is_empty() {

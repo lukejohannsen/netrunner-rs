@@ -654,6 +654,8 @@ pub fn narrate_event(
             WouldHappen::Trace { .. } => "the trace's base strength was reduced to 0".to_string(),
             WouldHappen::Expose { .. } => "an expose was prevented".to_string(),
             WouldHappen::BadPublicity { .. } => format!("{amount} bad publicity was prevented"),
+            WouldHappen::JackOut { .. } => "the Runner was prevented from jacking out".to_string(),
+            WouldHappen::SubroutinesBroken { .. } => format!("{amount} subroutine(s) were prevented from being broken"),
             // Nothing prevents a draw; the arm is the compiler's.
             WouldHappen::Draw { .. } => format!("{amount} card(s) of a draw were prevented"),
         },

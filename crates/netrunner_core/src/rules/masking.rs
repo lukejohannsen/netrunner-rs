@@ -367,6 +367,10 @@ pub struct PublicRunnerState {
     /// engine will.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub servers_run_successfully: Vec<ServerId>,
+    /// Never masked — `RunnerState::additional_turns`, given by an event
+    /// played faceup (Encore).
+    #[serde(default, skip_serializing_if = "crate::rules::state::is_zero")]
+    pub additional_turns: u32,
     /// `RunnerState::discarded_this_discard_phase`, public like the heap it
     /// indexes into: a discard to hand size is made on the table. Carried
     /// so a parked Magdalene Keino-Chemutai choice can be re-evaluated from
@@ -1983,6 +1987,7 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         link_strength: if state.active_trace.is_some() { crate::rules::continuous::trace_link(state, registry) } else { crate::rules::continuous::link(state, registry) },
         servers_run_this_turn: runner.servers_run_this_turn.clone(),
         servers_run_successfully: runner.servers_run_successfully.clone(),
+        additional_turns: runner.additional_turns,
         discarded_this_discard_phase: runner.discarded_this_discard_phase.clone(),
         identity_flipped: runner.identity_flipped,
         identity_counters: runner.identity_counters,

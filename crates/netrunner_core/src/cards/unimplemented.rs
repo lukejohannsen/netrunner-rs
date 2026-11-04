@@ -154,7 +154,6 @@ pub(crate) const ML_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Quorum* (`quorum`): tranche F5 of the FFG plan.
 pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("encore", "Encore"),
 ];
 
 /// *Terminal Directive Cards* (`terminal_directive_cards`): tranche F5 of the FFG
@@ -243,7 +242,6 @@ pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Up and Over* (`up_and_over`): tranche F8 of the FFG plan.
 pub(crate) const UAO_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("labyrinthine_servers", "Labyrinthine Servers"),
 ];
 
 /// *All That Remains* (`all_that_remains`): tranche F8 of the FFG plan.
@@ -263,7 +261,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("howler", "Howler"),
     ("awakening_center", "Awakening Center"),
-    ("tyrs_hand", "Tyr's Hand"),
 ];
 
 /// *Opening Moves* (`opening_moves`): tranche F10 of the FFG plan.
@@ -285,7 +282,6 @@ pub(crate) const TC_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Fear and Loathing* (`fear_and_loathing`): tranche F10 of the FFG plan.
 pub(crate) const FAL_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("toshiyuki_sakai", "Toshiyuki Sakai"),
 ];
 
 /// *Double Time* (`double_time`): tranche F10 of the FFG plan.

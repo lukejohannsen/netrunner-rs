@@ -128,6 +128,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         points_to_win: _,       // drawn: as the Corp's
         servers_run_this_turn: _, // engine's: Red Team's legality and the evaluator; each run is in the log
         servers_run_successfully: _, // engine's: Daily Quest's turn-start gain, asked by the engine and a sample; each success is in the log
+        additional_turns: _,         // drawn: hud::details, "1 additional turn" beside MU and link (Encore)
         discarded_this_discard_phase: _, // engine's: re-evaluating a parked Magdalene choice in a sample; the discards are in the heap
         identity_flipped: _,    // drawn: hud::identity_side
         identity_counters: _,   // drawn: hud::identity_facts / identity_chip (Ele "Smoke" Scovak's recurring credit)

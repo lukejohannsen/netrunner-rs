@@ -578,8 +578,11 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // "When a card would be exposed" (Zaibatsu Loyalty): any card, so
         // the moment is about nothing a filter narrows.
         GameEvent::AboutToResolve { what: WouldHappen::Expose { .. } } => vec![moment(Trigger::OnExposeAboutToResolve, &About::Nothing, None)],
+        // Tyr's Hand's "when a subroutine would be broken"; the ice is the
+        // requirement's to ask about.
+        GameEvent::AboutToResolve { what: WouldHappen::SubroutinesBroken { .. } } => vec![moment(Trigger::OnSubroutineBreakAboutToResolve, &About::Nothing, None)],
         GameEvent::AboutToResolve { what: WouldHappen::BadPublicity { .. } } => vec![moment(Trigger::OnBadPublicityAboutToResolve, &About::Nothing, Some(Side::Corp))],
-        GameEvent::AboutToResolve { what: WouldHappen::Tags { .. } | WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } } => Vec::new(),
+        GameEvent::AboutToResolve { what: WouldHappen::Tags { .. } | WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } | WouldHappen::JackOut { .. } } => Vec::new(),
         // Only the card itself prints it ("when this asset would be
         // uninstalled"), so the moment is the card's.
         // "Whenever there is a successful trace": anyone's, about nothing.

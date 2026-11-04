@@ -123,7 +123,12 @@ pub fn readouts(view: &ClientView, side: Side) -> Vec<Readout> {
 pub fn details(view: &ClientView, side: Side) -> Option<String> {
     match side {
         Side::Corp => None,
-        Side::Runner => Some(format!("MU {} · Link {}", view.runner.memory_units, view.runner.link_strength)),
+        // Encore's additional turn, said where it is owed, since nothing
+        // else on the table shows that the Runner goes again.
+        Side::Runner => Some(match view.runner.additional_turns {
+            0 => format!("MU {} · Link {}", view.runner.memory_units, view.runner.link_strength),
+            n => format!("MU {} · Link {} · {n} additional turn{}", view.runner.memory_units, view.runner.link_strength, if n == 1 { "" } else { "s" }),
+        }),
     }
 }
 

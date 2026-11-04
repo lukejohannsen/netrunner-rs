@@ -78,6 +78,8 @@ pub(crate) fn matches(word: &Preventable, what: &WouldHappen, state: &GameState,
         (Preventable::TraceBaseStrength, WouldHappen::Trace { base }) => *base > 0,
         (Preventable::Expose, WouldHappen::Expose { .. }) => true,
         (Preventable::BadPublicity(_), WouldHappen::BadPublicity { .. }) => true,
+        (Preventable::JackOut, WouldHappen::JackOut { .. }) => true,
+        (Preventable::SubroutineBroken, WouldHappen::SubroutinesBroken { .. }) => true,
         _ => false,
     }
 }
@@ -90,7 +92,7 @@ fn prevents_up_to(word: &Preventable) -> u32 {
         Preventable::Damage { x: true, .. } => 0,
         Preventable::Damage { up_to, .. } => *up_to,
         Preventable::Tags(amount) | Preventable::BadPublicity(amount) => *amount,
-        Preventable::Trash(_) | Preventable::EncounterAbility | Preventable::RunEnding | Preventable::TraceBaseStrength | Preventable::Expose => 1,
+        Preventable::Trash(_) | Preventable::EncounterAbility | Preventable::RunEnding | Preventable::TraceBaseStrength | Preventable::Expose | Preventable::JackOut | Preventable::SubroutineBroken => 1,
     }
 }
 
@@ -183,7 +185,7 @@ pub(crate) fn would(
         }
         match &mut what {
             WouldHappen::Damage { amount, .. } | WouldHappen::Tags { amount } | WouldHappen::Draw { amount, .. } | WouldHappen::BadPublicity { amount } => *amount -= now,
-            WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } | WouldHappen::Expose { .. } => return Ok(stood),
+            WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } | WouldHappen::Expose { .. } | WouldHappen::JackOut { .. } | WouldHappen::SubroutinesBroken { .. } => return Ok(stood),
         }
         if what.amount() == 0 {
             return Ok(stood);
@@ -369,6 +371,100 @@ pub(crate) fn run_ending(
     }
 }
 
+/// The Runner has chosen to jack out (CR 6.9.4c): if somebody could
+/// prevent it (Labyrinthine Servers), it is parked and they are asked, and
+/// `Some` is the asking. `None` when it happens as it would have —
+/// nobody able to, or something already parked — and the caller jacks
+/// out. A jack-out is an occurrence of nothing (`listeners::moments`), so
+/// it is announced only when the players will be asked, as a tag is.
+pub(crate) fn jack_out(state: &mut GameState, registry: &CardRegistry) -> Result<Option<Vec<GameEvent>>, RulesError> {
+    // Only a jack-out the run would carry out is imminent: one refused
+    // (the run concluded, no decision open) is refused as it was.
+    use crate::rules::run::RunPhase;
+    let Some(server) = state
+        .active_run
+        .as_ref()
+        .filter(|run| run.jack_out_permitted && !matches!(run.phase, RunPhase::Success | RunPhase::AccessingCard | RunPhase::Ended))
+        .map(|run| run.server)
+    else {
+        return Ok(None);
+    };
+    let what = WouldHappen::JackOut { server };
+    if state.pending_prevention.is_some() || !could_prevent(state, registry, &what) {
+        return Ok(None);
+    }
+    state.pending_prevention = Some(PendingPrevention {
+        what: what.clone(),
+        prevented: 0,
+        interrupted: None,
+        source_card: None,
+        source_install: None,
+        resume: PreventionResume::None,
+        waiting: None,
+    });
+    let mut events = Vec::new();
+    dispatcher::emit(state, registry, &mut events, GameEvent::AboutToResolve { what })?;
+    events.extend(settle_within(state, registry, None)?.unwrap_or_default());
+    Ok(Some(events))
+}
+
+/// The jack-out itself, once nobody prevented it: the run's movement phase
+/// ends it (`run::advance_run`), and `RunJackedOut` is heard.
+pub(crate) fn jack_out_now(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    if state.active_run.is_none() {
+        return Ok(Vec::new());
+    }
+    let mut events = crate::rules::run::advance_run(state, crate::rules::run::RunAction::JackOut, registry)?;
+    crate::rules::run::end_run(state);
+    if let Some(jacked_out) = events.iter().find(|event| matches!(event, GameEvent::RunJackedOut { .. })).cloned() {
+        events.extend(dispatcher::dispatch_event(state, registry, &jacked_out)?);
+    }
+    Ok(events)
+}
+
+/// `subroutines` on the encountered ice are about to be broken by `by` (a
+/// click when `None`): if a card could hear it (Tyr's Hand, facedown, may
+/// rez) or somebody could prevent some of it, it is parked, announced
+/// (`Trigger::OnSubroutineBreakAboutToResolve`), and `Some` is the asking.
+/// `None` when the break happens as it would have, and the caller breaks
+/// them (`ability::break_these`). A break is every encounter's, so it is
+/// parked only where something could come of it: a card on the table that
+/// listens for it is the gate, rather than an announcement nobody hears
+/// on every break of the game.
+pub(crate) fn subroutines_broken(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    subroutines: &[(usize, bool)],
+    by: Option<InstallId>,
+) -> Result<Option<Vec<GameEvent>>, RulesError> {
+    let Some(ice) = state.active_run.as_ref().and_then(|run| run.ice.get(run.position)).map(|ice| ice.install_id) else { return Ok(None) };
+    if subroutines.is_empty() || state.pending_prevention.is_some() {
+        return Ok(None);
+    }
+    let what = WouldHappen::SubroutinesBroken { ice, subroutines: subroutines.to_vec(), by };
+    let listens = state.corp.installed.iter().any(|installed| {
+        registry.get(&installed.card).is_some_and(|card| {
+            card.triggers.iter().any(|triggered| triggered.trigger == Trigger::OnSubroutineBreakAboutToResolve && (installed.rezzed || triggered.while_unrezzed))
+        })
+    });
+    if !listens && !could_prevent(state, registry, &what) {
+        return Ok(None);
+    }
+    state.pending_prevention = Some(PendingPrevention {
+        what: what.clone(),
+        prevented: 0,
+        interrupted: None,
+        source_card: None,
+        source_install: by,
+        resume: PreventionResume::None,
+        waiting: None,
+    });
+    let mut events = Vec::new();
+    dispatcher::emit(state, registry, &mut events, GameEvent::AboutToResolve { what })?;
+    events.extend(settle_within(state, registry, None)?.unwrap_or_default());
+    Ok(Some(events))
+}
+
 /// Moves a parked prevention along when nothing stands in front of it:
 /// the cards that heard it resolve, then the window opens if somebody
 /// could still prevent some of what is left, and otherwise it happens.
@@ -406,7 +502,7 @@ fn settle_within(
     }
     let mut events = Vec::new();
     while let Some(position) =
-        state.deferred_triggers.iter().position(|due| matches!(due.trigger, Trigger::OnDamageAboutToResolve | Trigger::OnDrawAboutToResolve | Trigger::OnExposeAboutToResolve | Trigger::OnBadPublicityAboutToResolve) && due.continuation.is_none())
+        state.deferred_triggers.iter().position(|due| matches!(due.trigger, Trigger::OnDamageAboutToResolve | Trigger::OnDrawAboutToResolve | Trigger::OnExposeAboutToResolve | Trigger::OnBadPublicityAboutToResolve | Trigger::OnSubroutineBreakAboutToResolve) && due.continuation.is_none())
     {
         let due = state.deferred_triggers.remove(position);
         events.extend(dispatcher::fire_deferred(state, registry, &due)?);
@@ -657,6 +753,14 @@ fn happen(
             let mut events = Vec::new();
             dispatcher::emit(state, registry, &mut events, GameEvent::BadPublicityGiven { amount })?;
             Ok(events)
+        }
+        // Not prevented: the Runner jacks out, as they chose to.
+        WouldHappen::JackOut { .. } => jack_out_now(state, registry),
+        // What is left of it is broken: the last `amount` of them, the
+        // first having been the ones prevented.
+        WouldHappen::SubroutinesBroken { subroutines, by, .. } => {
+            let skip = subroutines.len().saturating_sub(amount as usize);
+            ability::break_these(state, registry, &subroutines[skip..], *by)
         }
         WouldHappen::Trash { owner, install, by } => {
             let mut events = ability::trash_install(state, registry, *owner, *install, *by)?;

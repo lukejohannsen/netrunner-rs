@@ -1287,6 +1287,82 @@ pub(crate) fn move_on_if_left(state: &mut GameState, registry: &CardRegistry) ->
     advance_or_finish(state, registry, server, card_id)
 }
 
+/// `Effect::SwapAccessedWithHq`'s swap (Toshiyuki Sakai): the card at
+/// `hq` in HQ takes the place of the install being accessed — the same
+/// server's root, unrezzed, with the accessed card's advancement tokens —
+/// and the accessed card goes to HQ. `install` is the card resolving it,
+/// which must be the one at its access decision: Toshiyuki "accessed while
+/// installed", nothing else. `None` when it is not, or the position is gone.
+///
+/// The new card is installed (`CardInstalled`, heard as any install is),
+/// with a handle of its own, since it is a different object; the accessed
+/// one leaves the table as an uninstall does (`uninstall::corp_install`,
+/// `CardAddedToHand`), and its access has ended (CR 7.1.7), which
+/// `move_on_if_left` sees by its install being gone. Placed by hand rather
+/// than through `engine::place_corp_card`, whose install-over trash would
+/// have trashed the card it replaces, and whose server check would see a
+/// remote with nothing in it.
+pub(crate) fn swap_accessed_with_hq(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    hq: usize,
+    install: Option<InstallId>,
+) -> Result<Option<(InstallId, Vec<GameEvent>)>, RulesError> {
+    let accessed = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).and_then(|access| access.pending_install);
+    let Some(old) = install.filter(|install| accessed == Some(*install)) else { return Ok(None) };
+    let Some(position) = state.corp.installed.iter().position(|installed| installed.install_id == old) else { return Ok(None) };
+    if hq >= state.corp.hq.len() {
+        return Ok(None);
+    }
+    let card = state.corp.hq.remove(hq);
+    let (server, slot, tokens) = {
+        let installed = &state.corp.installed[position];
+        (installed.server, installed.slot, installed.advancement_tokens)
+    };
+    let faceup = registry.get(&card).is_some_and(|definition| definition.installs_faceup);
+    let new = state.allocate_install_id();
+    state.corp.installed.insert(
+        position + 1,
+        crate::rules::state::InstalledCard {
+            card: card.clone(),
+            install_id: new,
+            server,
+            slot,
+            rezzed: faceup,
+            advancement_tokens: tokens,
+            counters: 0,
+            installed_this_turn: true,
+            seen_by_runner: false,
+            this_turn: Default::default(),
+            host: None,
+        },
+    );
+    let mut events = Vec::new();
+    if let Some((removed, uninstalled)) = crate::rules::uninstall::corp_install(state, registry, old)? {
+        events.extend(uninstalled);
+        state.corp.hq.push(removed.card.clone());
+        events.push(GameEvent::CardAddedToHand { side: Side::Corp, card: Some(removed.card), install: old, faceup: removed.rezzed });
+    }
+    dispatcher::emit(state, registry, &mut events, GameEvent::CardInstalled { side: Side::Corp, install: new, card: Some(card), server, from_hq: true })?;
+    Ok(Some((new, events)))
+}
+
+/// Makes the root install `install` a candidate of the breach in progress
+/// (`Effect::SwapAccessedWithHq`'s Runner half): the card Toshiyuki Sakai
+/// was swapped for, which the Runner chose to access. It is offered with
+/// the rest once the card at the decision has gone (`move_on_if_left`).
+pub(crate) fn add_access_candidate(state: &mut GameState, install: InstallId) {
+    if state.find_corp_install(install).is_none() {
+        return;
+    }
+    if let Some(access) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()) {
+        let candidate = AccessCandidate::Root(install);
+        if !access.candidates.contains(&candidate) {
+            access.candidates.insert(0, candidate);
+        }
+    }
+}
+
 /// Resolves `PlayerAction::StealAgenda`. See its doc comment for the error
 /// conditions.
 pub fn resolve_steal(

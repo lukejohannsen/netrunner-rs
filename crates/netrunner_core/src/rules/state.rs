@@ -1045,6 +1045,14 @@ pub struct RunnerState {
     /// counts remotes as one class (the Turn History Rule). Public.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub servers_run_successfully: Vec<ServerId>,
+    /// Additional turns the Runner takes after this one (Encore's "take an
+    /// additional turn after this one", `Effect::TakeAdditionalTurn`),
+    /// taken one at a time as each Runner turn ends (`turn::finish_turn`).
+    /// A count on the Runner rather than a queue of sides, because no Corp
+    /// card in the pool gives the Corp one. Public, as the event that gave
+    /// it was played faceup.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub additional_turns: u32,
 }
 
 impl RunnerState {
@@ -1301,6 +1309,19 @@ pub enum WouldHappen {
     /// (`Trigger::OnBadPublicityAboutToResolve`, Broadcast Square). Public,
     /// as the bad publicity is.
     BadPublicity { amount: u32 },
+    /// The Runner has chosen to jack out of the run on `server` (CR
+    /// 6.9.4c), and the run is about to end (Labyrinthine Servers'
+    /// "prevent the Runner from jacking out"). Public, as the run is.
+    JackOut { server: crate::rules::run::ServerId },
+    /// The subroutines `subroutines` on the encountered ice `ice` are
+    /// about to be broken, by `by`'s ability or a click (`None`) — Tyr's
+    /// Hand's "prevent 1 subroutine from being broken". Each is its
+    /// position on the ice and whether its break counts against the ice's
+    /// break limit (`RunState::this_encounter::limited_breaks`), counted
+    /// as it is broken. What is prevented is the first in that order: the
+    /// Corp is not asked which. Public: the ice is rezzed and encountered,
+    /// and the breaker is in the rig.
+    SubroutinesBroken { ice: InstallId, subroutines: Vec<(usize, bool)>, by: Option<InstallId> },
 }
 
 impl WouldHappen {
@@ -1309,7 +1330,8 @@ impl WouldHappen {
     pub fn amount(&self) -> u32 {
         match self {
             WouldHappen::Damage { amount, .. } | WouldHappen::Tags { amount } | WouldHappen::Draw { amount, .. } | WouldHappen::BadPublicity { amount } => *amount,
-            WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } | WouldHappen::Expose { .. } => 1,
+            WouldHappen::SubroutinesBroken { subroutines, .. } => subroutines.len() as u32,
+            WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } | WouldHappen::Expose { .. } | WouldHappen::JackOut { .. } => 1,
         }
     }
 
@@ -1320,6 +1342,8 @@ impl WouldHappen {
             | WouldHappen::Tags { .. }
             | WouldHappen::EncounterAbility { .. }
             | WouldHappen::RunEnds { .. }
+            | WouldHappen::JackOut { .. }
+            | WouldHappen::SubroutinesBroken { .. }
             | WouldHappen::Trace { .. } => Side::Runner,
             WouldHappen::Trash { owner, .. } => *owner,
             WouldHappen::Draw { side, .. } => *side,

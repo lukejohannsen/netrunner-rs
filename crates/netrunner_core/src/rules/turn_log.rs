@@ -398,6 +398,8 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // About no card: [click] spent on an action are public.
         Trigger::OnThirdClickOnOneAction => false,
         Trigger::OnClicksGoneDuringRun => false,
+        // About no card: the encountered ice is rezzed, and the break public.
+        Trigger::OnSubroutineBreakAboutToResolve => false,
         // Played, rezzed, encountered, scored, stolen, forfeited, trashed
         // faceup by the Runner, or a faceup card's ability: on the table.
         Trigger::OnPlay
