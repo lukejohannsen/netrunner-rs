@@ -307,7 +307,16 @@ pub(crate) fn finish_turn(
     state.resources_mut(side).clicks = Clicks(0);
     let mut events = vec![GameEvent::TurnEnded { side }];
     events.extend(dispatch_discard_phase_end(state, side, registry)?);
-    enter_start_of_turn(state, registry, &mut events, side.other())?;
+    // Encore's "take an additional turn after this one": the same side
+    // goes again, and the turns dated past this one make room for it.
+    let next = if side == Side::Runner && state.runner.additional_turns > 0 {
+        state.runner.additional_turns -= 1;
+        crate::rules::lingering::insert_turn(state);
+        side
+    } else {
+        side.other()
+    };
+    enter_start_of_turn(state, registry, &mut events, next)?;
     Ok(events)
 }
 

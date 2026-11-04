@@ -1036,6 +1036,40 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         hq_revealed: bool,
     },
+    /// Swaps the card being accessed — the install resolving this, a
+    /// remote's root — with an agenda or asset from HQ: Toshiyuki Sakai's
+    /// "If Toshiyuki Sakai is accessed while installed, you may swap him
+    /// with an agenda or asset from HQ. The new agenda or asset is
+    /// installed unrezzed, and keeps all advancement tokens on Toshiyuki
+    /// Sakai. The Runner can choose not to access the new card." Written as
+    /// the `then` of the Corp's selection out of HQ, which writes the
+    /// position it chose over `hq` (`Effect::with_swap_position`); the new
+    /// card takes the accessed install's place and tokens, the accessed
+    /// card goes to HQ, and its access ends (it has left its place, CR
+    /// 7.1.7). The Runner is then asked whether to access the new card —
+    /// a `PresentChoice` whose first option is this with `access` written
+    /// as the new install, which makes it a candidate of the breach (the
+    /// State Hygiene Rule's chosen value, carried in the effect that
+    /// waits). Never authored with `access`. Composition didn't work:
+    /// every swap with HQ is of a card in a deck or a pile
+    /// (`SwapDeckCardWithHq`), an install's place was never given to a
+    /// card from HQ, and nothing made a card a candidate mid-breach.
+    SwapAccessedWithHq {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        hq: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        access: Option<InstallId>,
+    },
+    /// The resolving card's player takes an additional turn after this one
+    /// — Encore's "Take an additional turn after this one"
+    /// (`RunnerState::additional_turns`, taken as the turn ends:
+    /// `turn::finish_turn`). The turns already dated past this one move to
+    /// make room for it (`lingering::insert_turn`), so "until your next
+    /// turn begins" made by either player still means that player's next
+    /// turn. The Runner's alone: no Corp card in the pool prints one.
+    /// Composition didn't work: turns alternated, and nothing said which
+    /// side's turn came next.
+    TakeAdditionalTurn,
     /// Installs `card_id` (a placeholder substituted at `PendingDecision::
     /// ChooseCards` resolution time, same convention as `SwapInstalledIce`)
     /// from `origin_zone` (fixed at authoring — `OwnHq` or `OwnArchives`)
@@ -3847,6 +3881,21 @@ pub enum Preventable {
     /// the Runner, and bad publicity is done to the Corp. A cost of bad
     /// publicity (`Cost::TakeBadPublicity`) is never prevented (CR 1.16.1a).
     BadPublicity(u32),
+    /// "Prevent the Runner from jacking out" (Labyrinthine Servers): the
+    /// Runner's jack-out, chosen at CR 6.9.4c and about to end the run
+    /// (`WouldHappen::JackOut`), which then does not — the run goes on
+    /// from the movement phase it was chosen in. Composition didn't work:
+    /// `Prohibit { JackOut }` is a "cannot" asked before the choice, and
+    /// this is an interrupt used once it is made; the card prints both,
+    /// one after the other.
+    JackOut,
+    /// "Prevent 1 subroutine from being broken" (Tyr's Hand): one of the
+    /// subroutines a break is about to break (`WouldHappen::
+    /// SubroutinesBroken`), which stays unbroken. Which ice it is on is the
+    /// ability's requirement (`EncounteredIce`), as Net Shield's "you"
+    /// is. Composition didn't work: a break was never imminent — it
+    /// happened as the breaker's ability resolved.
+    SubroutineBroken,
 }
 
 impl Preventable {
@@ -4539,6 +4588,7 @@ impl Effect {
             Effect::SwapDeckCardWithHq { deck, hq: None, archives, .. } if matches!(half, SwapHalf::Hq { .. }) => {
                 Effect::SwapDeckCardWithHq { deck, hq: Some(position), archives, hq_revealed: half == SwapHalf::Hq { revealed: true } }
             }
+            Effect::SwapAccessedWithHq { hq: None, access: None } if matches!(half, SwapHalf::Hq { .. }) => Effect::SwapAccessedWithHq { hq: Some(position), access: None },
             Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => Effect::PromptChooseCards {
                 side,
                 source,
@@ -5181,6 +5231,8 @@ impl Effect {
             | Effect::SwapThisWithSelectedFromGrip
             | Effect::SwapScoredAgenda { .. }
             | Effect::SwapDeckCardWithHq { .. }
+            | Effect::SwapAccessedWithHq { .. }
+            | Effect::TakeAdditionalTurn
             | Effect::InstallFromZoneIgnoringCost { .. }
             | Effect::InstallRunnerCardFromGrip
             | Effect::InstallRunnerCardFromZone { if_installed: None, .. }

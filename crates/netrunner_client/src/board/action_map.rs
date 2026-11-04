@@ -701,6 +701,8 @@ impl Prompt {
                 // to say: the Runner reads this prompt too.
                 WouldHappen::Expose { .. } => "Prevent a card from being exposed?".to_string(),
                 WouldHappen::BadPublicity { .. } => format!("Prevent {left} bad publicity?"),
+                WouldHappen::JackOut { .. } => "Prevent the Runner from jacking out?".to_string(),
+                WouldHappen::SubroutinesBroken { .. } => format!("Prevent {left} subroutine{} from being broken?", if left == 1 { "" } else { "s" }),
                 WouldHappen::Trace { base } => format!("Reduce {}'s trace, base strength {base}, to 0?", title_of(prevention.source_card.as_ref(), registry)),
                 // Never asked (no card prevents a draw); only what hears
                 // it, which asks with a prompt of its own.

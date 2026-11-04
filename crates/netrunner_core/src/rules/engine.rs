@@ -1615,17 +1615,23 @@ fn jack_out(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Ve
     if state.active_run.as_ref().is_some_and(|run| !run.jack_out_permitted) {
         return Err(RulesError::IllegalJackOutWindow { phase: state.active_run.as_ref().map_or(RunPhase::Ended, |run| run.phase) });
     }
+    // "Prohibited" is asked before anything is paid or parked, as the
+    // run's own jack-out asks it (Whirlpool, and Labyrinthine Servers'
+    // "for the remainder of this run").
+    if state.active_run.is_none() {
+        return Err(RulesError::NoActiveRun);
+    }
+    if continuous::cannot(state, registry, crate::dsl::Prohibition::JackOut) {
+        return Err(RulesError::JackOutProhibited);
+    }
     let cost_events = ability::pay_additional_costs(&mut next, registry, crate::dsl::CostedStep::JackOut)?;
     let mut events = cost_events.clone();
-    events.extend(run::advance_run(&mut next, RunAction::JackOut, registry)?);
-    run::end_run(&mut next);
-
-    let jacked_out_event = events
-        .iter()
-        .find(|e| matches!(e, GameEvent::RunJackedOut { .. }))
-        .cloned()
-        .expect("run::advance_run(RunAction::JackOut) always emits RunJackedOut on success");
-    events.extend(dispatcher::dispatch_event(&mut next, registry, &jacked_out_event)?);
+    // The jack-out is chosen and imminent (CR 6.9.4c): Labyrinthine
+    // Servers may prevent it, and the run then goes on from here.
+    match crate::rules::prevention::jack_out(&mut next, registry)? {
+        Some(asked) => events.extend(asked),
+        None => events.extend(crate::rules::prevention::jack_out_now(&mut next, registry)?),
+    }
     events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
 
     Ok((next, events))
@@ -3010,10 +3016,22 @@ fn break_subroutine_with_click(
     // pays it (`ability::break_pending`).
     let cost_events = ability::pay_additional_costs(&mut next, registry, crate::dsl::CostedStep::BreakSubroutine)?;
     events.extend(cost_events.clone());
-    if limit.is_some() && let Some(run) = next.active_run.as_mut() {
-        run.this_encounter.limited_breaks += 1;
+    // The break is imminent (Tyr's Hand): asked first, and broken when the
+    // asking is over, from what is left of it. A subroutine that is not
+    // there or not pending is refused as the break itself would refuse it.
+    match current_ice.subroutines.get(subroutine_index).map(|subroutine| subroutine.status) {
+        None => return Err(RulesError::InvalidSubroutineIndex(subroutine_index)),
+        Some(run::SubroutineStatus::Pending) => {}
+        Some(_) => return Err(RulesError::SubroutineAlreadyHandled),
     }
-    events.extend(run::advance_run(&mut next, RunAction::BreakSubroutine(subroutine_index), registry)?);
+    if let Some(asked) = crate::rules::prevention::subroutines_broken(&mut next, registry, &[(subroutine_index, limit.is_some())], None)? {
+        events.extend(asked);
+    } else {
+        if limit.is_some() && let Some(run) = next.active_run.as_mut() {
+            run.this_encounter.limited_breaks += 1;
+        }
+        events.extend(run::advance_run(&mut next, RunAction::BreakSubroutine(subroutine_index), registry)?);
+    }
     events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
     paid_ability::note_window_action(&mut next, side);
 

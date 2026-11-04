@@ -1287,6 +1287,31 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
         Effect::SwapDeckCardWithHq { .. } => Ok(Vec::new()),
+        // The Corp's half: the swap, and the Runner asked whether to access
+        // what took the accessed card's place. Nothing was chosen when the
+        // place is unwritten, and nothing moves.
+        Effect::SwapAccessedWithHq { hq: Some(hq), access: None } => {
+            let Some((new, mut events)) = crate::rules::run::swap_accessed_with_hq(state, registry, *hq as usize, ctx.acting_install)? else { return Ok(Vec::new()) };
+            let choice = Effect::PresentChoice {
+                chooser: Side::Runner,
+                options: vec![Effect::SwapAccessedWithHq { hq: None, access: Some(new) }, Effect::Sequence(Vec::new())],
+                texts: vec!["The Runner can choose not to access the new card — access it".to_string(), String::new()],
+            };
+            events.extend(evaluate_effect(state, &choice, ctx, registry)?);
+            Ok(events)
+        }
+        // The Runner's half: the new card is a candidate of the breach.
+        Effect::SwapAccessedWithHq { access: Some(new), .. } => {
+            crate::rules::run::add_access_candidate(state, *new);
+            Ok(Vec::new())
+        }
+        Effect::SwapAccessedWithHq { .. } => Ok(Vec::new()),
+        Effect::TakeAdditionalTurn => {
+            if acting_side(acting_card, registry) == Side::Runner {
+                state.runner.additional_turns += 1;
+            }
+            Ok(Vec::new())
+        }
         Effect::RedirectRunOnSuccess(target) => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
             run.redirect_on_approach = Some(*target);
@@ -7197,23 +7222,62 @@ fn break_pending(
         events.extend(cost_events.clone());
         events.extend(dispatch_cost_events(state, registry, &cost_events)?);
     }
+    // Armored Servers' "as an additional cost to … break a subroutine",
+    // paid for each before any is broken (CR 1.16: a cost is paid before
+    // what it pays for becomes imminent): an ability that breaks several
+    // stops at the first the Runner can no longer pay for, and one that
+    // cannot pay for any is refused by the payment.
+    let mut breaking = Vec::new();
+    let mut costs = Vec::new();
     for (broken, (idx, limited)) in pending.into_iter().take(take).enumerate() {
-        // Armored Servers' "as an additional cost to … break a
-        // subroutine", paid for each: an ability that breaks several stops
-        // at the first the Runner can no longer pay for, and one that
-        // cannot pay for any is refused by the payment.
         if broken > 0 && !additional_costs_affordable(state, registry, CostedStep::BreakSubroutine) {
             break;
         }
         let cost_events = pay_additional_costs(state, registry, CostedStep::BreakSubroutine)?;
         events.extend(cost_events.clone());
+        costs.extend(cost_events);
+        breaking.push((idx, limited));
+    }
+    // The break is imminent: Tyr's Hand may prevent some of it, and then
+    // what is left is broken when the asking is over.
+    match crate::rules::prevention::subroutines_broken(state, registry, &breaking, by)? {
+        Some(asked) => events.extend(asked),
+        None => events.extend(break_these(state, registry, &breaking, by)?),
+    }
+    events.extend(dispatch_cost_events(state, registry, &costs)?);
+    Ok(events)
+}
+
+/// Breaks each of `subroutines` on the encountered ice, by `by`'s ability
+/// or a click (`None`), counting a limited break as it is made, and
+/// dispatches what is heard of each — the break once it is no longer
+/// imminent (`prevention::subroutines_broken`), from an icebreaker's
+/// ability and a click alike. A subroutine no longer pending (the ice
+/// changed while the asking waited) is passed over.
+pub(crate) fn break_these(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    subroutines: &[(usize, bool)],
+    by: Option<InstallId>,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let mut events = Vec::new();
+    for &(idx, limited) in subroutines {
+        let pending = state
+            .active_run
+            .as_ref()
+            .filter(|run| run.phase == RunPhase::EncounterIce)
+            .and_then(|run| run.ice.get(run.position))
+            .and_then(|ice| ice.subroutines.get(idx))
+            .is_some_and(|subroutine| subroutine.status == crate::rules::run::SubroutineStatus::Pending);
+        if !pending {
+            continue;
+        }
         if limited && let Some(run) = state.active_run.as_mut() {
             run.this_encounter.limited_breaks += 1;
         }
         for event in run::break_subroutine(state, registry, idx, by)? {
             dispatcher::emit(state, registry, &mut events, event)?;
         }
-        events.extend(dispatch_cost_events(state, registry, &cost_events)?);
     }
     Ok(events)
 }

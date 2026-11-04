@@ -1,0 +1,69 @@
+{
+  "id": "tyrs_hand",
+  "title": "Tyr's Hand",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "trash_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnSubroutineBreakAboutToResolve",
+      "while_unrezzed": true,
+      "requirement": {
+        "And": [
+          "RunAgainstThisServer",
+          {
+            "EncounteredIce": {
+              "HasSubtype": "Bioroid"
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "RezInstalled": {
+                  "install": 0,
+                  "pay_cost": true
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may rez this upgrade",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When a subroutine would be broken on a piece of bioroid ice protecting this server, you may rez this upgrade."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": {
+        "And": [
+          "RunAgainstThisServer",
+          {
+            "EncounteredIce": {
+              "HasSubtype": "Bioroid"
+            }
+          }
+        ]
+      },
+      "effect": {
+        "Prevent": "SubroutineBroken"
+      },
+      "text": "[trash]: Prevent 1 subroutine from being broken on a piece of bioroid ice protecting this server."
+    }
+  ],
+  "built_from": 3022,
+  "is_playable": true
+}
