@@ -331,25 +331,8 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
             // "only the Runner can use this ability" sits on a Corp card.
             // Checked first, so the offer reaches the seat that will be
             // allowed to pay for it.
-            let card = if *target == InstallId::CORP_IDENTITY {
-                state.corp.identity.clone()
-            } else if *target == InstallId::RUNNER_IDENTITY {
-                state.runner.identity.clone()
-            } else if *target == InstallId::RUN_EVENT {
-                crate::rules::run::run_event(state, registry).cloned()
-            } else {
-                state
-                    .find_corp_install(*target)
-                    .map(|c| c.card.clone())
-                    .or_else(|| state.corp.find_scored(*target).map(|s| s.card.clone()))
-                    .or_else(|| state.rig_abilities_card(*target).cloned())
-                    .or_else(|| state.runner.find_stolen(*target).map(|s| s.card.clone()))
-                    .or_else(|| state.find_condition(*target).map(|condition| condition.card.clone()))
-            };
-            if let Some(used_by) = card
-                .as_ref()
-                .and_then(|card| registry.get(card))
-                .and_then(|def| def.abilities.get(*ability_index))
+            if let Some(used_by) = crate::rules::active::ability_at(state, registry, *target, *ability_index)
+                .and_then(|(card, index)| registry.get(card)?.abilities.get(index))
                 .and_then(|ability| ability.used_by)
             {
                 return used_by;
@@ -361,6 +344,7 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
                 || state.find_corp_install(*target).is_some()
                 || state.corp.find_scored(*target).is_some()
                 || state.corp.conditions.iter().any(|condition| condition.handle == *target)
+                || state.corp.play_area.iter().any(|played| played.handle == *target)
             {
                 Side::Corp
             } else if matches!(*target, InstallId::RUNNER_IDENTITY | InstallId::RUN_EVENT)
@@ -843,9 +827,13 @@ fn activate_ability_candidates(state: &GameState, registry: &CardRegistry) -> Ve
     for (_, condition) in state.conditions() {
         candidates.extend(paid_ability_candidates(&condition.card, condition.handle, registry));
     }
+    // A current that gained an agenda's text, by its handle (Media Blitz's
+    // Government Takeover): its abilities are the texts' in turn.
+    for played in state.corp.play_area.iter().filter(|played| played.text_of.is_some()) {
+        candidates.extend(texts_ability_candidates(state, registry, played.handle));
+    }
     for rig_card in &state.runner.rig {
-        let card = state.rig_abilities_card(rig_card.install_id).unwrap_or(&rig_card.card);
-        candidates.extend(paid_ability_candidates(card, rig_card.install_id, registry));
+        candidates.extend(texts_ability_candidates(state, registry, rig_card.install_id));
     }
     // Identities are always active — Topan's click ability.
     if let Some(identity) = &state.corp.identity {
@@ -858,6 +846,28 @@ fn activate_ability_candidates(state: &GameState, registry: &CardRegistry) -> Ve
     // 8.6.5) — Eye for an Eye's "Access →".
     if let Some(event) = crate::rules::run::run_event(state, registry) {
         candidates.extend(paid_ability_candidates(event, InstallId::RUN_EVENT, registry));
+    }
+    candidates
+}
+
+/// `paid_ability_candidates` over every text the install `target` has
+/// (`active::ability_texts`), its indices running through each in turn: a
+/// rig card's own, the identity it hosts (DJ Fenris), the icebreakers it
+/// gains the paid abilities of (Baba Yaga).
+fn texts_ability_candidates(state: &GameState, registry: &CardRegistry, target: InstallId) -> Vec<PlayerAction> {
+    let mut offset = 0;
+    let mut candidates = Vec::new();
+    for card in crate::rules::active::ability_texts(state, registry, target) {
+        let Some(definition) = registry.get(card) else { continue };
+        candidates.extend(
+            definition
+                .abilities
+                .iter()
+                .enumerate()
+                .filter(|(_, ability)| ability.trigger == Trigger::Paid && !ability.from_hand)
+                .map(|(index, _)| PlayerAction::ActivateAbility { target, ability_index: offset + index }),
+        );
+        offset += definition.abilities.len();
     }
     candidates
 }

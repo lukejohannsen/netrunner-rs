@@ -640,8 +640,12 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         // because nothing on the board stands for it.
         // A current (CR 8.6.6c) waits there too, until another current is
         // played or an agenda is stolen; the Runner's until one is scored.
+        // One with the text of an agenda (Media Blitz's) says whose, since
+        // nothing else stands for it.
         .chain(view.corp.play_area.iter().map(|played| {
-            if is_current(&played.card) {
+            if let Some(text) = &played.text_of {
+                format!("current, until another is played or an agenda is stolen: {}, with the text of {}", title(&played.card), title(text))
+            } else if is_current(&played.card) {
                 format!("current, until another is played or an agenda is stolen: {}", title(&played.card))
             } else {
                 format!("in play until the Corp's next turn: {}", title(&played.card))

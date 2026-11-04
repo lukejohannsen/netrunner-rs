@@ -2258,6 +2258,9 @@ pub(crate) fn resolve_confirm_card_selection(
             }),
             // The identity chosen from the pile, hosted on the parking card.
             (Effect::HostOtherIdentity { .. }, [chosen, ..], _) => source_install.map(|this| Effect::HostOtherIdentity { identity: chosen.clone(), host: this }),
+            // The agenda chosen, its text gained by the copy of the current
+            // resolving (Media Blitz).
+            (Effect::GainTextOf { .. }, [chosen, ..], _) => source_install.map(|this| Effect::GainTextOf { card: chosen.clone(), on: this }),
             (Effect::InstallFromZoneIgnoringCost { origin_zone, slot, insert_after, .. }, [chosen, ..], _) => {
                 host.map(|(host_install, into)| Effect::InstallFromZoneIgnoringCost {
                     card_id: chosen.clone(),
@@ -2719,7 +2722,16 @@ pub(crate) fn resolve_choose_server(
         return Ok(events);
     }
 
-    let paid = if ignore_run_costs { run::start_run_ignoring_costs(state, registry, server)? } else { run::start_run(state, registry, server)? };
+    // A Corp card's text lets the Runner run in the Corp's turn (An Offer
+    // You Can't Refuse); a Runner card's never does.
+    let corps = prompting_card.as_ref().or(source_card.as_ref()).and_then(|card| registry.get(card)).is_some_and(|card| card.side == Side::Corp);
+    let paid = if ignore_run_costs {
+        run::start_run_ignoring_costs(state, registry, server)?
+    } else if corps {
+        run::start_run_for_the_corp(state, registry, server)?
+    } else {
+        run::start_run(state, registry, server)?
+    };
     // "During that run, the rez cost of each piece of ice is increased by
     // 3[credit]" (Tread Lightly): an effect with a duration, so an entry on
     // `GameState::lingering` that holds while the run does. It was a number

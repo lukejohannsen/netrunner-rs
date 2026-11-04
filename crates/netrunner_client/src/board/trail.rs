@@ -540,6 +540,7 @@ mod tests {
             once_per_run_used: Vec::new(),
             initiated_by: None,
             begun_as_the_turn_began: false,
+            begun_in_the_corps_turn: false,
         };
         let mut trail = RunTrail::begin(&run);
         assert_eq!(trail.stage, Stage::AtIce(0));

@@ -310,6 +310,7 @@ mod tests {
             once_per_run_used: Vec::new(),
             initiated_by: None,
             begun_as_the_turn_began: false,
+            begun_in_the_corps_turn: false,
         };
         // No ice: the steps are there, and none of them counts a piece.
         view.active_run = Some(run.clone());

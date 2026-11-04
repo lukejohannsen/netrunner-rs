@@ -681,6 +681,18 @@ pub enum Trigger {
     /// counts the times an action was taken, and a purge is taken once for
     /// three [click].
     OnThirdClickOnOneAction,
+    /// "The first time each turn the Runner **loses or spends** [click]
+    /// **during a run**" (Seidr Laboratories: Destiny Defined): an action
+    /// taken while a run was under way took [click] from the Runner — spent
+    /// (a bioroid's subroutine broken with a click, Strongbox's steal) or
+    /// lost (Eli 1.0's cost, a card's text) — at `GameEvent::
+    /// ClicksGoneDuringRun`, once for the action, as its handler returns.
+    /// About nothing, the Runner's, and "the first time" is
+    /// `first_each_turn`. Composition didn't work: `OnAnyClicksLost` is
+    /// every click lost, in a run or not, so its first each turn is not the
+    /// first during a run, and a click spent was never a moment (Engine
+    /// words Stage 25).
+    OnClicksGoneDuringRun,
 }
 
 /// What a run's moment about a piece of ice says of it beyond the card —
@@ -1411,7 +1423,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 81] = [
+    pub const ALL: [Trigger; 82] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -1493,6 +1505,7 @@ impl Trigger {
         Trigger::OnAgendaCounterSpent,
         Trigger::OnDeckSearched,
         Trigger::OnThirdClickOnOneAction,
+        Trigger::OnClicksGoneDuringRun,
     ];
 
     /// This trigger's position in `ALL`.
@@ -1588,6 +1601,7 @@ impl Trigger {
             | Trigger::OnAgendaCounterSpent
             | Trigger::OnDeckSearched
             | Trigger::OnThirdClickOnOneAction
+            | Trigger::OnClicksGoneDuringRun
             | Trigger::WhileTrue
             | Trigger::Paid => TriggerAbout::Nothing,
             // `OnDamageDealt` would be the second, the day a card prints
@@ -1727,6 +1741,9 @@ impl Trigger {
             | Trigger::OnTraceSuccessful
             | Trigger::OnTraceInitiated
             | Trigger::OnLinkBoosted
+            // "The Runner loses or spends [click]", printed on the Corp's
+            // identity.
+            | Trigger::OnClicksGoneDuringRun
             | Trigger::OnAdvancementCounterPlaced
             | Trigger::OnBasicCreditAction
             | Trigger::OnBasicDrawAction
@@ -1767,7 +1784,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnTagsAvoided | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed | Trigger::OnAbilityTookCredits | Trigger::OnCardRevealed | Trigger::OnCardDrawn | Trigger::OnCardExposed | Trigger::OnAgendaAddedToScoreArea | Trigger::OnDrawAboutToResolve | Trigger::OnExposeAboutToResolve | Trigger::OnServerCreated | Trigger::OnTraceSuccessful | Trigger::OnBasicCreditAction | Trigger::WhileTrue | Trigger::OnMandatoryDraw | Trigger::OnAccessPassed | Trigger::OnBreachEnded | Trigger::OnStrengthBoosted | Trigger::OnSecretCreditsRevealed | Trigger::OnCardsDrawn | Trigger::OnClicksLost | Trigger::OnCreditsLost | Trigger::OnTraceInitiated | Trigger::OnAdvancementCounterPlaced | Trigger::OnBadPublicityAboutToResolve | Trigger::OnAccessAboutToResolve | Trigger::OnAnyClicksLost | Trigger::OnLinkBoosted | Trigger::OnAgendaCounterSpent | Trigger::OnDeckSearched | Trigger::OnThirdClickOnOneAction => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnTagsAvoided | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed | Trigger::OnAbilityTookCredits | Trigger::OnCardRevealed | Trigger::OnCardDrawn | Trigger::OnCardExposed | Trigger::OnAgendaAddedToScoreArea | Trigger::OnDrawAboutToResolve | Trigger::OnExposeAboutToResolve | Trigger::OnServerCreated | Trigger::OnTraceSuccessful | Trigger::OnBasicCreditAction | Trigger::WhileTrue | Trigger::OnMandatoryDraw | Trigger::OnAccessPassed | Trigger::OnBreachEnded | Trigger::OnStrengthBoosted | Trigger::OnSecretCreditsRevealed | Trigger::OnCardsDrawn | Trigger::OnClicksLost | Trigger::OnCreditsLost | Trigger::OnTraceInitiated | Trigger::OnAdvancementCounterPlaced | Trigger::OnBadPublicityAboutToResolve | Trigger::OnAccessAboutToResolve | Trigger::OnAnyClicksLost | Trigger::OnLinkBoosted | Trigger::OnAgendaCounterSpent | Trigger::OnDeckSearched | Trigger::OnThirdClickOnOneAction | Trigger::OnClicksGoneDuringRun => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

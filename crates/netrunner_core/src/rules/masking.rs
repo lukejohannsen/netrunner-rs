@@ -668,6 +668,11 @@ pub struct PublicRunState {
     /// turn's start rather than in the action phase.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub begun_as_the_turn_began: bool,
+    /// `RunState::begun_in_the_corps_turn`: public, as the run is. Carried
+    /// so a sample ends An Offer You Can't Refuse's run where the game
+    /// does, back in the Corp's action phase.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub begun_in_the_corps_turn: bool,
 }
 
 /// `GameState` as visible to one player: hidden zones are collapsed to a
@@ -1370,6 +1375,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::DeckSearched { .. }
         // Every [click] spent, and on what, is public.
         | GameEvent::ThirdClickOnOneAction { .. }
+        | GameEvent::ClicksGoneDuringRun { .. }
         | GameEvent::TraceAvoided { .. }
         | GameEvent::TraceSuccessful { .. }
         | GameEvent::TagRemoved { .. }
@@ -1760,6 +1766,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         this_encounter: run.this_encounter.clone(),
         initiated_by: run.initiated_by.clone(),
         begun_as_the_turn_began: run.begun_as_the_turn_began,
+        begun_in_the_corps_turn: run.begun_in_the_corps_turn,
         once_per_run_used: run
             .once_per_run_used
             .iter()

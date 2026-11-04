@@ -309,11 +309,17 @@ pub fn install_label(id: &InstallId, registry: &CardRegistry, view: Option<&Clie
     }
     match view.runner.rig.iter().find(|c| c.install_id == *id) {
         Some(rig_card) => card_title(&rig_card.card, registry),
-        None => match scored_card_id(view, id) {
+        None => match scored_card_id(view, id).or_else(|| played_card_id(view, id)) {
             Some(card) => card_title(&card, registry),
             None => format!("install #{}", id.0),
         },
     }
+}
+
+/// A card in either play area by its handle — a current or a lockdown,
+/// faceup there.
+fn played_card_id(view: &ClientView, id: &InstallId) -> Option<CardId> {
+    view.corp.play_area.iter().find(|played| played.handle == *id).map(|played| played.card.clone())
 }
 
 /// What an access candidate is, in words: the card in a root by the name
@@ -363,6 +369,38 @@ pub fn abilities_card_id(view: &ClientView, id: &InstallId) -> Option<CardId> {
         // A condition counter's own (MCA Informant's, On the Lam's), by its
         // handle: its ability is offered on its host's menu.
         .or_else(|| view.corp.conditions.iter().chain(view.runner.conditions.iter()).find(|condition| condition.handle == *id).map(|condition| condition.card.clone()))
+}
+
+/// The cards whose words the abilities of `id` are, in the order its
+/// ability indices run — `netrunner_core`'s `active::ability_texts`, read
+/// off the view: the card's own (or the identity it hosts), then the text
+/// a current gained (Media Blitz's agenda) or the hosted icebreakers a
+/// program gains the paid abilities of (Baba Yaga), each public.
+pub fn ability_texts(view: &ClientView, registry: &CardRegistry, id: &InstallId) -> Vec<CardId> {
+    if let Some(played) = view.corp.play_area.iter().find(|played| played.handle == *id) {
+        return std::iter::once(played.card.clone()).chain(played.text_of.clone()).collect();
+    }
+    let Some(card) = abilities_card_id(view, id) else { return Vec::new() };
+    let mut texts = vec![card.clone()];
+    if let Some(filter) = netrunner_core::rules::gained_from_hosted(registry, &card) {
+        texts.extend(
+            view.runner
+                .rig
+                .iter()
+                .filter(|hosted| hosted.hosted_on_rig_card == Some(*id))
+                .filter(|hosted| registry.get(&hosted.card).is_some_and(|definition| netrunner_core::dsl::card_matches_filter(definition, filter)))
+                .map(|hosted| hosted.card.clone()),
+        );
+    }
+    texts
+}
+
+/// The printed ability the `index`th ability of `id` is, with the card
+/// it is printed on ([`ability_texts`]).
+pub fn ability_of<'a>(view: &ClientView, registry: &'a CardRegistry, id: &InstallId, index: usize) -> Option<(CardId, &'a netrunner_core::dsl::AbilityDef)> {
+    let texts = ability_texts(view, registry, id);
+    let (card, index) = netrunner_core::rules::ability_in(registry, texts.iter(), index)?;
+    Some((card.clone(), registry.get(card)?.abilities.get(index)?))
 }
 
 /// An agenda in either score area by the handle it kept there — a scored
@@ -560,6 +598,7 @@ pub fn narrate_event(
         GameEvent::DeckSearched { side: Side::Runner } => "Runner searched the stack".to_string(),
         GameEvent::DeckSearched { side: Side::Corp } => "Corp searched R&D".to_string(),
         GameEvent::ThirdClickOnOneAction { side, .. } => format!("{side:?} has spent 3[click] on one action this turn"),
+        GameEvent::ClicksGoneDuringRun { side, amount } => format!("{side:?} lost or spent {amount}[click] during the run"),
         GameEvent::AgendaCounterSpent { card } => format!("spent an agenda counter from {}", title(card)),
         GameEvent::CardsLookedAt { deck, cards, .. } => {
             let names: Vec<String> = cards.iter().map(&title).collect();
@@ -842,18 +881,23 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         // falls back to the prose rendering of its cost and effect. The
         // index alone names nothing.
         PlayerAction::ActivateAbility { target, ability_index } => {
-            let ability = view
-                .and_then(|v| abilities_card_id(v, target))
-                .and_then(|card| registry.get(&card))
-                .and_then(|def| def.abilities.get(*ability_index));
+            let found = view.and_then(|v| ability_of(v, registry, target, *ability_index));
+            // A gained ability names the card whose words it is: "Baba
+            // Yaga (Corroder's): 1[credit]: +1 strength".
+            let own = view.and_then(|v| abilities_card_id(v, target).or_else(|| played_card_id(v, target)));
+            let label = match &found {
+                Some((card, _)) if Some(card) != own.as_ref() => format!("{} ({}'s)", install_label(target), card_title(card, registry)),
+                _ => install_label(target),
+            };
+            let ability = found.map(|(_, ability)| ability);
             match ability {
                 Some(ability) => match &ability.text {
-                    Some(text) => format!("{}: {}", install_label(target), text.trim_end_matches('.')),
+                    Some(text) => format!("{label}: {}", text.trim_end_matches('.')),
                     None => {
                         let effect = crate::prose::describe_effect(&ability.effect, registry);
                         match &ability.cost {
-                            Some(cost) => format!("{}: {} — {effect}", install_label(target), crate::prose::describe_cost(cost)),
-                            None => format!("{}: {effect}", install_label(target)),
+                            Some(cost) => format!("{}: {} — {effect}", label, crate::prose::describe_cost(cost)),
+                            None => format!("{}: {effect}", label),
                         }
                     }
                 },

@@ -1099,6 +1099,14 @@ pub struct RunState {
     /// run is the reset.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub begun_as_the_turn_began: bool,
+    /// Whether a Corp card's text began this run during the Corp's action
+    /// phase — An Offer You Can't Refuse's "The Runner may run that
+    /// server". The run is run in the Runner's action phase's shape, the
+    /// only one the run's windows and steps know (as `begun_as_the_turn_
+    /// began`'s is), and its end puts the Corp's action phase back
+    /// (`engine::end_run`). Part of the run, so a new run is the reset.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub begun_in_the_corps_turn: bool,
     /// How many agendas the Runner has stolen during this run
     /// (`run::access::resolve_steal`). Snapshotted into
     /// `state::CompletedRun::agendas_stolen` when the run concludes, since
@@ -1173,6 +1181,7 @@ impl Default for RunState {
             bonus_run_credits: 0,
             run_credits_pay_for: None,
             begun_as_the_turn_began: false,
+            begun_in_the_corps_turn: false,
             initiated_by: None,
             ice_bypassed: false,
             fully_broken: false,

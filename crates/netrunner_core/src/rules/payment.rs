@@ -831,22 +831,11 @@ fn a_text_rez_could_ask(state: &GameState, registry: &CardRegistry, action: &cra
 }
 
 fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: &crate::rules::PlayerAction) -> bool {
-    use crate::rules::{InstallId, PlayerAction};
+    use crate::rules::PlayerAction;
     match action {
         PlayerAction::ActivateAbility { target, ability_index } => {
-            let card = match *target {
-                InstallId::CORP_IDENTITY => state.corp.identity.as_ref(),
-                InstallId::RUNNER_IDENTITY => state.runner.identity.as_ref(),
-                InstallId::RUN_EVENT => crate::rules::run::run_event(state, registry),
-                target => state
-                    .find_corp_install(target)
-                    .map(|c| &c.card)
-                    .or_else(|| state.corp.find_scored(target).map(|s| &s.card))
-                    .or_else(|| state.rig_abilities_card(target))
-                    .or_else(|| state.runner.find_stolen(target).map(|s| &s.card)),
-            };
-            card.and_then(|card| registry.get(card))
-                .and_then(|def| def.abilities.get(*ability_index))
+            crate::rules::active::ability_at(state, registry, *target, *ability_index)
+                .and_then(|(card, index)| registry.get(card)?.abilities.get(index))
                 .and_then(|ability| ability.cost.as_ref())
                 .is_some_and(crate::dsl::Cost::may_ask)
         }

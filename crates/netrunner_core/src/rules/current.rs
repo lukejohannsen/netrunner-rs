@@ -44,7 +44,7 @@ pub(crate) fn file(state: &mut GameState, registry: &CardRegistry, events: &mut 
     trash_currents(state, registry, events, Side::Corp)?;
     trash_currents(state, registry, events, Side::Runner)?;
     let handle = state.allocate_install_id();
-    let played = PlayedOperation { card: card.clone(), handle, counters: 0 };
+    let played = PlayedOperation { card: card.clone(), handle, counters: 0, text_of: None };
     match side {
         Side::Corp => state.corp.play_area.push(played),
         Side::Runner => state.runner.in_play.push(played),

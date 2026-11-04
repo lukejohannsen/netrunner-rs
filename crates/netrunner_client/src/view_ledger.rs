@@ -87,7 +87,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         points_to_win: _,       // drawn: hud::readouts ("3/5"), the score sheet's caption, the terminal's status line
         removed_from_game: _,   // drawn: under Archives' sheet; the terminal's identity line and card picker
         set_aside: _,           // drawn: hud::in_effect ("set aside: …"), both clients, as the Runner's is; the access pop-up draws the ones offered
-        play_area: _,           // drawn: hud::in_effect ("in play until the Corp's next turn: …", or "current, until …" for a current), both clients: a lockdown or a current, faceup and active (CR 3.5.1c, 8.6.6c)
+        play_area: _,           // drawn: hud::in_effect ("in play until the Corp's next turn: …", or "current, until …" for a current), both clients: a lockdown or a current, faceup and active (CR 3.5.1c, 8.6.6c); a current's gained text (`PlayedOperation::text_of`, Media Blitz) as "…, with the text of …", and its abilities on the identity's menu (action_map, actions::ability_texts)
         conditions: _,          // drawn: hud::in_effect ("hosted on …: …"), both clients: a condition counter, faceup and active on its host (CR 1.9.5j)
         hosted_facedown: _,     // drawn: hud::in_effect ("hosted facedown on Glenn Station: …"), both clients: the card to the Corp, a count to the Runner
         identity_counters: _,   // drawn: hud::identity_facts / identity_chip (AU Co.'s power counters)
@@ -176,7 +176,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         install_id: _,            // engine's: the handle
         current_strength: _,      // drawn: the rig's chip line, board::facts
         hosted_on_ice: _,         // drawn: a Trojan's chip on its ice and its ghost (board::rig)
-        hosted_on_rig_card: _,    // drawn: board::facts ("Hosted on …"), board::rig
+        hosted_on_rig_card: _,    // drawn: board::facts ("Hosted on …"), board::rig; a host that gains its paid abilities (Baba Yaga) offers them on its own menu, named "Baba Yaga (Corroder's): …" (actions::ability_texts)
         hosted_cards: _,          // drawn: board::facts ("Hosts …")
         hosted_counters: _,       // drawn: board::facts ("Hosts Corroder (2 counters)", Personal Workshop's countdown), both clients' sheets
         hosted_facedown: _,       // drawn: board::facts ("Hosts facedown …")
@@ -224,6 +224,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         once_per_run_used: _,    // engine's: a use limit the action list and board::breaks already honour, as once_per_turn_used
         initiated_by: _,         // drawn: names the run's event on the ability it has for the run, actions::describe (both clients' buttons)
         begun_as_the_turn_began: _, // engine's: where the turn goes when the run ends, which board::phase draws when it gets there
+        begun_in_the_corps_turn: _, // engine's: the Corp's action phase the run goes back to (An Offer You Can't Refuse), which board::phase draws when it gets there
     }) = active_run
     {
         for PublicRunIce {

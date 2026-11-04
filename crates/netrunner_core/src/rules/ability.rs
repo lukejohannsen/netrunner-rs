@@ -2562,6 +2562,70 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::CardHosted { card, host: Some(host_card) }])
         }
 
+        Effect::RevealUntilAndInstallInPlace { filter } => {
+            let place = match ctx.triggering_event {
+                Some(GameEvent::OperationPlayed { in_place_of: Some(place), .. }) => Some(*place),
+                _ => None,
+            };
+            let mut events = Vec::new();
+            // From the top (the end of `r_and_d`) down, each card shown as
+            // it is reached (CR 1.21.3), until one is admitted.
+            let mut found = None;
+            for index in (0..state.corp.r_and_d.len()).rev() {
+                let card = state.corp.r_and_d[index].clone();
+                dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side: Side::Corp, card: card.clone(), by: Side::Corp })?;
+                if registry.get(&card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter)) {
+                    found = Some(index);
+                    break;
+                }
+            }
+            if let (Some(index), Some(place)) = (found, place) {
+                let card = state.corp.r_and_d.remove(index);
+                let creates = crate::rules::engine::creates_server(state, place.server);
+                let install_id = state.allocate_install_id();
+                let installed = crate::rules::InstalledCard {
+                    card: card.clone(),
+                    install_id,
+                    server: place.server,
+                    slot: crate::rules::InstallSlot::Ice,
+                    rezzed: false,
+                    advancement_tokens: 0,
+                    counters: 0,
+                    installed_this_turn: true,
+                    seen_by_runner: true,
+                    this_turn: Default::default(),
+                    host: None,
+                };
+                // Before the ice now in that position, or outermost of none.
+                let at = state
+                    .corp
+                    .installed
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, card)| card.server == place.server && card.slot == crate::rules::InstallSlot::Ice)
+                    .nth(place.position as usize)
+                    .map(|(at, _)| at);
+                match at {
+                    Some(at) => state.corp.installed.insert(at, installed),
+                    None => state.corp.installed.push(installed),
+                }
+                if creates {
+                    dispatcher::emit(state, registry, &mut events, GameEvent::ServerCreated { server: place.server })?;
+                }
+                dispatcher::emit(state, registry, &mut events, GameEvent::CardInstalled { side: Side::Corp, install: install_id, card: Some(card), server: place.server, from_hq: false })?;
+                events.extend(evaluate_effect(state, &Effect::RezInstalled { install: install_id, pay_cost: false, discount: Amount::Fixed(0), refuse_unaffordable: false }, ctx, registry)?);
+            }
+            crate::rules::pending_choice::shuffle_decks(state, Side::Corp, &crate::dsl::CardZoneRef::OwnRAndD, None);
+            Ok(events)
+        }
+
+        Effect::GainTextOf { card, on } => {
+            // The copy left play while the choice was parked: nothing gains it.
+            let Some(played) = played_mut(state, *on) else { return Ok(Vec::new()) };
+            played.text_of = Some(card.clone());
+            Ok(Vec::new())
+        }
+
         Effect::InstallRunnerCardFromGrip => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             // Eligibility may have shifted since the selection was offered
@@ -3387,7 +3451,10 @@ pub fn evaluate_effect(
             // this parks a decision `start_run` will refuse. See that
             // function's doc comment; a narrower copy here is exactly what
             // caused the original deadlock.
-            run::check_run_may_begin(state, registry)?;
+            // A Corp card's offer is made in the Corp's turn (An Offer You
+            // Can't Refuse, `run::start_run_for_the_corp`).
+            let for_the_corp = acting_card.and_then(|card| registry.get(card)).is_some_and(|card| card.side == Side::Corp);
+            run::check_run_may_begin_by(state, registry, for_the_corp)?;
             // Narrow the offer here, for the same reason as the check
             // above: an offer with nothing in it is a decision nothing can
             // resolve, and refusing to park makes the probe drop the
@@ -3849,7 +3916,7 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
-        Effect::ChooseServer { only_protected_by_ice, other_than_attacked, then } => {
+        Effect::ChooseServer { only_protected_by_ice, other_than_attacked, only_in, then } => {
             let card = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
             let chooser = registry.get(card).map_or(Side::Runner, |definition| definition.side);
             let mut servers = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
@@ -3860,6 +3927,9 @@ pub fn evaluate_effect(
             if *other_than_attacked {
                 let attacked = state.active_run.as_ref().map(|run| run.server);
                 servers.retain(|server| Some(*server) != attacked);
+            }
+            if let Some(kind) = only_in {
+                servers.retain(|server| kind.admits(*server));
             }
             if servers.is_empty() {
                 return Ok(Vec::new());

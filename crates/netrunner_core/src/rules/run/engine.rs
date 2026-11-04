@@ -83,6 +83,18 @@ fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> Result<O
 /// ability that can't legally run right now simply isn't offered.
 /// Found by `no_panics_or_deadlocks_across_many_seeds_system_gateway`.
 pub(crate) fn check_run_may_begin(state: &GameState, registry: &CardRegistry) -> Result<(), RulesError> {
+    check_run_may_begin_by(state, registry, false)
+}
+
+/// `check_run_may_begin` for a run a card's text offers, which a Corp
+/// card's may offer in the Corp's action phase too (`for_the_corp`, An
+/// Offer You Can't Refuse; `start_run_for_the_corp`).
+pub(crate) fn check_run_may_begin_by(state: &GameState, registry: &CardRegistry, for_the_corp: bool) -> Result<(), RulesError> {
+    if for_the_corp && state.phase == GamePhase::Action(Side::Corp) && state.paid_ability_window.is_none() && state.active_run.is_none() {
+        let mut as_run = state.clone();
+        as_run.phase = GamePhase::Action(Side::Runner);
+        return check_run_may_begin(&as_run, registry);
+    }
     if state.active_run.is_some() {
         return Err(RulesError::RunAlreadyInProgress);
     }
@@ -199,6 +211,33 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
     start_run_paying(state, registry, server, true, false)
 }
 
+/// `start_run` for a run a Corp card's text lets the Runner make in the
+/// Corp's action phase — An Offer You Can't Refuse's "The Runner may run
+/// that server": run in the Runner's action phase's shape, the one the
+/// run's steps and windows know, with the Corp's put back as it ends
+/// (`RunState::begun_in_the_corps_turn`, `end_run`). Anywhere else it is
+/// `start_run`.
+pub fn start_run_for_the_corp(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<Vec<GameEvent>, RulesError> {
+    let in_the_corps_turn = state.phase == GamePhase::Action(Side::Corp) && state.active_run.is_none();
+    if in_the_corps_turn {
+        state.phase = GamePhase::Action(Side::Runner);
+    }
+    match start_run_paying(state, registry, server, true, false) {
+        Ok(paid) => {
+            if let Some(run) = state.active_run.as_mut() {
+                run.begun_in_the_corps_turn = in_the_corps_turn;
+            }
+            Ok(paid)
+        }
+        Err(error) => {
+            if in_the_corps_turn {
+                state.phase = GamePhase::Action(Side::Corp);
+            }
+            Err(error)
+        }
+    }
+}
+
 /// `start_run` for the basic action to run (`engine::initiate_run`), which
 /// also pays what is said of that action alone
 /// (`Scope::RunsByTheBasicAction`, Enhanced Login Protocol).
@@ -300,6 +339,7 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
         event_counters: 0,
         cards_accessed_count: 0, rnd_cards_accessed_count: 0, bonus_run_credits: 0, run_credits_pay_for: None,
         begun_as_the_turn_began,
+        begun_in_the_corps_turn: false,
     });
     Ok(paid)
 }
@@ -1969,6 +2009,17 @@ pub(crate) fn end_run(state: &mut GameState) -> Option<RunState> {
         }
         !delayed.this_run
     });
+    // Back to the Corp's action phase for a run a Corp card's text began
+    // there (`start_run_for_the_corp`), unless the run ended the game. No
+    // window opens: the action that began the run has finished with it.
+    if run.as_ref().is_some_and(|run| run.begun_in_the_corps_turn) && !state.is_over() {
+        state.phase = GamePhase::Action(Side::Corp);
+        if matches!(state.paid_ability_window.as_ref().map(|w| w.checkpoint), Some(WindowCheckpoint::Run)) {
+            state.paid_ability_window = None;
+        }
+        checkpoint::expire_durations(state);
+        return run;
+    }
     // Back to the turn's start for a run begun there (`start_run`), with its
     // window, unless the run ended the game.
     if run.as_ref().is_some_and(|run| run.begun_as_the_turn_began) && !state.is_over() {

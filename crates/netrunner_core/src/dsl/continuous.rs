@@ -462,6 +462,18 @@ pub enum ContinuousKind {
     /// card holds. Composition didn't work: a card's counters were its own
     /// field, read in a dozen places.
     LendsVirusCounters,
+    /// This card has the paid abilities of each card it hosts that the
+    /// filter admits, as its own — Baba Yaga's "This program gains the paid
+    /// abilities of all hosted **icebreaker** programs", said of itself
+    /// (`This`). Read by the one lookup of the text an install's abilities
+    /// come from (`rules::active::ability_texts`): its ability indices run
+    /// through its own abilities and then each hosted card's, in the order
+    /// they were hosted, and an ability so gained resolves as this install
+    /// — its strength boosted, its strength compared — with the hosted
+    /// card's words. The hosted card keeps its own as well. Composition
+    /// didn't work: an install's abilities were its one card's, with DJ
+    /// Fenris's hosted identity the one other text, and only ever instead.
+    GainsPaidAbilitiesOfHosted(crate::dsl::CardFilter),
     /// A run it applies to cannot be declared successful — Flagship's
     /// "Runs against this server cannot be declared successful. (This effect
     /// does not cause runs to become unsuccessful.)" The Success Phase is

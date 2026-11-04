@@ -493,6 +493,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // CR 5.2.5a: Jeeves Model Bioroids' third [click] on one action,
         // the spender's.
         GameEvent::ThirdClickOnOneAction { side, .. } => vec![moment(Trigger::OnThirdClickOnOneAction, &About::Nothing, Some(*side))],
+        // Seidr Laboratories' [click] lost or spent during a run, the
+        // Runner's.
+        GameEvent::ClicksGoneDuringRun { side, .. } => vec![moment(Trigger::OnClicksGoneDuringRun, &About::Nothing, Some(*side))],
         // A selection that reveals what it chose (Hyoubu Institute's own
         // "reveal the top card of the stack") is its chooser revealing
         // each card.
@@ -1474,7 +1477,7 @@ mod tests {
         let mut state = GameState { phase: GamePhase::Action(Side::Corp), ..Default::default() };
         state.corp.installed = vec![on_the_table("press_office", 1, ServerId::Remote(0), true)];
 
-        let played = GameEvent::OperationPlayed { side: Side::Corp, card: CardId("hedge_fund".to_string()), from_archives: false, x: None, forfeited: None };
+        let played = GameEvent::OperationPlayed { side: Side::Corp, card: CardId("hedge_fund".to_string()), from_archives: false, x: None, forfeited: None, in_place_of: None };
         assert_eq!(who(&plan_for(&state, &registry, &played)), vec![("hedge_fund", Heard::AsSubject), ("press_office", Heard::AsBystander)]);
 
         // Face down it is not active, and the operation is not about it.

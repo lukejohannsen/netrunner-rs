@@ -1,0 +1,31 @@
+{
+  "id": "seidr_laboratories_destiny_defined",
+  "title": "Seidr Laboratories: Destiny Defined",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnClicksGoneDuringRun",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnArchives",
+            "filter": "Any",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnRAndD"
+          }
+        }
+      ],
+      "text": "The first time each turn the Runner loses or spends [click] during a run, you may add 1 card from Archives to the top of R&D."
+    }
+  ],
+  "built_from": 13028,
+  "is_playable": true
+}

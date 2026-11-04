@@ -521,6 +521,16 @@ pub struct PlayedOperation {
     /// (`payment::Pool::Hosted`, by this handle). Public, as the copy is.
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     pub counters: u32,
+    /// The card whose text this copy has gained — Media Blitz's "Choose an
+    /// agenda in the Runner's score area. Media Blitz gains the text of
+    /// that agenda" (`Effect::GainTextOf`). Read by `rules::active`, the one
+    /// place a card's text is looked up: the agenda's triggers are heard,
+    /// its standing effects apply and its paid abilities are used as this
+    /// copy's, for as long as the copy is in play. A card, not a handle: the
+    /// text is the printed card's (CR 1.5.4), and it stays gained if the
+    /// agenda leaves the score area. Public, as the copy and the agenda are.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_of: Option<CardId>,
 }
 
 /// One agenda in the Corp's score area — see `CorpState::scored_agendas`.

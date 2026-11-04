@@ -1,0 +1,53 @@
+{
+  "id": "an_offer_you_cant_refuse",
+  "title": "An Offer You Can’t Refuse",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseServer": {
+            "only_in": "Central"
+          }
+        },
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseServer": {
+                  "chooser": "Runner",
+                  "rez_cost_delta": 0,
+                  "bonus_run_credits": 0,
+                  "chosen_server": true,
+                  "on_start": {
+                    "Prohibit": {
+                      "what": "JackOut",
+                      "until": "Run"
+                    }
+                  }
+                }
+              },
+              {
+                "AddToScoreAreaAsAgenda": {
+                  "points": 1
+                }
+              }
+            ],
+            "texts": [
+              "The Runner may run that server. They cannot jack out during that run",
+              "If no run is made this way, add this operation to your score area as an agenda worth 1 agenda point"
+            ]
+          }
+        }
+      ],
+      "text": "Choose a central server. The Runner may run that server. They cannot jack out during that run. If no run is made this way, add this operation to your score area as an agenda worth 1 agenda point."
+    }
+  ],
+  "built_from": 8091,
+  "is_playable": true
+}

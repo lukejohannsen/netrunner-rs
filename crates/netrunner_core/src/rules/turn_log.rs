@@ -397,6 +397,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         Trigger::OnAgendaCounterSpent | Trigger::OnDeckSearched => false,
         // About no card: [click] spent on an action are public.
         Trigger::OnThirdClickOnOneAction => false,
+        Trigger::OnClicksGoneDuringRun => false,
         // Played, rezzed, encountered, scored, stolen, forfeited, trashed
         // faceup by the Runner, or a faceup card's ability: on the table.
         Trigger::OnPlay
