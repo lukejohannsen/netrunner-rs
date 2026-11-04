@@ -878,6 +878,17 @@ pub enum Effect {
         /// work: a printed number was the only discount a rez could take.
         #[serde(default = "Amount::none", skip_serializing_if = "Amount::is_none")]
         discount: Amount,
+        /// The rez is one answer of a choice the Corp must make, so one it
+        /// cannot pay for is refused rather than resolving to nothing —
+        /// False Echo's "the Corp must rez that ice or add it to HQ" (CR
+        /// 1.16.4b: "they must pay the associated cost if able"). Refused,
+        /// it is not among `legal_actions`' answers, and the other answer
+        /// is the one left. Composition didn't work: lenient, an option to
+        /// rez was a free way out of adding the ice to HQ for a Corp with
+        /// no credits, and an `EffectIf` on the credit pool is the
+        /// affordability sum the Payment Rule forbids.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        refuse_unaffordable: bool,
     },
     /// Removes *every* counter currently on `acting_card` and grants `side`
     /// that many credits — e.g. Pennyshaver's "place 1 credit on this
@@ -2798,6 +2809,26 @@ pub enum Effect {
     /// `CardTarget` that `BoostStrength` — which boosts the card it
     /// resolves as — does not read.
     AsInstall { install: crate::rules::InstallId, effect: Box<Effect> },
+    /// `effect` resolved as the card `card` names, a card in no install —
+    /// Maya's "you may add **that card** to the bottom of R&D", the card the
+    /// Runner just passed on (`CardTarget::AccessedCard`, written over as
+    /// `Accessed` when the "may" parks, and back again for the Corp, who
+    /// was not shown it: `naming_no_cards`). The prompting card stays the
+    /// card whose text it is. Composition didn't work: `acts_on_subject`
+    /// makes the passed card the one that asks, which named it in the
+    /// Corp's copy of the prompt, and `AddToDeck` moves only the card it
+    /// resolves as.
+    AsCard { card: CardTarget, effect: Box<Effect> },
+    /// The card being accessed must be trashed with the basic trash ability
+    /// if the Runner can pay for it (CR 7.1.5d): neither the pass nor a
+    /// card's mid-access ability is open to them while the trash is
+    /// (`run::AccessState::must_trash`). Neutralize All Threats' "You must
+    /// trash that card by paying its trash cost, if able." Composition
+    /// didn't work: Mumbad Virtual Tour's is the card's own standing word
+    /// about itself (`ContinuousKind::MustBeTrashedWhenAccessed`), asked of
+    /// an install, and this is said of whatever card an access was, for
+    /// that access alone.
+    MustTrashAccessed,
     /// The card this resolves as, one of the Runner's facedown installed
     /// cards (`RunnerState::installed_facedown`), is turned faceup —
     /// Assimilator's "Turn one of your facedown installed cards faceup. If
@@ -4247,12 +4278,23 @@ pub enum Prohibition {
     /// Composition didn't work: every prohibition was about one kind of
     /// action, and this one is about every kind but two.
     SpendClickButToRun,
+    /// No card leaves the Runner's heap, for any reason — Blacklist's
+    /// "Cards cannot leave the Runner's heap for any reason", a standing
+    /// effect on the Runner (`Scope::Player`) while it is rezzed. Asked by
+    /// every way out of the heap (`continuous::heap_is_locked`): a card
+    /// played or installed from it, an effect that moves it to a hand, a
+    /// deck, the score area, a condition or out of the game, and a
+    /// selection over it, which offers nothing. Binds the Runner, whose
+    /// heap it is, and is asked of the Corp's cards' moves too ("for any
+    /// reason"). Composition didn't work: every prohibition was about an
+    /// action or a step, and this is about a zone.
+    LeaveTheHeap,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 38] = [
+    pub const ALL: [Prohibition; 39] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -4291,13 +4333,14 @@ impl Prohibition {
         Prohibition::PlayCurrents,
         Prohibition::InstallIce,
         Prohibition::SpendClickButToRun,
+        Prohibition::LeaveTheHeap,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::InstallIce => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::Steal | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessRootOfArchives | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::PlayCurrents | Prohibition::SpendClickButToRun => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::Steal | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessRootOfArchives | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::PlayCurrents | Prohibition::SpendClickButToRun | Prohibition::LeaveTheHeap => Side::Runner,
         }
     }
 
@@ -4308,7 +4351,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::Steal | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessRootOfArchives | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::PlayCurrents | Prohibition::InstallIce | Prohibition::SpendClickButToRun => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::Steal | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessRootOfArchives | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::PlayCurrents | Prohibition::InstallIce | Prohibition::SpendClickButToRun | Prohibition::LeaveTheHeap => None,
         }
     }
 }
@@ -4372,11 +4415,15 @@ impl Effect {
     }
 
     /// `MovedTo::PassedIce` written over as the ice the pass was of, in the
-    /// shapes a choice's option is written in.
-    pub fn with_passed_ice(self, server: crate::rules::ServerId, position: u32) -> Effect {
-        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_passed_ice(server, position)).collect();
+    /// shapes a choice's option is written in — and an `AsInstall` with the
+    /// placeholder as that ice's install (`ice`), where it is still on the
+    /// table: False Echo's "the Corp must rez **that ice** or add **it** to
+    /// HQ", resolved as the ice in the Corp's choice behind the Runner's.
+    pub fn with_passed_ice(self, server: crate::rules::ServerId, position: u32, ice: Option<crate::rules::InstallId>) -> Effect {
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_passed_ice(server, position, ice)).collect();
         match self {
             Effect::MoveRunToIce(MovedTo::PassedIce) => Effect::MoveRunToIce(MovedTo::Ice { server, position }),
+            Effect::AsInstall { install: crate::rules::InstallId::PLACEHOLDER, effect } => Effect::AsInstall { install: ice.unwrap_or(crate::rules::InstallId::PLACEHOLDER), effect },
             // Slipstream's "in the same position as the passed ice", in the
             // selection the move waits behind.
             Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {
@@ -4384,7 +4431,7 @@ impl Effect {
             }
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
-            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: Box::new(effect.with_passed_ice(server, position)), otherwise: otherwise.map(|e| Box::new(e.with_passed_ice(server, position))) },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: Box::new(effect.with_passed_ice(server, position, ice)), otherwise: otherwise.map(|e| Box::new(e.with_passed_ice(server, position, ice))) },
             other => other,
         }
     }
@@ -4395,6 +4442,7 @@ impl Effect {
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_accessed_card(card)).collect();
         match self {
             Effect::Reveal(CardTarget::AccessedCard) => Effect::Reveal(CardTarget::Accessed(card.clone())),
+            Effect::AsCard { card: CardTarget::AccessedCard, effect } => Effect::AsCard { card: CardTarget::Accessed(card.clone()), effect },
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: Box::new(effect.with_accessed_card(card)), otherwise: otherwise.map(|e| Box::new(e.with_accessed_card(card))) },
@@ -4672,6 +4720,8 @@ impl Effect {
             // parked: the card accessed out of HQ or R&D is the Runner's
             // to know until it is revealed.
             Effect::Reveal(CardTarget::Accessed(_)) => Effect::Reveal(CardTarget::AccessedCard),
+            // Maya's "that card", for the same reason.
+            Effect::AsCard { card: CardTarget::Accessed(_), effect } => Effect::AsCard { card: CardTarget::AccessedCard, effect },
             Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
@@ -4799,7 +4849,7 @@ impl Effect {
             Effect::AddCounters(a) => Effect::AddCounters(amount(a)),
             Effect::AddVirusCounters(a) => Effect::AddVirusCounters(amount(a)),
             Effect::PlaceAdvancementCounters(a) => Effect::PlaceAdvancementCounters(amount(a)),
-            Effect::RezInstalled { install, pay_cost, discount } => Effect::RezInstalled { install, pay_cost, discount: amount(discount) },
+            Effect::RezInstalled { install, pay_cost, discount, refuse_unaffordable } => Effect::RezInstalled { install, pay_cost, discount: amount(discount), refuse_unaffordable },
             // Its `then` is about the cards milled (`TrashedThisWay`), and
             // has no number of its own, so the chosen one rides in: a
             // `ChosenNumber` there was left unwritten until Stage 24.
@@ -4852,6 +4902,7 @@ impl Effect {
             Effect::Trace { base, on_success, on_failure } => Effect::Trace { base: amount(base), on_success, on_failure },
             Effect::AsThisCard(effect) => Effect::AsThisCard(boxed(effect)),
             Effect::AsInstall { install, effect } => Effect::AsInstall { install, effect: boxed(effect) },
+            Effect::AsCard { card, effect } => Effect::AsCard { card, effect: boxed(effect) },
             // Bribery's "Make a run. During this run, the Corp must pay
             // X[credit]": X rides into the run's riders and the cost they
             // leave waiting.
@@ -5015,6 +5066,7 @@ impl Effect {
             | Effect::Unpreventable(effect)
             | Effect::AsThisCard(effect)
             | Effect::AsInstall { effect, .. }
+            | Effect::AsCard { effect, .. }
             | Effect::LaterThisTurn { effect, .. }
             | Effect::ChooseNumber { then: effect, .. }
             | Effect::ChooseCardName { then: effect, .. }
@@ -5080,6 +5132,7 @@ impl Effect {
             | Effect::RezInstalled { .. }
             | Effect::TakeAllCountersAsCredits(..)
             | Effect::TrashCurrentlyAccessedCard
+            | Effect::MustTrashAccessed
             | Effect::ForgoAccess
             | Effect::RemoveCurrentlyAccessedCardFromGame
             | Effect::DerezCard(..)

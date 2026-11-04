@@ -851,6 +851,8 @@ fn determinize_run(
         left: access.left,
         // Public: the steal or the trash was made in the open.
         took: access.took,
+        // Public: Neutralize All Threats revealed the card it forces.
+        must_trash: access.must_trash,
         // Only the number is in the view, and it is the number the sample
         // needs: which cards they are is drawn from the sample's own HQ or
         // R&D once those exist (`draw_from_zone`), since the cards the
@@ -1765,6 +1767,7 @@ mod tests {
                     outside_breach: None,
                     left: false,
                     took: false,
+                    must_trash: false,
                     candidates: Vec::new(),
                     from_zone: Vec::new(),
                     resolved_cards: Vec::new(),

@@ -250,6 +250,11 @@ pub enum RulesError {
     #[error("{card:?} must be trashed, since the Runner is able to")]
     MustTrashIfAble { card: CardId },
 
+    /// A card's text says no card leaves the Runner's heap (`Prohibition::
+    /// LeaveTheHeap`, Blacklist), and this would have taken `card` out.
+    #[error("{card:?} cannot leave the Runner's heap")]
+    HeapLocked { card: CardId },
+
     #[error("attempted to pay {requested} credit(s) to steal {card:?} but only has {available}")]
     CannotAffordStealCost { card: CardId, available: u32, requested: u32 },
 

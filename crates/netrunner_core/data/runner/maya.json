@@ -1,0 +1,63 @@
+{
+  "id": "maya",
+  "title": "Maya",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+2[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessPassed",
+      "subject": "Any",
+      "when": "InRnD",
+      "requirement": "OncePerTurn",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "AsCard": {
+                      "card": "AccessedCard",
+                      "effect": {
+                        "AddToDeck": "Bottom"
+                      }
+                    }
+                  },
+                  {
+                    "GiveTags": {
+                      "Fixed": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may add that card to the bottom of R&D. If you do, take 1 tag",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Once per turn → When you finish accessing a card in R&D, you may add that card to the bottom of R&D. If you do, take 1 tag."
+    }
+  ],
+  "built_from": 10007,
+  "is_playable": true
+}

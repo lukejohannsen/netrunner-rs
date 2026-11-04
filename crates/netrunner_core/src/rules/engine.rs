@@ -1908,6 +1908,7 @@ fn play_event(
 pub(crate) fn can_play_event_from(state: &GameState, registry: &CardRegistry, card_id: &CardId, from: EventOrigin, waived: Waived) -> bool {
     let Some(card_def) = registry.get(card_id) else { return false };
     from.zone(state).contains(card_id)
+        && !(from == EventOrigin::Heap && continuous::heap_is_locked(state, registry))
         && card_def.card_type == CardType::Event
         && !(crate::rules::current::is_current(card_def) && continuous::cannot(state, registry, Prohibition::PlayCurrents))
         && (waived.price() || payment::available(state, registry, Side::Runner, Purpose::Play(card_def)) >= continuous::play_cost_of(state, registry, card_def))
@@ -1936,6 +1937,9 @@ pub(crate) fn play_event_card(
     match from {
         EventOrigin::Grip => take_from_grip(next, side, &card_id)?,
         EventOrigin::Heap | EventOrigin::Stack => {
+            if from == EventOrigin::Heap && continuous::heap_is_locked(next, registry) {
+                return Err(RulesError::HeapLocked { card: card_id });
+            }
             let zone = if from == EventOrigin::Heap { &mut next.runner.heap } else { &mut next.runner.stack };
             let position = zone.iter().position(|c| c == &card_id).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
             zone.remove(position);
@@ -2432,6 +2436,9 @@ pub(crate) fn can_install_runner_card_from_zone_with_discount(
     if !source.zone(state).is_some_and(|zone| zone.contains(card_id)) || !install_requirement_met(state, registry, card_id) {
         return false;
     }
+    if source == RunnerCardSource::Heap && continuous::heap_is_locked(state, registry) {
+        return false;
+    }
     let Some(card_def) = registry.get(card_id) else { return false };
     match card_def.card_type {
         // A program that does not fit is installed by trashing programs to
@@ -2495,6 +2502,9 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
     discount: i32,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Runner;
+    if source == RunnerCardSource::Heap && continuous::heap_is_locked(next, registry) {
+        return Err(RulesError::HeapLocked { card: card_id });
+    }
     let zone = source.zone_mut(next).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
     let position = zone.iter().position(|c| c == &card_id).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
     zone.remove(position);
@@ -2558,6 +2568,9 @@ pub(crate) fn can_install_program_onto(state: &GameState, registry: &CardRegistr
     if !source.zone(state).is_some_and(|zone| zone.contains(card_id)) || !install_requirement_met(state, registry, card_id) {
         return false;
     }
+    if source == RunnerCardSource::Heap && continuous::heap_is_locked(state, registry) {
+        return false;
+    }
     let Some(card_def) = registry.get(card_id) else { return false };
     card_def.card_type == CardType::Program
         && card_def.installs_on_ice == onto_ice
@@ -2587,6 +2600,9 @@ pub(crate) fn install_program_onto(
     let card_def = registry.get(&card_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?.clone();
     if card_def.card_type != CardType::Program {
         return Err(RulesError::CardTypeMismatch { card: card_id, expected: "a program" });
+    }
+    if source == RunnerCardSource::Heap && continuous::heap_is_locked(next, registry) {
+        return Err(RulesError::HeapLocked { card: card_id });
     }
     let zone = source.zone_mut(next).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
     let position = zone.iter().position(|c| c == &card_id).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
@@ -3015,6 +3031,14 @@ fn activate_ability(
         _ => state.rig_abilities_card(target).cloned().or_else(|| state.runner.conditions.iter().find(|condition| condition.handle == target).map(|condition| condition.card.clone())),
     };
     let runner_active = runner_card.is_some();
+    // Neutralize All Threats (CR 7.1.5d): no card's ability of the
+    // Runner's while the basic trash of the card they access is theirs to
+    // pay for.
+    if runner_active && !corp_active
+        && let Some(card) = must_trash_now(state, registry)
+    {
+        return Err(RulesError::MustTrashIfAble { card });
+    }
     // Neither an identity nor the run's event has an install of its own.
     let is_identity = matches!(target, InstallId::CORP_IDENTITY | InstallId::RUNNER_IDENTITY | InstallId::RUN_EVENT);
 
@@ -3891,9 +3915,25 @@ fn pass_accessed_card(
     {
         return Err(RulesError::MustTrashIfAble { card: card_id });
     }
+    // Neutralize All Threats' "You must trash that card by paying its
+    // trash cost, if able", of a card wherever it was accessed.
+    if let Some(card) = must_trash_now(state, registry) {
+        return Err(RulesError::MustTrashIfAble { card });
+    }
     let mut next = state.clone();
     let events = run::resolve_pass(&mut next, &card_id, registry)?;
     Ok((next, events))
+}
+
+/// The card at its access decision, while a card's text says it must be
+/// trashed with the basic trash ability if able (`AccessState::must_trash`,
+/// CR 7.1.5d) and that trash would be accepted — paid for, or asking how to
+/// pay, which is a trash that can be made. `None` otherwise, so the pass
+/// and the Runner's abilities are open again once the trash cannot be paid.
+fn must_trash_now(state: &GameState, registry: &CardRegistry) -> Option<CardId> {
+    let access = state.active_run.as_ref()?.access_state.as_ref()?;
+    let crate::rules::run::AccessPhase::PendingChoice { card_id, .. } = &access.phase else { return None };
+    (access.must_trash && matches!(trash_accessed_card(state, registry, card_id.clone()), Ok(_) | Err(RulesError::PaymentChoiceNeeded { .. }))).then(|| card_id.clone())
 }
 
 /// Resolves `PlayerAction::PayAccessTrigger`, per its doc comment.
@@ -5449,7 +5489,7 @@ mod tests {
                 reached_success_phase: true,
                 breached: Some(ServerId::Hq),
                 cards_accessed_count: 1,
-                access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false, outside_breach: None, left: false, took: false,
+                access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false, outside_breach: None, left: false, took: false, must_trash: false,
                     // Set when the card was presented, and left in place
                     // for the rest of its `PendingChoice`.
                     currently_accessing: Some(CardId("hedge_fund".to_string())),
@@ -8254,7 +8294,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: card_a, in_archives: true },
+                GameEvent::AccessPassed { card: card_a, in_archives: true, in_rnd: false },
                 GameEvent::CardAccessed { card: card_b.clone(), server: ServerId::Archives, install: None },
             ]
         );
@@ -8263,7 +8303,7 @@ mod tests {
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: card_b.clone() })
                 .expect("passing the second card should succeed");
-        assert_eq!(events, vec![GameEvent::AccessPassed { card: card_b, in_archives: true }, GameEvent::BreachEnded { server: ServerId::Archives, took: false }, GameEvent::RunCompleted { server: ServerId::Archives }]);
+        assert_eq!(events, vec![GameEvent::AccessPassed { card: card_b, in_archives: true, in_rnd: false }, GameEvent::BreachEnded { server: ServerId::Archives, took: false }, GameEvent::RunCompleted { server: ServerId::Archives }]);
         assert_eq!(state.active_run, None);
         assert!(state.paid_ability_window.is_none());
     }

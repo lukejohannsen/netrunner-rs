@@ -168,7 +168,6 @@ pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Kala Ghoda* (`kala_ghoda`): tranche F6 of the FFG plan.
 pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("maya", "Maya"),
 ];
 
 /// *Business First* (`business_first`): tranche F6 of the FFG plan.
@@ -206,17 +205,14 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("prey", "Prey"),
     ("harbinger", "Harbinger"),
     ("adam_compulsive_hacker", "Adam: Compulsive Hacker"),
-    ("neutralize_all_threats", "Neutralize All Threats"),
 ];
 
 /// *The Valley* (`the_valley`): tranche F7 of the FFG plan.
 pub(crate) const VAL_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("gene_conditioning_shoppe", "Gene Conditioning Shoppe"),
 ];
 
 /// *Breaker Bay* (`breaker_bay`): tranche F7 of the FFG plan.
 pub(crate) const BB_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("blacklist", "Blacklist"),
 ];
 
 /// *Chrome City* (`chrome_city`): tranche F7 of the FFG plan.
@@ -282,7 +278,6 @@ pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Opening Moves* (`opening_moves`): tranche F10 of the FFG plan.
 pub(crate) const OM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("false_echo", "False Echo"),
 ];
 
 /// *Second Thoughts* (`second_thoughts`): tranche F10 of the FFG plan.

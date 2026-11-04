@@ -329,6 +329,12 @@ pub fn eligible_positions(
     // A card that filters for itself by a type it only gains is not in
     // the pool.
     let typed = filter.mentions_ice_type() && matches!(zone, CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled) && owning_side(chooser, zone) == Side::Corp;
+    // Blacklist's "cards cannot leave the Runner's heap": a selection over
+    // it offers nothing, since every one in the pool takes what it chose
+    // out of the heap (to a hand, a deck, an install, out of the game).
+    if matches!(zone, CardZoneRef::OwnHeap | CardZoneRef::OpponentDiscard) && owning_side(chooser, zone) == Side::Runner && crate::rules::continuous::heap_is_locked(state, registry) {
+        return Vec::new();
+    }
     zone_card_ids(state, chooser, zone, source)
         .into_iter()
         .enumerate()
@@ -2108,8 +2114,8 @@ pub(crate) fn resolve_confirm_card_selection(
         // selected, two identical `CardId`s named the same install twice —
         // `SwapInstalledIce` swapped a card with itself and no-opped.
         let effect = match (*effect, selected.as_slice(), selected_installs.as_slice()) {
-            (Effect::RezInstalled { pay_cost, discount, .. }, _, [chosen, ..]) => {
-                Some(Effect::RezInstalled { install: *chosen, pay_cost, discount })
+            (Effect::RezInstalled { pay_cost, discount, refuse_unaffordable, .. }, _, [chosen, ..]) => {
+                Some(Effect::RezInstalled { install: *chosen, pay_cost, discount, refuse_unaffordable })
             }
             (Effect::SwapInstalledIce(_, _), _, [a, b, ..]) => Some(Effect::SwapInstalledIce(*a, *b)),
             // One selected: "swap **this ice** with another installed piece

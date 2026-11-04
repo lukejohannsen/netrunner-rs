@@ -1,0 +1,45 @@
+{
+  "id": "neutralize_all_threats",
+  "title": "Neutralize All Threats",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "Any",
+      "when": {
+        "Card": "HasTrashCost"
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "Reveal": "AccessedCard"
+        },
+        "MustTrashAccessed"
+      ],
+      "text": "The first time each turn you access a card with a trash cost, reveal it. You must trash that card by paying its trash cost, if able."
+    },
+    {
+      "trigger": "OnBreach",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "effects": [
+        {
+          "AddAdditionalAccess": {
+            "server": "Hq",
+            "count": 1
+          }
+        }
+      ],
+      "text": "Whenever you breach HQ, access 1 additional card."
+    }
+  ],
+  "built_from": 9043,
+  "is_playable": true
+}

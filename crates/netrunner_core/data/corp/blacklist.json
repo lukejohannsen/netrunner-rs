@@ -1,0 +1,22 @@
+{
+  "id": "blacklist",
+  "title": "Blacklist",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 3,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "LeaveTheHeap"
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "text": "Cards cannot leave the Runner's heap for any reason."
+    }
+  ],
+  "built_from": 8036,
+  "is_playable": true
+}

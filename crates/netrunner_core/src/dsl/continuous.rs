@@ -171,6 +171,16 @@ pub enum ContinuousKind {
     /// way. Composition didn't work: `Link` adds a number, and treating a
     /// value as 0 is not a sum.
     TraceLinkIsZero,
+    /// A card the scope reaches that prints "the first time each turn"
+    /// also triggers the second time its condition is met — Gene
+    /// Conditioning Shoppe's "**Genetics** also trigger the second time
+    /// each turn their trigger condition is met", over `Rig(Genetics)`.
+    /// Asked by the listener scan where it judges a first time against the
+    /// turn's log (`listeners::is_first`), never by the card that triggers.
+    /// Composition didn't work: "the first time" is a word in the trigger
+    /// condition (`TriggeredEffect::first_each_turn`), judged in the scan,
+    /// and no standing effect reached it.
+    AlsoTheSecondTime,
     /// Tags the Runner is considered to have and was never given (CR
     /// 1.9.4) — Acme Consulting's "The Runner is considered to have 1
     /// additional tag (even if they have 0) during encounters with the

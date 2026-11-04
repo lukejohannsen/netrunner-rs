@@ -753,7 +753,8 @@ pub fn evaluate_effect(
         Effect::Reveal(target @ (CardTarget::AccessedCard | CardTarget::Accessed(_))) => {
             let card = match (target, ctx.triggering_event) {
                 (CardTarget::Accessed(card), _) => card.clone(),
-                (_, Some(GameEvent::AccessPassed { card, .. })) => card.clone(),
+                // Neutralize All Threats' "reveal it", as it is accessed.
+                (_, Some(GameEvent::AccessPassed { card, .. } | GameEvent::CardAccessed { card, .. })) => card.clone(),
                 _ => return Ok(Vec::new()),
             };
             let in_hand = state.corp.hq.contains(&card);
@@ -1327,6 +1328,28 @@ pub fn evaluate_effect(
             inner.prompting_install = ctx.prompting_install.or(ctx.acting_install);
             evaluate_effect(state, effect, &mut inner, registry)
         }
+        // Maya's "that card": the card passed on, as no install, with the
+        // card whose text it is still the one asking.
+        Effect::AsCard { card, effect } => {
+            let card = match (card, ctx.triggering_event) {
+                (CardTarget::Accessed(card), _) => card.clone(),
+                (CardTarget::AccessedCard, Some(GameEvent::AccessPassed { card, .. } | GameEvent::CardAccessed { card, .. })) => card.clone(),
+                _ => return Ok(Vec::new()),
+            };
+            let mut inner = ResolutionContext::for_parked(None, Some(&card));
+            inner.prompting_card = ctx.prompting_card.or(acting_card);
+            inner.prompting_install = ctx.prompting_install.or(ctx.acting_install);
+            evaluate_effect(state, effect, &mut inner, registry)
+        }
+        // Neutralize All Threats' "you must trash that card … if able": the
+        // access open now, whatever card it is (`run::AccessState::
+        // must_trash`, read by `engine::pass_accessed_card`).
+        Effect::MustTrashAccessed => {
+            if let Some(access) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()) {
+                access.must_trash = true;
+            }
+            Ok(Vec::new())
+        }
         Effect::SetRunEndedEffect(effect) => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
             run.on_end.push(crate::rules::run::RunEndRider { effect: effect.clone(), card: acting_card.cloned(), install: ctx.acting_install });
@@ -1775,6 +1798,10 @@ pub fn evaluate_effect(
                 if let Some(position) = state.runner.play_area.iter().rposition(|card| *card == card_id) {
                     state.runner.play_area.remove(position);
                 } else if !as_played && let Some(position) = state.runner.heap.iter().rposition(|card| *card == card_id) {
+                    // Blacklist's: it stays where it is, out of the score area.
+                    if continuous::heap_is_locked(state, registry) {
+                        return Ok(Vec::new());
+                    }
                     state.runner.heap.remove(position);
                 }
                 let added = add_to_score_area_as_agenda(state, Side::Runner, card_id, *as_agenda);
@@ -2178,6 +2205,8 @@ pub fn evaluate_effect(
                         }
                     }
                     crate::dsl::CardZoneRef::OwnGrip => cards.append(&mut state.runner.grip),
+                    // Blacklist's: the heap stays where it is.
+                    crate::dsl::CardZoneRef::OwnHeap if continuous::heap_is_locked(state, registry) => {}
                     crate::dsl::CardZoneRef::OwnHeap => cards.append(&mut state.runner.heap),
                     crate::dsl::CardZoneRef::OwnSetAside => cards.append(&mut state.runner.set_aside),
                     _ => return Err(RulesError::UnresolvedCardTarget),
@@ -2258,7 +2287,7 @@ pub fn evaluate_effect(
                     Some(state.corp.hq.remove(position))
                 } else if let Some(position) = state.corp.archives.iter().position(|a| a.card == card_id) {
                     Some(state.corp.archives.remove(position).card)
-                } else if let Some(position) = state.corp.r_and_d.iter().position(|c| c == &card_id) {
+                } else if let Some(position) = r_and_d_copy(state, &card_id) {
                     Some(state.corp.r_and_d.remove(position))
                 } else {
                     None
@@ -2302,7 +2331,12 @@ pub fn evaluate_effect(
                 place(&mut state.runner.stack, card.clone());
                 return Ok(vec![GameEvent::CardAddedToDeck { side: Side::Runner, card, top, revealed: false }]);
             }
+            let heap_locked = continuous::heap_is_locked(state, registry);
             for (zone, revealed) in [(&mut state.runner.heap, true), (&mut state.runner.grip, false)] {
+                // Blacklist's: nothing out of the heap.
+                if revealed && heap_locked {
+                    continue;
+                }
                 if let Some(position) = zone.iter().position(|c| c == &card_id) {
                     zone.remove(position);
                     place(&mut state.runner.stack, card_id.clone());
@@ -2366,6 +2400,9 @@ pub fn evaluate_effect(
                 && registry.get(&card_id).is_some_and(|definition| definition.card_type == crate::dsl::CardType::Event)
                 && let Some(position) = state.runner.heap.iter().rposition(|held| *held == card_id)
             {
+                if continuous::heap_is_locked(state, registry) {
+                    return Ok(Vec::new());
+                }
                 state.runner.heap.remove(position);
                 state.runner.grip.push(card_id.clone());
                 return Ok(vec![GameEvent::CardAddedToHand { side: Side::Runner, card: Some(card_id), install: InstallId::PLACEHOLDER, faceup: true }]);
@@ -2451,7 +2488,7 @@ pub fn evaluate_effect(
             };
             let card = if let Some(position) = state.runner.play_area.iter().rposition(|held| held == event) {
                 state.runner.play_area.remove(position)
-            } else if let Some(position) = state.runner.heap.iter().rposition(|held| held == event) {
+            } else if let Some(position) = state.runner.heap.iter().rposition(|held| held == event).filter(|_| !continuous::heap_is_locked(state, registry)) {
                 state.runner.heap.remove(position)
             } else {
                 return Ok(Vec::new());
@@ -3067,8 +3104,13 @@ pub fn evaluate_effect(
                         Amount::PaidCardPrintedCost if !ctx.paid_with.is_empty() => Some(resolve_amount(amount, ctx, state, registry)),
                         _ => None,
                     };
+                    // The ice the pass was of, by its install while the run
+                    // still has it at that position (False Echo's "that ice").
                     let passed = match ctx.triggering_event {
-                        Some(GameEvent::IcePassed { server, position, .. }) => Some((*server, *position)),
+                        Some(GameEvent::IcePassed { server, position, .. }) => {
+                            let ice = state.active_run.as_ref().filter(|run| run.server == *server).and_then(|run| run.ice.get(*position as usize)).map(|ice| ice.install_id);
+                            Some((*server, *position, ice))
+                        }
                         _ => None,
                     };
                     let accessed = match ctx.triggering_event {
@@ -3080,7 +3122,7 @@ pub fn evaluate_effect(
                         .map(|option| {
                             let option = option.clone().filled(&fill);
                             let option = match passed {
-                                Some((server, position)) => option.with_passed_ice(server, position),
+                                Some((server, position, ice)) => option.with_passed_ice(server, position, ice),
                                 None => option,
                             };
                             match accessed {
@@ -3705,7 +3747,7 @@ pub fn evaluate_effect(
             crate::rules::engine::play_operation_card(state, registry, card_id, from, waived, *remove_from_game)
         }
 
-        Effect::RezInstalled { install, pay_cost, discount } => {
+        Effect::RezInstalled { install, pay_cost, discount, refuse_unaffordable } => {
             // Shares `engine::rez_install` with `PlayerAction::RezIce`, so a
             // discounted rez is paid the same way (`rules::payment`: a region's
             // hosted rez credits before the credit pool) and fires `OnRez`
@@ -3731,7 +3773,7 @@ pub fn evaluate_effect(
             };
             let discount = resolve_amount(discount, ctx, state, registry);
             match crate::rules::engine::rez_install(state, registry, install, *pay_cost, discount) {
-                Err(RulesError::NotEnoughCredits { .. } | RulesError::RezRestricted { .. } | RulesError::NoAvailableRezAlternative { .. }) => {
+                Err(RulesError::NotEnoughCredits { .. } | RulesError::RezRestricted { .. } | RulesError::NoAvailableRezAlternative { .. }) if !*refuse_unaffordable => {
                     Ok(Vec::new())
                 }
                 other => other,
@@ -4203,6 +4245,20 @@ pub fn process_card_triggers(
         fired: 0,
     };
     fire_card_triggers(state, registry, &due, false)
+}
+
+/// Which copy of `card` in R&D a card's text moves: during a breach of R&D,
+/// the one the access reached — the topmost, working down (CR 7.4.7), or
+/// the bottommost from the bottom (Showing Off) — which is Maya's "that
+/// card"; otherwise the bottommost, as it always was. Copies the access
+/// reached apart from it are not told apart: with two of one card accessed
+/// in one breach, the copy nearer where the access began is the one moved.
+fn r_and_d_copy(state: &GameState, card: &CardId) -> Option<usize> {
+    let accessing = state.active_run.as_ref().filter(|run| run.access_state.as_ref().is_some_and(|access| access.server == ServerId::RnD));
+    match accessing {
+        Some(run) if !run.rd_from_bottom => state.corp.r_and_d.iter().rposition(|c| c == card),
+        _ => state.corp.r_and_d.iter().position(|c| c == card),
+    }
 }
 
 /// The one loop behind `process_card_triggers` and every firing in
@@ -5231,6 +5287,10 @@ fn remove_this_card_from_game(state: &mut GameState, registry: &CardRegistry, ct
     // the rig, where a second copy by the same name may still be installed;
     // it takes the copy that trash put on top of the heap.
     let own_trash = matches!(ctx.triggering_event, Some(GameEvent::CardTrashed { side: Side::Runner, card, from: crate::dsl::TrashedFrom::Installed, .. }) if card == &card_id);
+    // Blacklist's: the card its trash put in the heap stays there.
+    if own_trash && state.runner.heap.contains(&card_id) && continuous::heap_is_locked(state, registry) {
+        return Ok(Vec::new());
+    }
     if own_trash
         && let Some(position) = state.runner.heap.iter().rposition(|card| card == &card_id)
     {

@@ -71,6 +71,11 @@ pub struct Access {
     /// card with a printed trash cost is offering nothing but "pass",
     /// which is otherwise unreadable.
     pub steal_and_trash_blocked: bool,
+    /// `PublicAccessState::must_trash` — Neutralize All Threats revealed
+    /// the card and the Runner must pay to trash it (CR 7.1.5d). Carried
+    /// for the reason the line above is: it is the only thing that
+    /// explains why "pass" is missing.
+    pub must_trash: bool,
     /// Cards still to come in this breach after this one.
     pub remaining: usize,
 }
@@ -117,6 +122,7 @@ impl Access {
             steal_cost,
             mandatory_steal,
             steal_and_trash_blocked: view.cannot(Prohibition::StealOrTrash),
+            must_trash: access.must_trash,
             remaining: access.candidates.len() + access.from_zone as usize,
         })
     }
@@ -151,6 +157,9 @@ impl Access {
                     (Some(trash), Some(also)) => facts.push(format!("Trashing it costs {trash} credits and: {}", prose::describe_cost(also))),
                     (Some(trash), None) => facts.push(format!("Trashing it costs {trash} credits")),
                     (None, _) => {}
+                }
+                if self.must_trash {
+                    facts.push("Revealed — you must trash it, since you can pay".to_string());
                 }
                 if self.steal_and_trash_blocked {
                     facts.push("You may not steal or trash for the rest of this run".to_string());
@@ -230,6 +239,7 @@ mod tests {
                 outside_breach: None,
                 left: false,
                 took: false,
+                must_trash: false,
                 phase: PublicAccessPhase::PendingChoice {
                     card: Some(CardId(card.to_string())),
                     trash_cost: definition.trash_cost,

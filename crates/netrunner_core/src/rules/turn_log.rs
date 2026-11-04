@@ -48,7 +48,9 @@
 //! was installed this turn". `concealed` names the moments whose card one
 //! player did not see, exhaustively, and those are counted as
 //! `Kind::Unseen` — so the log needs no masking and rides in a view
-//! whole.
+//! whole, but for one fold: a card accessed with a trash cost is the
+//! Runner's to know (Neutralize All Threats), and the other copies count it
+//! unseen (`TurnLog::as_seen_by`).
 
 use serde::{Deserialize, Serialize};
 
@@ -188,10 +190,21 @@ pub enum Kind {
     AdvertisementAsset,
     AdvertisementUpgrade,
     AdvertisementIce,
+    /// A card accessed out of sight of the Corp **that has a trash cost**
+    /// — Neutralize All Threats' "the first time each turn you access a
+    /// card with a trash cost". Counted for `Trigger::OnAccessed` alone,
+    /// where every other card is `Unseen`, and **the one column a view
+    /// folds** (`TurnLog::as_seen_by`): the Runner saw whether the card
+    /// had a trash cost and the Corp, out of HQ or R&D, did not, so the
+    /// Corp's and a spectator's copy of the log count it `Unseen`. The
+    /// alternative, a use limit on the card (`OncePerTurn`), would have
+    /// let a Neutralize All Threats installed after such an access fire on
+    /// the second, which the printed "first time" does not.
+    UnseenWithTrashCost,
 }
 
 impl Kind {
-    const COUNT: usize = 25;
+    const COUNT: usize = 26;
     const ALL: [Kind; Kind::COUNT] = [
         Kind::Unseen,
         Kind::Agenda,
@@ -218,6 +231,7 @@ impl Kind {
         Kind::AdvertisementAsset,
         Kind::AdvertisementUpgrade,
         Kind::AdvertisementIce,
+        Kind::UnseenWithTrashCost,
     ];
 
     /// The column a card is counted in: its type, or its type's double,
@@ -554,6 +568,12 @@ fn class_of(state: &GameState, registry: &CardRegistry, moment: &Moment) -> Clas
                 }
             });
             let kind = if concealed(moment.trigger, moment.of) { as_seen(moment.trigger, kind).unwrap_or(Kind::Unseen) } else { kind };
+            // What the Runner saw of a card they accessed: whether it has a
+            // trash cost (`Kind::UnseenWithTrashCost`, folded for the Corp).
+            let kind = match kind {
+                Kind::Unseen if moment.trigger == Trigger::OnAccessed && registry.get(card).is_some_and(|definition| definition.trash_cost.is_some()) => Kind::UnseenWithTrashCost,
+                kind => kind,
+            };
             Class::Card { kind, installed: *installed }
         }
     }
@@ -705,6 +725,9 @@ impl Occurrences {
             Some(EventFilter::ProtectedByTwoOrMoreIce) => {
                 return Err(format!("only a run's start says how the server was protected, not a {trigger:?}"));
             }
+            Some(EventFilter::InRnD) => {
+                return Err(format!("the turn counts a pass on an access by whether it was in Archives, not whether it was in R&D, so \"the first\" cannot be narrowed by it ({trigger:?})"));
+            }
             Some(EventFilter::NotInArchives) => {
                 return Err(format!("only a pass on an access says where the card was, not a {trigger:?}"));
             }
@@ -786,6 +809,12 @@ impl Occurrences {
             // A moment about ice is counted by its facts, not its type.
             Some(EventFilter::Card(_) | EventFilter::InstalledCard(_)) if trigger.states_ice_facts() => {
                 return Err(format!("the turn counts a {trigger:?} by what was true of the ice, not by the card, so \"the first\" is narrowed with `Ice`"));
+            }
+            // Neutralize All Threats' "a card with a trash cost", the one
+            // fact of an accessed card the log keeps (`Kind::
+            // UnseenWithTrashCost`).
+            Some(EventFilter::Card(CardFilter::HasTrashCost)) if trigger == Trigger::OnAccessed => {
+                Some(bit(Class::Card { kind: Kind::UnseenWithTrashCost, installed: false }) | bit(Class::Card { kind: Kind::UnseenWithTrashCost, installed: true }))
             }
             Some(EventFilter::Card(filter) | EventFilter::InstalledCard(filter))
                 if concealed(trigger, of) && {
@@ -914,6 +943,12 @@ impl AsOf {
     /// scored **or** stolen").
     pub(crate) fn is_first(&self, meant: &[Occurrences]) -> bool {
         meant.iter().map(|occurrences| self.0.count(occurrences)).sum::<u32>() == 1
+    }
+
+    /// Whether it is the turn's second of `meant` — Gene Conditioning
+    /// Shoppe's "also trigger the second time each turn".
+    pub(crate) fn is_second(&self, meant: &[Occurrences]) -> bool {
+        meant.iter().map(|occurrences| self.0.count(occurrences)).sum::<u32>() == 2
     }
 
     /// For a test that plans an event it never recorded.
@@ -1193,6 +1228,26 @@ impl std::fmt::Debug for TurnLog {
 }
 
 impl TurnLog {
+    /// The log as `runner` (the Runner, or not) was shown it: whole for the
+    /// Runner, and for anybody else with a card accessed that has a trash
+    /// cost counted as any unseen card (`Kind::UnseenWithTrashCost`), since
+    /// out of HQ or R&D only the Runner saw it. The one fold a view makes;
+    /// every other column holds only what both players saw.
+    pub fn as_seen_by(mut self, runner: bool) -> TurnLog {
+        if runner {
+            return self;
+        }
+        for row in self.counts[Trigger::OnAccessed.index()].iter_mut() {
+            for installed in [false, true] {
+                let from = Class::Card { kind: Kind::UnseenWithTrashCost, installed }.column();
+                let into = Class::Card { kind: Kind::Unseen, installed }.column();
+                row[into] = row[into].saturating_add(row[from]);
+                row[from] = 0;
+            }
+        }
+        self
+    }
+
     /// How many times `trigger`'s moment has happened, whatever it was
     /// about.
     pub fn times(&self, trigger: Trigger) -> u32 {

@@ -1666,6 +1666,7 @@ impl CardDefinition {
             EventFilter::JackedOut => triggered.trigger == Trigger::OnRunEnded,
             // Only a pass on an access says where the card was accessed.
             EventFilter::NotInArchives => triggered.trigger == Trigger::OnAccessPassed,
+            EventFilter::InRnD => triggered.trigger == Trigger::OnAccessPassed,
             // Only a run's start says how the server was protected.
             EventFilter::ProtectedByTwoOrMoreIce => triggered.trigger == Trigger::OnRunStart,
             // Only a use says which ability was used.
@@ -2300,6 +2301,8 @@ impl CardDefinition {
                 (ContinuousKind::MemoryCost(_), _) => return misfit("MemoryCost", "a program says of itself (`This`) what it costs in memory"),
                 (ContinuousKind::Link(_), Scope::Controller) if self.side == Side::Runner => {}
                 (ContinuousKind::Link(_), _) => return misfit("Link", "link is the Runner's, so it applies to a Runner card's `Controller`"),
+                (ContinuousKind::AlsoTheSecondTime, Scope::Rig(_)) if self.side == Side::Runner => {}
+                (ContinuousKind::AlsoTheSecondTime, _) => return misfit("AlsoTheSecondTime", "a Runner card says it of the rig cards it names (`Rig(filter)`)"),
                 (ContinuousKind::TraceLinkIsZero, Scope::Player(Side::Runner)) if self.side == Side::Corp => {}
                 (ContinuousKind::TraceLinkIsZero, _) => return misfit("TraceLinkIsZero", "a Corp card says it of the Runner's link (`Player(Runner)`)"),
                 (ContinuousKind::HandSize(_), Scope::Controller) => {}
