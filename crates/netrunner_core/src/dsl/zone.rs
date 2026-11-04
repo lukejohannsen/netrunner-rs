@@ -633,6 +633,14 @@ pub enum CardFilter {
     /// occurrences by class and no counter placement is a moment, and
     /// "that program" is one copy.
     VirusCounterPlacedThisTurn,
+    /// A card hosted on the source, without being installed, that holds
+    /// counters of its own (`InstalledRunnerCard::hosted_counters`) —
+    /// Personal Workshop's "remove 1 power counter from **a hosted card**",
+    /// which a card counted down to none has already left. Instance-level,
+    /// read off the host. Composition didn't work: `HostsCounters` reads a
+    /// card's own counters on the table, and its kind off the card, which
+    /// a program on a Personal Workshop does not print.
+    HostedWithCounters,
     /// A card with "N[recurring-credit]" holding fewer than N — Mirror's
     /// "you may replace 1 spent recurring credit", which may go only where
     /// one was spent (CR 1.10.5). The definition says the card prints
@@ -1027,6 +1035,7 @@ impl CardFilter {
                 | CardFilter::TrashableBy(_)
                 | CardFilter::InChosenServer
                 | CardFilter::VirusCounterPlacedThisTurn
+                | CardFilter::HostedWithCounters
                 | CardFilter::Rezzed
                 | CardFilter::Unrezzed
                 | CardFilter::Facedown
@@ -1312,6 +1321,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::RezzedThisTurn => true,
         CardFilter::ScoredThisTurn => true,
         CardFilter::VirusCounterPlacedThisTurn => card.side == crate::rules::Side::Runner,
+        CardFilter::HostedWithCounters => card.side == crate::rules::Side::Runner,
         CardFilter::AmongCards(cards) => cards.contains(&card.id),
         CardFilter::TrashedThisWay | CardFilter::ThatCard | CardFilter::ChosenName | CardFilter::ChosenThisWay => false,
         CardFilter::AmongInstalls(_) => true,

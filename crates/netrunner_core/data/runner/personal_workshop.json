@@ -1,0 +1,104 @@
+{
+  "id": "personal_workshop",
+  "title": "Personal Workshop",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedCards",
+          1
+        ]
+      },
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "HostedOnSource",
+            "filter": "HostedWithCounters",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "CountDownHosted": {
+                "amount": {
+                  "Fixed": 1
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, remove 1 power counter from a hosted card."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnGrip",
+          "filter": {
+            "CardTypeOneOf": [
+              "Program",
+              "Hardware"
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "HostedOnSource",
+          "then": {
+            "CountDownHosted": {
+              "amount": "PrintedCost",
+              "place": true
+            }
+          }
+        }
+      },
+      "text": "[click]: Host a program or piece of hardware from your grip on Personal Workshop and place power counters on it equal to its install cost."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedCards",
+          1
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "HostedOnSource",
+          "filter": "HostedWithCounters",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "CountDownHosted": {
+              "amount": {
+                "Fixed": 1
+              }
+            }
+          }
+        }
+      },
+      "text": "1[credit]: Remove 1 power counter from a hosted card."
+    }
+  ],
+  "built_from": 2049,
+  "is_playable": true
+}

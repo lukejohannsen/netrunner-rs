@@ -1,0 +1,48 @@
+{
+  "id": "autoscripter",
+  "title": "Autoscripter",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Card": {
+              "CardType": "Program"
+            }
+          },
+          "InstalledFromGrip"
+        ]
+      },
+      "first_each_turn": true,
+      "requirement": "DuringYourTurn",
+      "effects": [
+        {
+          "GainClicks": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "The first time you install a program from your grip during your turn, gain [click]."
+    },
+    {
+      "trigger": "OnRunEnded",
+      "subject": "Any",
+      "when": "Unsuccessful",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "Trash Autoscripter if you make an unsuccessful run."
+    }
+  ],
+  "built_from": 6076,
+  "is_playable": true
+}

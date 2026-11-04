@@ -1,0 +1,21 @@
+{
+  "id": "harishchandra_ent_where_youre_the_star",
+  "title": "Harishchandra Ent.: Where You're the Star",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "continuous": [
+    {
+      "kind": "GripRevealed",
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "while": "IsTagged",
+      "text": "While the Runner is tagged, they play with the grip revealed."
+    }
+  ],
+  "triggers": [],
+  "built_from": 10107,
+  "is_playable": true
+}

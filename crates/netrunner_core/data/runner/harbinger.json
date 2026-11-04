@@ -1,0 +1,18 @@
+{
+  "id": "harbinger",
+  "title": "Harbinger",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 0,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": "TrashedFacedown",
+      "applies_to": "This",
+      "text": "When this program would be trashed, turn it facedown instead of adding it to your heap."
+    }
+  ],
+  "built_from": 9034,
+  "is_playable": true
+}

@@ -481,6 +481,13 @@ fn apply_action_once(
     // a deferred trigger is part of the same action, not a new one.
     if let Some((side, action)) = finishes_action {
         turn_log::record_action_finished(&mut next, action, &state.this_turn);
+        // The [click] this action spent, off its own record — a purge's
+        // three, a draw's one (CR 5.2.5a). The third on one action is a
+        // moment (Jeeves Model Bioroids), heard ahead of the action's end.
+        let clicks = events.iter().filter(|event| matches!(event, GameEvent::ClickSpent { side: spender } if *spender == side)).count() as u32;
+        if turn_log::record_clicks_spent(&mut next, action, clicks) {
+            dispatcher::emit(&mut next, registry, &mut events, GameEvent::ThirdClickOnOneAction { side, action })?;
+        }
         match next.active_run.as_mut() {
             // It began a run, or a breach: it is finished when that is.
             Some(run) if run_was_part_of.is_none() => run.finishes = Some(action),
@@ -1748,7 +1755,7 @@ fn take_from_grip(state: &mut GameState, side: Side, card_id: &CardId) -> Result
     if side == Side::Runner {
         for host in state.runner.rig.iter_mut().filter(|c| c.hosted_cards_playable) {
             if let Some(position) = host.hosted_cards.iter().position(|c| c == card_id) {
-                host.hosted_cards.remove(position);
+                host.take_hosted(position);
                 return Ok(());
             }
         }
@@ -2216,6 +2223,7 @@ fn seed_rig_card(
         hosted_on_ice: None,
         hosted_on_rig_card: None,
         hosted_cards: Vec::new(),
+        hosted_counters: Vec::new(),
         turned_facedown: 0,
         hosted_cards_playable: card_def.hosted_cards_playable_from_grip,
         this_turn: Default::default(),
@@ -2397,6 +2405,24 @@ impl RunnerCardSource {
         }
     }
 
+    /// Takes a copy of `card` out of this source, and says it did. Out of a
+    /// host, the copy with the fewest counters on it (`InstalledRunnerCard::
+    /// hosted_counters`, Personal Workshop's countdown) — the one whose
+    /// counters ran out, when one did — taken with its counters.
+    fn take(self, state: &mut GameState, card: &CardId) -> Option<()> {
+        if let RunnerCardSource::Hosted(host) = self
+            && let Some(host) = state.runner.rig.iter_mut().find(|c| c.install_id == host)
+        {
+            let position = (0..host.hosted_cards.len()).filter(|&at| host.hosted_cards[at] == *card).min_by_key(|&at| host.counters_on_hosted(at))?;
+            host.take_hosted(position);
+            return Some(());
+        }
+        let zone = self.zone_mut(state)?;
+        let position = zone.iter().position(|c| c == card)?;
+        zone.remove(position);
+        Some(())
+    }
+
     fn zone_mut(self, state: &mut GameState) -> Option<&mut Vec<CardId>> {
         match self {
             RunnerCardSource::Grip => Some(&mut state.runner.grip),
@@ -2505,9 +2531,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
     if source == RunnerCardSource::Heap && continuous::heap_is_locked(next, registry) {
         return Err(RulesError::HeapLocked { card: card_id });
     }
-    let zone = source.zone_mut(next).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
-    let position = zone.iter().position(|c| c == &card_id).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
-    zone.remove(position);
+    source.take(next, &card_id).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?
@@ -2604,9 +2628,7 @@ pub(crate) fn install_program_onto(
     if source == RunnerCardSource::Heap && continuous::heap_is_locked(next, registry) {
         return Err(RulesError::HeapLocked { card: card_id });
     }
-    let zone = source.zone_mut(next).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
-    let position = zone.iter().position(|c| c == &card_id).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
-    zone.remove(position);
+    source.take(next, &card_id).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
     let memory_cost = card_def.memory_cost.unwrap_or(0);
     let mut events = crate::rules::install_trash::before_program_install(next, registry, &card_id, memory_cost, false)?;
     let cost = if ignoring_install_cost { 0 } else { continuous::install_cost_of(next, registry, &card_def) };
@@ -3223,6 +3245,7 @@ fn activate_ability(
         && ability.effect.acts_on_hosted_cards()
     {
         let cards = std::mem::take(&mut host.hosted_cards);
+        host.hosted_counters.clear();
         host.turned_facedown = 0;
         next.runner.set_aside_by_host = Some(crate::rules::state::SetAsideByHost { host: target, cards, facedown: card_def.hosts_facedown });
     }
@@ -3843,7 +3866,7 @@ fn trash_resource(
         .position(|c| c.install_id == target)
         .ok_or(RulesError::InstallNotFound(target))?;
     let removed = next.runner.rig.remove(position);
-    next.runner.heap.push(removed.card.clone());
+    ability::file_trashed_rig_card(&mut next, registry, removed.card.clone());
     // The Corp's own basic action: it carries the trash out.
     dispatcher::emit(&mut next, registry, &mut events, GameEvent::CardTrashed { side: Side::Runner, card: card_id, from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Corp), install: None, damage: None })?;
     events.extend(ability::cascade_trash_hosted_on_rig_card(&mut next, registry, &removed));
@@ -7294,6 +7317,8 @@ mod tests {
                     cards: vec![CardId("botulus".to_string()), CardId("leech".to_string())],
                     removed: 5,
                 },
+                // Three [click] on one action (Jeeves Model Bioroids').
+                GameEvent::ThirdClickOnOneAction { side: Side::Corp, action: crate::rules::turn_log::SameAction::Purge },
                 GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::Purge },
             ]
         );
@@ -7321,7 +7346,8 @@ mod tests {
             apply_action(&state, &registry(), PlayerAction::PurgeVirusCounters).expect("an empty purge is still legal");
 
         assert_eq!(next.corp.resources.clicks, Clicks(0));
-        assert_eq!(events.iter().rev().nth(1), Some(&GameEvent::VirusCountersPurged { cards: Vec::new(), removed: 0 }));
+        // Behind it, the third [click] on one action and the action's end.
+        assert_eq!(events.iter().rev().nth(2), Some(&GameEvent::VirusCountersPurged { cards: Vec::new(), removed: 0 }));
     }
 
     #[test]

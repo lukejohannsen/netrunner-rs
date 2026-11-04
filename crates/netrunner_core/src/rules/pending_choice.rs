@@ -276,6 +276,18 @@ pub(crate) fn hosted_cards_of(state: &GameState, source: Option<InstallId>) -> O
         .or_else(|| state.corp.find_scored(source).map(|_| &NONE))
 }
 
+/// The counters on the card that was at `position` among the cards hosted
+/// on `source`, forgotten as that card leaves through a selection — the
+/// half of `InstalledRunnerCard::take_hosted` a list handed out by
+/// `hosted_cards_of_mut` cannot do itself.
+pub(crate) fn forget_hosted_counters(state: &mut GameState, source: Option<InstallId>, position: usize) {
+    if let Some(host) = source.and_then(|source| state.runner.rig.iter_mut().find(|c| c.install_id == source))
+        && position < host.hosted_counters.len()
+    {
+        host.hosted_counters.remove(position);
+    }
+}
+
 pub(crate) fn hosted_cards_of_mut(state: &mut GameState, source: Option<InstallId>) -> Option<&mut Vec<CardId>> {
     let source = source?;
     if state.runner.rig.iter().any(|c| c.install_id == source) {
@@ -506,10 +518,15 @@ fn instance_matches_filter(
         }
         // The kind is the definition's half; this is the count.
         // Virus counters may sit beside a rig card's own kind (Contaminate's),
-        // so a rig card is asked `virus_on`.
+        // so a rig card is asked `counters_on`, which finds a lent one too.
+        // A card hosted without being installed holds counters of its own
+        // (Personal Workshop's power counters, `hosted_counters`).
+        CardFilter::HostedWithCounters => {
+            source.and_then(|source| state.runner.rig.iter().find(|c| c.install_id == source)).is_some_and(|host| host.counters_on_hosted(position) > 0)
+        }
         CardFilter::HostsCounters(kind) => {
             let rig_card = (installed_zone && owning_side(chooser, zone) == Side::Runner).then(|| state.runner.rig.get(position)).flatten();
-            let on_rig = |c: &crate::rules::InstalledRunnerCard| if *kind == crate::dsl::CounterKind::Virus { virus_on(c, registry) } else { c.counters };
+            let on_rig = |_: &crate::rules::InstalledRunnerCard| counters_on(state, registry, position, *kind);
             // The kind is checked here too, since a negation about the copy
             // alone (Contaminate's "with no hosted virus counters") never
             // asked the definition.
@@ -1049,6 +1066,66 @@ pub(crate) fn virus_on(installed: &crate::rules::InstalledRunnerCard, registry: 
     }
 }
 
+/// The counters of `kind` a card effect finds on the rig card at
+/// `position`: what it holds (`virus_on` for virus counters, else its own
+/// `counters` where they are of `kind`), and the virus counters another
+/// card considers hosted on it (`ContinuousKind::LendsVirusCounters`,
+/// Hivemind's, `continuous::virus_counter_lenders`). **The one question**
+/// for "the counters on this card": a cost that removes them, an amount
+/// that counts them and a requirement or filter that asks for them all
+/// put it, so a lent counter is found by every one of them. What a card
+/// *holds* stays `virus_on`, read by the purge and by a count over every
+/// installed card, which would find a lent counter once for each program.
+pub(crate) fn counters_on(state: &GameState, registry: &CardRegistry, position: usize, kind: crate::dsl::CounterKind) -> u32 {
+    let Some(installed) = state.runner.rig.get(position) else { return 0 };
+    let held = if kind == crate::dsl::CounterKind::Virus {
+        virus_on(installed, registry)
+    } else if registry.get(&installed.card).and_then(|card| card.counter_kind) == Some(kind) {
+        installed.counters
+    } else {
+        0
+    };
+    let lent: u32 = if kind == crate::dsl::CounterKind::Virus { crate::rules::continuous::virus_counter_lenders(state, registry, position).iter().map(|(_, held)| held).sum() } else { 0 };
+    held + lent
+}
+
+/// Spends `amount` counters of `kind` "on" the rig card at `position`
+/// (`counters_on`): its own, and the ones a lender considers hosted on it,
+/// asked one counter at a time by replay (`pick_counters`) where whose
+/// they are changes what the Runner is left with — never while nothing
+/// lends, or when one card holds them all. The one door a counter on a
+/// rig card is spent or removed through by the card's own text.
+pub(crate) fn spend_counters_on(state: &mut GameState, registry: &CardRegistry, position: usize, kind: crate::dsl::CounterKind, amount: u32) -> Result<Vec<GameEvent>, RulesError> {
+    let lenders = if kind == crate::dsl::CounterKind::Virus { crate::rules::continuous::virus_counter_lenders(state, registry, position) } else { Vec::new() };
+    let own = counters_on(state, registry, position, kind) - lenders.iter().map(|(_, held)| held).sum::<u32>();
+    let held: Vec<(usize, u32)> = std::iter::once((position, own)).chain(lenders).filter(|&(_, held)| held > 0).collect();
+    let total: u32 = held.iter().map(|(_, n)| n).sum();
+    let taken = if held.len() <= 1 || amount >= total {
+        held.iter().map(|&(at, n)| (at, n.min(amount))).collect::<Vec<_>>()
+    } else {
+        pick_counters(state, Side::Runner, CardZoneRef::OwnInstalled, &held, amount)?
+    };
+    let mut events = Vec::new();
+    let mut left = amount;
+    for (at, n) in taken {
+        let n = n.min(left);
+        left -= n;
+        let installed = &mut state.runner.rig[at];
+        let removed = if kind == crate::dsl::CounterKind::Virus {
+            remove_virus_on(installed, registry, n)
+        } else {
+            let removed = n.min(installed.counters);
+            installed.counters -= removed;
+            removed
+        };
+        events.push(GameEvent::CountersRemoved { card: installed.card.clone(), amount: removed });
+    }
+    if events.is_empty() {
+        events.push(GameEvent::CountersRemoved { card: state.runner.rig[position].card.clone(), amount: 0 });
+    }
+    Ok(events)
+}
+
 /// Takes `amount` virus counters off a rig card, from whichever number
 /// holds them (`virus_on`), and says how many it took.
 pub(crate) fn remove_virus_on(installed: &mut crate::rules::InstalledRunnerCard, registry: &CardRegistry, amount: u32) -> u32 {
@@ -1271,12 +1348,17 @@ pub(crate) fn trash_as_cost(
                 }
                 .ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
                 hand.remove(position);
+                if matches!(zone, CardZoneRef::HostedOnSource) {
+                    forget_hosted_counters(state, source, position);
+                }
                 false
             }
         };
         if owning_side(side, zone) == Side::Corp {
             let seen = was_public || reveal;
             crate::rules::turn_log::file_in_archives(state, if seen { ArchivedCard::faceup(card_id.clone()) } else { ArchivedCard::facedown(card_id.clone()) });
+        } else if installs.is_some() {
+            ability::file_trashed_rig_card(state, registry, card_id.clone());
         } else {
             state.runner.heap.push(card_id.clone());
         }
@@ -1940,6 +2022,9 @@ pub(crate) fn resolve_confirm_card_selection(
                         }
                     {
                         zone.remove(pos);
+                        if matches!(source, CardZoneRef::HostedOnSource) {
+                            forget_hosted_counters(state, source_install, pos);
+                        }
                         taken.push(chosen);
                         Some(false)
                     } else {

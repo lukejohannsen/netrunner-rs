@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "aumakua", "botulus", "cache", "chakana", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "deep_thought", "fermenter", "friday_chip", "god_of_war", "gorman_drip_v1", "hantu", "hemorrhage", "imp", "incubator", "leech", "medium", "musaazi", "nerve_agent", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "virus_breeding_ground", "yusuf"],
+            vec!["audrey_v2", "aumakua", "botulus", "cache", "chakana", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "deep_thought", "fermenter", "friday_chip", "god_of_war", "gorman_drip_v1", "hantu", "hemorrhage", "hivemind", "imp", "incubator", "leech", "medium", "musaazi", "nerve_agent", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "virus_breeding_ground", "yusuf"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -60120,5 +60120,321 @@ mod engine_words_stage_32 {
             assert_eq!(definition.validate(), Ok(()), "{card}");
         }
         let _ = GameEvent::AccessPassed { card: id("x"), in_archives: false, in_rnd: true };
+    }
+}
+
+mod engine_words_stage_33 {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.next_install_id = 100;
+        state
+    }
+
+    /// Chooses the cards at `positions` and confirms.
+    fn choose(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for &position in positions {
+            state = act(&state, registry, PlayerAction::ToggleCardSelection { position });
+        }
+        act(&state, registry, PlayerAction::ConfirmCardSelection)
+    }
+
+    /// A run on HQ jacked out of at the first chance: an unsuccessful run.
+    fn jack_out_of_hq(state: GameState, registry: &CardRegistry) -> GameState {
+        let (mut state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        for _ in 0..40 {
+            if crate::rules::legal_actions_for(&state, registry, Side::Runner).contains(&PlayerAction::JackOut) {
+                let (out, _) = apply_action(&state, registry, PlayerAction::JackOut).expect("jack out");
+                assert!(out.last_completed_run.as_ref().is_some_and(|run| run.unsuccessful));
+                return pass_until_settled(out, registry).0;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            state = act(&state, registry, action);
+        }
+        panic!("never offered a jack-out");
+    }
+
+    /// "While the Runner is tagged, they play with the grip revealed" —
+    /// to every seat, and only while tagged.
+    #[test]
+    fn harishchandra_shows_the_grip_to_every_seat_while_the_runner_is_tagged() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("harishchandra_ent_where_youre_the_star"));
+        state.runner.grip = vec![id("sure_gamble"), id("corroder")];
+        let hidden = crate::rules::mask_state_for_player(&state, &registry, Side::Corp);
+        assert_eq!(hidden.runner.grip, crate::rules::MaskedZone::Hidden { count: 2 }, "untagged: hidden");
+        state.runner.tags = 1;
+        let corp = crate::rules::mask_state_for_player(&state, &registry, Side::Corp);
+        assert_eq!(corp.runner.grip, crate::rules::MaskedZone::Visible(vec![id("sure_gamble"), id("corroder")]));
+        let view = crate::view::build_client_view(&state, &registry, Side::Corp);
+        assert_eq!(view.runner.grip_cards, Some(vec![id("sure_gamble"), id("corroder")]), "the Corp's view draws it");
+        assert_eq!(corp.runner.stack, crate::rules::MaskedZone::Hidden { count: 0 }, "the stack is not revealed");
+        // Another identity reveals nothing.
+        state.corp.identity = None;
+        let plain = crate::rules::mask_state_for_player(&state, &registry, Side::Corp);
+        assert_eq!(plain.runner.grip, crate::rules::MaskedZone::Hidden { count: 2 });
+    }
+
+    /// "The first time you install a program from your grip during your
+    /// turn, gain [click]" — not hardware, and only the first.
+    #[test]
+    fn autoscripter_gains_a_click_for_the_first_program_from_the_grip() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("autoscripter", 1)];
+        state.runner.grip = vec![id("akamatsu_mem_chip"), id("corroder"), id("cleaver")];
+        let state = act(&state, &registry, PlayerAction::InstallHardware { card_id: id("akamatsu_mem_chip"), host: None });
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.runner.resources.clicks, Clicks(3), "hardware is not a program");
+        let state = act(&state, &registry, PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false, host: None });
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.runner.resources.clicks, Clicks(3), "spent one, gained one");
+        let state = act(&state, &registry, PlayerAction::InstallProgram { card_id: id("cleaver"), trash_first: false, host: None });
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.runner.resources.clicks, Clicks(2), "the first time only");
+    }
+
+    /// A program out of the heap is not from the grip, and leaves the
+    /// first grip install still to come.
+    #[test]
+    fn autoscripter_counts_only_installs_out_of_the_grip() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("autoscripter", 1)];
+        state.runner.heap = vec![id("corroder")];
+        state.runner.grip = vec![id("cleaver")];
+        let corroder = id("corroder");
+        let effect = crate::dsl::Effect::InstallRunnerCardFromZone { from: crate::dsl::CardZoneRef::OwnHeap, discount: crate::dsl::Discount::AllCosts, if_installed: None };
+        crate::rules::evaluate_effect(&mut state, &effect, &mut crate::rules::ResolutionContext::for_card(Some(&corroder)), &registry).expect("installed out of the heap");
+        assert!(state.runner.rig.iter().any(|card| card.card == id("corroder")));
+        assert_eq!(state.runner.resources.clicks, Clicks(4), "out of the heap: nothing");
+        state = act(&state, &registry, PlayerAction::InstallProgram { card_id: id("cleaver"), trash_first: false, host: None });
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.runner.resources.clicks, Clicks(4), "the grip's first: spent one, gained one");
+    }
+
+    #[test]
+    fn autoscripter_is_trashed_by_an_unsuccessful_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("autoscripter", 1)];
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(5), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: false, ..Default::default() }];
+        let out = jack_out_of_hq(state, &registry);
+        assert!(out.runner.rig.is_empty() && out.runner.heap.contains(&id("autoscripter")), "{:?}", out.runner.rig);
+    }
+
+    /// Jeeves Model Bioroids, rezzed in a remote.
+    fn jeeves_turn() -> GameState {
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(7), card: id("jeeves_model_bioroids"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() }];
+        state.corp.r_and_d = vec![id("hedge_fund"); 6];
+        state.next_install_id = 100;
+        state
+    }
+
+    /// "The first time you spend 3[click] on the same action each turn,
+    /// gain [click]": one purge is three.
+    #[test]
+    fn jeeves_gains_a_click_for_a_purge() {
+        let registry = registry();
+        let state = jeeves_turn();
+        let purged = act(&state, &registry, PlayerAction::PurgeVirusCounters);
+        let (purged, _) = pass_until_settled(purged, &registry);
+        assert_eq!(purged.corp.resources.clicks, Clicks(1), "three spent, one gained");
+    }
+
+    /// Three draws are three [click] on one action; a credit between them
+    /// is another action, and the gain is once a turn.
+    #[test]
+    fn jeeves_gains_on_the_third_click_of_one_action_and_only_once() {
+        let registry = registry();
+        let mut state = jeeves_turn();
+        state.corp.resources.clicks = Clicks(6);
+        let draw = PlayerAction::DrawCardClick { side: Side::Corp };
+        let credit = PlayerAction::GainCreditClick { side: Side::Corp };
+        let mut clicks = Vec::new();
+        for action in [draw.clone(), credit.clone(), draw.clone(), draw.clone(), credit.clone(), credit] {
+            state = pass_until_settled(act(&state, &registry, action), &registry).0;
+            clicks.push(state.corp.resources.clicks.0);
+        }
+        assert_eq!(clicks, vec![5, 4, 3, 3, 2, 1], "the third draw gains; the third credit does not");
+        let _ = draw;
+    }
+
+    /// "When this program would be trashed, turn it facedown instead of
+    /// adding it to your heap. (It is still considered trashed.)"
+    #[test]
+    fn harbinger_trashed_is_turned_facedown_in_the_rig_and_still_trashed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("harbinger", 1), rig("corroder", 2)];
+        let trash = |card: &str| crate::dsl::Effect::TrashCard(crate::dsl::CardTarget::RunnerRig(id(card)));
+        let events = crate::rules::evaluate_effect(&mut state, &trash("harbinger"), &mut crate::rules::ResolutionContext::for_card(None), &registry).expect("trash");
+        assert!(state.runner.heap.is_empty(), "not in the heap");
+        assert_eq!(state.runner.installed_facedown, vec![id("harbinger")], "facedown among the installed cards");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardTrashed { card, .. } if *card == id("harbinger"))), "still trashed: {events:?}");
+        // Masked from the Corp as the grip is.
+        let corp = crate::rules::mask_state_for_player(&state, &registry, Side::Corp);
+        assert_eq!(corp.runner.installed_facedown, crate::rules::MaskedZone::Hidden { count: 1 });
+        // Any other program goes to the heap.
+        crate::rules::evaluate_effect(&mut state, &trash("corroder"), &mut crate::rules::ResolutionContext::for_card(None), &registry).expect("trash");
+        assert_eq!(state.runner.heap, vec![id("corroder")]);
+    }
+
+    /// "Virus counters on Hivemind are considered to be hosted on all
+    /// other virus programs for the purposes of card effects (and can be
+    /// spent as if on them)."
+    #[test]
+    fn hivemind_lends_its_counters_to_every_other_virus_program() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 2, ..rig("hivemind", 1) }, rig("cache", 2), rig("corroder", 3)];
+        use crate::dsl::CounterKind::Virus;
+        assert_eq!(crate::rules::pending_choice::counters_on(&state, &registry, 1, Virus), 2, "Cache finds Hivemind's two");
+        assert_eq!(crate::rules::pending_choice::counters_on(&state, &registry, 2, Virus), 0, "Corroder is no virus");
+        assert_eq!(crate::rules::pending_choice::counters_on(&state, &registry, 0, Virus), 2, "Hivemind its own, once");
+        // Cache's "Hosted virus counter: Gain 1[credit]", with none of its
+        // own, spends Hivemind's — nothing to ask.
+        let cache = PlayerAction::ActivateAbility { target: InstallId(2), ability_index: 0 };
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&cache), "offered on a lent counter");
+        let (paid, events) = apply_action(&state, &registry, cache.clone()).expect("paid with Hivemind's");
+        assert!(paid.pending_payment.is_none());
+        assert_eq!((paid.runner.rig[0].counters, paid.runner.resources.credits), (1, Credits(11)));
+        assert!(events.contains(&GameEvent::CountersRemoved { card: id("hivemind"), amount: 1 }), "{events:?}");
+        // A purge counts what each card holds: Hivemind's once.
+        state.runner.rig[1].counters = 1;
+        let events = crate::rules::evaluate_effect(&mut state, &crate::dsl::Effect::PurgeVirusCounters, &mut crate::rules::ResolutionContext::for_card(None), &registry).expect("purged");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::VirusCountersPurged { removed: 3, .. })), "{events:?}");
+    }
+
+    /// With a counter of its own and one of Hivemind's, the Runner says
+    /// whose to spend: the payment asks by replay.
+    #[test]
+    fn hivemind_asks_whose_counter_to_spend_when_both_hold_one() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 1, ..rig("hivemind", 1) }, crate::rules::InstalledRunnerCard { counters: 1, ..rig("cache", 2) }];
+        let cache = PlayerAction::ActivateAbility { target: InstallId(2), ability_index: 0 };
+        let asked = act(&state, &registry, cache);
+        assert!(matches!(&asked.pending_payment, Some(crate::rules::PendingPayment { question: crate::rules::PaymentAsk::Card(_), .. })), "whose counter: {:?}", asked.pending_payment);
+        let answered = act(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 });
+        assert_eq!((answered.runner.rig[0].counters, answered.runner.rig[1].counters), (0, 1), "Hivemind's, as answered");
+        assert_eq!(answered.runner.resources.credits, Credits(11));
+    }
+
+    #[test]
+    fn hivemind_places_a_counter_on_itself_when_installed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("hivemind")];
+        let state = act(&state, &registry, PlayerAction::InstallProgram { card_id: id("hivemind"), trash_first: false, host: None });
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.runner.rig[0].counters, 1);
+    }
+
+    /// "[click]: Host a program or piece of hardware from your grip on
+    /// Personal Workshop and place power counters on it equal to its
+    /// install cost. 1[credit]: Remove 1 power counter from a hosted card.
+    /// When there are no power counters left on a hosted card, install it,
+    /// ignoring all costs."
+    #[test]
+    fn personal_workshop_counts_a_hosted_card_down_and_installs_it_free() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("personal_workshop", 1)];
+        state.runner.grip = vec![id("corroder"), id("sure_gamble")];
+        let state = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 });
+        assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 1 }).is_err(), "an event is neither");
+        let hosted = choose(&state, &registry, &[0]);
+        let (hosted, _) = pass_until_settled(hosted, &registry);
+        assert_eq!(hosted.runner.rig[0].hosted_cards, vec![id("corroder")]);
+        assert_eq!(hosted.runner.rig[0].hosted_counters, vec![2], "Corroder's install cost");
+        // The view draws them.
+        let view = crate::view::build_client_view(&hosted, &registry, Side::Corp);
+        assert_eq!(view.runner.rig[0].hosted_counters, vec![2]);
+
+        let one = act(&hosted, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 1 });
+        let one = pass_until_settled(choose(&one, &registry, &[0]), &registry).0;
+        assert_eq!(one.runner.rig[0].hosted_counters, vec![1]);
+        assert_eq!(one.runner.resources.credits, Credits(9));
+        let done = act(&one, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 1 });
+        let done = pass_until_settled(choose(&done, &registry, &[0]), &registry).0;
+        assert!(done.runner.rig[0].hosted_cards.is_empty() && done.runner.rig[0].hosted_counters.is_empty());
+        assert!(done.runner.rig.iter().any(|card| card.card == id("corroder") && card.hosted_on_rig_card.is_none()), "installed: {:?}", done.runner.rig);
+        assert_eq!(done.runner.resources.credits, Credits(8), "ignoring all costs");
+    }
+
+    /// A card that costs nothing has no counters to count down, and is
+    /// installed as it is hosted; two hosted cards count down apart.
+    #[test]
+    fn personal_workshop_installs_a_free_card_at_once_and_keeps_each_cards_count() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("personal_workshop", 1)];
+        state.runner.grip = vec![id("harbinger"), id("corroder"), id("cleaver")];
+        let state = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 });
+        let state = pass_until_settled(choose(&state, &registry, &[0]), &registry).0;
+        assert!(state.runner.rig.iter().any(|card| card.card == id("harbinger")), "installed at once");
+        assert!(state.runner.rig[0].hosted_cards.is_empty());
+        let state = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 });
+        let state = pass_until_settled(choose(&state, &registry, &[0]), &registry).0;
+        let state = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 });
+        let state = pass_until_settled(choose(&state, &registry, &[0]), &registry).0;
+        assert_eq!(state.runner.rig[0].hosted_cards, vec![id("corroder"), id("cleaver")]);
+        assert_eq!(state.runner.rig[0].hosted_counters, vec![2, 3]);
+        let state = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 1 });
+        let state = pass_until_settled(choose(&state, &registry, &[1]), &registry).0;
+        assert_eq!(state.runner.rig[0].hosted_counters, vec![2, 2], "Cleaver's alone");
+    }
+
+    /// "When your turn begins, remove 1 power counter from a hosted card."
+    #[test]
+    fn personal_workshop_counts_down_as_the_turn_begins() {
+        let registry = registry();
+        let mut state = runner_turn();
+        let mut workshop = rig("personal_workshop", 1);
+        workshop.hosted_cards = vec![id("corroder")];
+        workshop.hosted_counters = vec![2];
+        state.runner.rig = vec![workshop];
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(0);
+        let (mut state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
+        for _ in 0..30 {
+            if state.runner.rig[0].hosted_counters != vec![2] {
+                break;
+            }
+            let actions = crate::rules::legal_actions(&state, &registry);
+            let action = actions
+                .iter()
+                .find(|action| matches!(action, PlayerAction::ToggleCardSelection { .. } | PlayerAction::ConfirmCardSelection | PlayerAction::PassPriority { .. }))
+                .cloned()
+                .unwrap_or_else(|| panic!("stuck: {actions:?}"));
+            let toggled = matches!(action, PlayerAction::ToggleCardSelection { .. });
+            state = act(&state, &registry, action);
+            if toggled {
+                state = act(&state, &registry, PlayerAction::ConfirmCardSelection);
+            }
+        }
+        assert_eq!(state.runner.rig[0].hosted_counters, vec![1]);
     }
 }

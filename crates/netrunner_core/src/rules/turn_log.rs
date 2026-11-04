@@ -395,6 +395,8 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         Trigger::OnCreditsLost | Trigger::OnTraceInitiated | Trigger::OnLinkBoosted => false,
         // A scored agenda's counter, and a search, are public.
         Trigger::OnAgendaCounterSpent | Trigger::OnDeckSearched => false,
+        // About no card: [click] spent on an action are public.
+        Trigger::OnThirdClickOnOneAction => false,
         // Played, rezzed, encountered, scored, stolen, forfeited, trashed
         // faceup by the Runner, or a faceup card's ability: on the table.
         Trigger::OnPlay
@@ -574,7 +576,16 @@ fn class_of(state: &GameState, registry: &CardRegistry, moment: &Moment) -> Clas
                 Kind::Unseen if moment.trigger == Trigger::OnAccessed && registry.get(card).is_some_and(|definition| definition.trash_cost.is_some()) => Kind::UnseenWithTrashCost,
                 kind => kind,
             };
-            Class::Card { kind, installed: *installed }
+            // A Runner install is always onto the table, so "was it on the
+            // table" says nothing there, and its second column says instead
+            // whether it came **from the grip** — Autoscripter's "the first
+            // time you install a program from your grip". Public: the Runner
+            // installs faceup out of a zone both players watch shrink.
+            let installed = match (moment.trigger, moment.from_grip) {
+                (Trigger::OnInstall | Trigger::OnCardInstalled, Some(from_grip)) => from_grip,
+                _ => *installed,
+            };
+            Class::Card { kind, installed }
         }
     }
 }
@@ -773,6 +784,10 @@ impl Occurrences {
                 return Err(format!("the turn counts a {trigger:?} by the card's type and whether it was installed, not which pile it left, so \"the first\" cannot be narrowed to one"));
             }
             Some(EventFilter::All(_)) => unreachable!("a conjunction is read part by part above"),
+            // A Runner install's second column is "from the grip" (`class_of`).
+            Some(EventFilter::InstalledFromGrip) if matches!(trigger, Trigger::OnInstall | Trigger::OnCardInstalled) => Some(
+                Kind::ALL.iter().filter(|kind| kind.is_runners()).map(|kind| bit(Class::Card { kind: *kind, installed: true })).fold(0, |mask, column| mask | column),
+            ),
             Some(EventFilter::InstalledFromHq(_) | EventFilter::InstalledFromHeap | EventFilter::InstalledFromGrip) => {
                 return Err(format!("the turn counts a {trigger:?} without where the card came from, so \"the first\" cannot be narrowed by it"));
             }
@@ -1145,9 +1160,11 @@ pub struct TurnLog {
     /// a window closed on two passes ends it. Which run, and whether it
     /// was successful, is `GameState::last_completed_run`'s to say.
     window_after_run: bool,
-    /// The times each action was taken this turn, by what makes two
-    /// actions the same (`SameAction`, CR 5.2.5a) — Wage Workers' "if you
-    /// have taken that action exactly 3 times this turn". Beside the cells,
+    /// The times each action was taken this turn, and the [click] spent on
+    /// it over those times, by what makes two actions the same
+    /// (`SameAction`, CR 5.2.5a) — Wage Workers' "if you have taken that
+    /// action exactly 3 times this turn", Jeeves Model Bioroids' "spend
+    /// 3[click] on the same action". Beside the cells,
     /// as `actions_finished` is: an action is no `Class`, and a basic one
     /// was no moment at all. A fixed table so the log stays `Copy`; a
     /// turn of more than `SAME_ACTIONS` different actions stops counting
@@ -1156,7 +1173,7 @@ pub struct TurnLog {
     /// one log and one `GameState` — the table is a multiset, and a search
     /// that folds two orders of the same clicks into one position compares
     /// the states whole (`netrunner_bots::planner::prune`, Phase 5 §26).
-    same_actions: [Option<(SameAction, u8)>; SAME_ACTIONS],
+    same_actions: [Option<(SameAction, u8, u8)>; SAME_ACTIONS],
     /// Whether the last action finished this turn was a play of an
     /// operation or event (`SameAction::Play`) — Bioroid Work Crew's "the
     /// next paid ability window after playing and resolving an operation"
@@ -1283,14 +1300,23 @@ impl TurnLog {
     }
 
     pub fn times_taken(&self, action: SameAction) -> u32 {
-        self.same_actions.iter().flatten().find(|(taken, _)| *taken == action).map_or(0, |(_, count)| u32::from(*count))
+        self.same_actions.iter().flatten().find(|(taken, ..)| *taken == action).map_or(0, |(_, count, _)| u32::from(*count))
     }
 
-    fn take(&mut self, action: SameAction) {
-        if let Some((_, count)) = self.same_actions.iter_mut().flatten().find(|(taken, _)| *taken == action) {
-            *count = count.saturating_add(1);
-        } else if let Some(free) = self.same_actions.iter_mut().find(|slot| slot.is_none()) {
-            *free = Some((action, 1));
+    /// How many [click] were spent on `action` this turn, over every time
+    /// it was taken (CR 5.2.5a) — Jeeves Model Bioroids' "the first time
+    /// you spend 3[click] on the same action each turn": three draws, or
+    /// one purge.
+    pub fn clicks_spent_on(&self, action: SameAction) -> u32 {
+        self.same_actions.iter().flatten().find(|(taken, ..)| *taken == action).map_or(0, |(.., clicks)| u32::from(*clicks))
+    }
+
+    /// The entry for `action`, made if the turn has none yet and there is
+    /// room, kept in the canonical order (the field's doc).
+    fn entry(&mut self, action: SameAction) -> Option<&mut (SameAction, u8, u8)> {
+        if !self.same_actions.iter().flatten().any(|(taken, ..)| *taken == action) {
+            let free = self.same_actions.iter_mut().find(|slot| slot.is_none())?;
+            *free = Some((action, 0, 0));
             // Canonical order (the field's doc): the entries sorted, the
             // empty slots after them — the order `Sparse` writes and reads
             // back, so a log equals its own round trip — and the free slot
@@ -1301,6 +1327,13 @@ impl TurnLog {
                 (None, Some(_)) => std::cmp::Ordering::Greater,
                 (None, None) => std::cmp::Ordering::Equal,
             });
+        }
+        self.same_actions.iter_mut().flatten().find(|(taken, ..)| *taken == action)
+    }
+
+    fn take(&mut self, action: SameAction) {
+        if let Some((_, count, _)) = self.entry(action) {
+            *count = count.saturating_add(1);
         }
     }
 
@@ -1432,7 +1465,7 @@ struct Sparse {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     window_after_run: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    same_actions: Vec<(SameAction, u8)>,
+    same_actions: Vec<(SameAction, u8, u8)>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     last_action_was_a_play: bool,
 }
@@ -1660,6 +1693,22 @@ pub(crate) fn file_in_archives(state: &mut GameState, card: ArchivedCard) {
 pub(crate) fn unfile_resolving_operation(state: &mut GameState, position: usize) -> ArchivedCard {
     state.this_turn.added_to_archives = state.this_turn.added_to_archives.saturating_sub(1);
     state.corp.archives.remove(position)
+}
+
+/// `clicks` [click] were spent on `action` (CR 5.2.5a), counted off the
+/// action's own `GameEvent::ClickSpent`s as its handler returned. Says
+/// whether this is the action that took its turn's total to 3 or more —
+/// the moment Jeeves Model Bioroids hears (`GameEvent::
+/// ThirdClickOnOneAction`).
+pub(crate) fn record_clicks_spent(state: &mut GameState, action: SameAction, clicks: u32) -> bool {
+    if clicks == 0 {
+        return false;
+    }
+    let before = state.this_turn.clicks_spent_on(action);
+    if let Some((.., spent)) = state.this_turn.entry(action) {
+        *spent = spent.saturating_add(u8::try_from(clicks).unwrap_or(u8::MAX));
+    }
+    before < 3 && state.this_turn.clicks_spent_on(action) >= 3
 }
 
 /// An action was finished — see `TurnLog::actions_finished` and

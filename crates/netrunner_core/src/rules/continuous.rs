@@ -1075,6 +1075,35 @@ pub(crate) fn must_be_trashed_when_accessed(state: &GameState, registry: &CardRe
     any(state, registry, Target::Card(definition), |kind| matches!(kind, ContinuousKind::TrashedWhenAccessed))
 }
 
+/// The rig cards whose virus counters are considered hosted on the rig
+/// card at `position` too (`ContinuousKind::LendsVirusCounters`,
+/// Hivemind's), as `(rig position, how many they hold)` — never the card
+/// itself ("all **other** virus programs"). Empty for a card nothing
+/// lends to, which is every card while no lender is installed.
+pub(crate) fn virus_counter_lenders(state: &GameState, registry: &CardRegistry, position: usize) -> Vec<(usize, u32)> {
+    let Some(target) = state.runner.rig.get(position) else { return Vec::new() };
+    let lends = |card: &CardId| registry.get(card).is_some_and(|definition| definition.continuous.iter().any(|effect| effect.kind == ContinuousKind::LendsVirusCounters));
+    if !state.runner.rig.iter().any(|installed| installed.install_id != target.install_id && lends(&installed.card)) {
+        return Vec::new();
+    }
+    let Some(definition) = registry.get(&target.card) else { return Vec::new() };
+    let mut lenders = Vec::new();
+    for_each_applying(state, registry, Target::Rig { card: definition, install: target.install_id }, |kind| *kind == ContinuousKind::LendsVirusCounters, |_, source, _| {
+        let Some(at) = source.install.filter(|install| *install != target.install_id).and_then(|install| state.runner.rig.iter().position(|installed| installed.install_id == install)) else { return };
+        if !lenders.iter().any(|(already, _)| *already == at) {
+            lenders.push((at, crate::rules::pending_choice::virus_on(&state.runner.rig[at], registry)));
+        }
+    });
+    lenders
+}
+
+/// Whether `card`, trashed out of the rig, is turned facedown there instead
+/// of going to the heap (`ContinuousKind::TrashedFacedown`, Harbinger).
+pub(crate) fn trashed_facedown(state: &GameState, registry: &CardRegistry, card: &CardId) -> bool {
+    let Some(definition) = registry.get(card) else { return false };
+    any(state, registry, Target::Card(definition), |kind| matches!(kind, ContinuousKind::TrashedFacedown))
+}
+
 /// Whether the ice `install` may be rezzed whenever a non-ice card could
 /// be (`ContinuousKind::RezzedAsNonIce`, Rime's), as the table stands.
 pub(crate) fn rezzed_as_non_ice(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
@@ -1538,6 +1567,13 @@ pub fn rez_cost_delta(state: &GameState, registry: &CardRegistry, install: Insta
 /// where its scan joins: the callers already ask here.
 pub fn cannot(state: &GameState, registry: &CardRegistry, what: Prohibition) -> bool {
     lingering::prohibits(state, what) || !standing_prohibitions(state, registry, what).is_empty()
+}
+
+/// Whether the Runner plays with the grip revealed (`ContinuousKind::
+/// GripRevealed`, Harishchandra Ent. while they are tagged): asked by the
+/// masking layer, which shows the grip to every seat while it holds.
+pub fn grip_revealed(state: &GameState, registry: &CardRegistry) -> bool {
+    any(state, registry, Target::Bound(Side::Runner), |kind| *kind == ContinuousKind::GripRevealed)
 }
 
 /// Whether no card may leave the Runner's heap (`Prohibition::

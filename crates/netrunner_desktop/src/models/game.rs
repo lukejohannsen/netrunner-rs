@@ -1353,7 +1353,7 @@ impl Game {
                     _ => Outcome::Nothing,
                 }
             }
-            Target::Pile(Pile::Agendas(_)) => self.apply(Intent::Inspect(target)),
+            Target::Pile(Pile::Agendas(_) | Pile::Grip) => self.apply(Intent::Inspect(target)),
             Target::Pile(Pile::Heap) if entries.is_empty() => self.apply(Intent::Inspect(target)),
             // The avatar is where an identity is read: with nothing the
             // engine offers on it, its click opens the card rather than an

@@ -105,7 +105,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         tags: _,                // drawn: hud::readouts
         brain_damage: _,        // drawn: hud::readouts ("Core damage")
         grip_count: _,          // drawn: hud::readouts ("Grip")
-        grip_cards: _,          // drawn: the Runner's own hand in both clients
+        grip_cards: _,          // drawn: the Runner's own hand in both clients; revealed to the Corp (Harishchandra Ent.), the terminal's Runner block and the desktop's Grip readout sheet (hud::readouts, Pile::Grip)
         stack_count: _,         // drawn: the Stack pile button, the terminal's pile line
         heap: _,                // drawn: the Heap pile button and sheet, the terminal's pile line
         removed_from_game: _,   // drawn: under the Heap's sheet; the terminal's identity line and card picker
@@ -178,6 +178,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         hosted_on_ice: _,         // drawn: a Trojan's chip on its ice and its ghost (board::rig)
         hosted_on_rig_card: _,    // drawn: board::facts ("Hosted on …"), board::rig
         hosted_cards: _,          // drawn: board::facts ("Hosts …")
+        hosted_counters: _,       // drawn: board::facts ("Hosts Corroder (2 counters)", Personal Workshop's countdown), both clients' sheets
         hosted_facedown: _,       // drawn: board::facts ("Hosts facedown …")
         hosted_unseen: _,         // drawn: board::facts ("Hosts 2 cards facedown")
         turned_facedown: _,       // drawn: board::rig::hosted_chip ("3 hosted, 1 facedown") on both clients' rig lines; board::facts

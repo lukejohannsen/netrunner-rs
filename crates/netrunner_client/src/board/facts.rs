@@ -443,7 +443,13 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
             }
             if !rig.hosted_cards.is_empty() {
                 let facedown = if rig.hosted_facedown { " facedown" } else { "" };
-                lines.push(format!("Hosts{facedown} {}", rig.hosted_cards.iter().map(|c| card_title(c, registry)).collect::<Vec<_>>().join(", ")));
+                // Each with its own counters, where it holds some (Personal
+                // Workshop's countdown, `hosted_counters`).
+                let hosted = rig.hosted_cards.iter().enumerate().map(|(at, c)| match rig.hosted_counters.get(at).copied().unwrap_or(0) {
+                    0 => card_title(c, registry),
+                    n => format!("{} ({n} counter{})", card_title(c, registry), if n == 1 { "" } else { "s" }),
+                });
+                lines.push(format!("Hosts{facedown} {}", hosted.collect::<Vec<_>>().join(", ")));
             }
             // Matryoshka's copies, spent on a break until its turn begins.
             if rig.turned_facedown > 0 {

@@ -559,6 +559,7 @@ pub fn narrate_event(
         // A search is announced (CR 8.7); what it found is `CardsSelected`.
         GameEvent::DeckSearched { side: Side::Runner } => "Runner searched the stack".to_string(),
         GameEvent::DeckSearched { side: Side::Corp } => "Corp searched R&D".to_string(),
+        GameEvent::ThirdClickOnOneAction { side, .. } => format!("{side:?} has spent 3[click] on one action this turn"),
         GameEvent::AgendaCounterSpent { card } => format!("spent an agenda counter from {}", title(card)),
         GameEvent::CardsLookedAt { deck, cards, .. } => {
             let names: Vec<String> = cards.iter().map(&title).collect();

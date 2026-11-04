@@ -262,7 +262,7 @@ fn trash(state: &mut GameState, registry: &CardRegistry, side: Side, picked: &[I
         events.extend(removed.announced);
         match side {
             Side::Corp => crate::rules::turn_log::file_in_archives(state, if was_public { ArchivedCard::faceup(card.clone()) } else { ArchivedCard::facedown(card.clone()) }),
-            Side::Runner => state.runner.heap.push(card.clone()),
+            Side::Runner => crate::rules::ability::file_trashed_rig_card(state, registry, card.clone()),
         }
         events.push(GameEvent::CardTrashed { side, card, from: crate::dsl::TrashedFrom::Installed, by: Some(side), install: trashed, damage: None });
         events.extend(cascade);

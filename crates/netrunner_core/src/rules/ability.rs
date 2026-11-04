@@ -219,7 +219,7 @@ pub struct LastKnown {
 /// to remember.
 pub(crate) fn last_known(state: &GameState, ctx: &ResolutionContext<'_>, registry: &CardRegistry) -> Option<LastKnown> {
     ctx.acting_install?;
-    let counters = counters_of(state, ctx)?;
+    let counters = counters_on_acting(state, registry, ctx)?;
     Some(LastKnown {
         counters,
         advancement_tokens: advancement_tokens_of(state, ctx).unwrap_or(0),
@@ -907,6 +907,10 @@ pub fn evaluate_effect(
 
         Effect::RemoveCounters(amount) => {
             let amount = resolve_amount(amount, ctx, state, registry);
+            if let Some((position, kind)) = acting_rig_counters(state, registry, ctx) {
+                let amount = amount.min(crate::rules::pending_choice::counters_on(state, registry, position, kind));
+                return crate::rules::pending_choice::spend_counters_on(state, registry, position, kind, amount);
+            }
             modify_counters(state, ctx, -i64::from(amount))
         }
 
@@ -927,9 +931,8 @@ pub fn evaluate_effect(
         Effect::RemoveVirusCounters(amount) => {
             let amount = resolve_amount(amount, ctx, state, registry);
             let Some(position) = acting_rig_position(state, ctx) else { return modify_counters(state, ctx, -i64::from(amount)) };
-            let installed = &mut state.runner.rig[position];
-            let taken = crate::rules::pending_choice::remove_virus_on(installed, registry, amount);
-            Ok(vec![GameEvent::CountersRemoved { card: installed.card.clone(), amount: taken }])
+            let amount = amount.min(crate::rules::pending_choice::counters_on(state, registry, position, crate::dsl::CounterKind::Virus));
+            crate::rules::pending_choice::spend_counters_on(state, registry, position, crate::dsl::CounterKind::Virus, amount)
         }
 
         Effect::TakeAllCountersAsCredits(side) => {
@@ -975,7 +978,7 @@ pub fn evaluate_effect(
 
         Effect::GainCreditsPerCounter { side, credits_per_counter } => {
             acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
-            let current = counters_of(state, ctx).unwrap_or(0);
+            let current = counters_on_acting(state, registry, ctx).unwrap_or(0);
             let amount = current.saturating_mul(*credits_per_counter);
             gain_credits_from_ability(state, registry, *side, amount, ctx)
         }
@@ -1349,6 +1352,32 @@ pub fn evaluate_effect(
                 access.must_trash = true;
             }
             Ok(Vec::new())
+        }
+        // Personal Workshop's countdown: the hosted copy the resolution is
+        // (the last one hosted, as it is placed; the one nearest done, as
+        // one is taken off — copies of one card are told apart by nothing
+        // else), and the install a copy with none left gets.
+        Effect::CountDownHosted { amount, place } => {
+            let card = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            let host = ctx.acting_install.ok_or(RulesError::MissingActingCardContext)?;
+            let amount = resolve_amount(amount, ctx, state, registry);
+            let Some(installed) = state.runner.rig.iter_mut().find(|c| c.install_id == host) else { return Ok(Vec::new()) };
+            let mut copies = (0..installed.hosted_cards.len()).filter(|&at| installed.hosted_cards[at] == card);
+            let at = if *place { copies.next_back() } else { copies.filter(|&at| installed.counters_on_hosted(at) > 0).min_by_key(|&at| installed.counters_on_hosted(at)) };
+            let Some(at) = at else { return Ok(Vec::new()) };
+            let before = installed.counters_on_hosted(at);
+            let after = if *place { before.saturating_add(amount) } else { before.saturating_sub(amount) };
+            installed.set_counters_on_hosted(at, after);
+            let mut events = vec![if *place {
+                GameEvent::CountersAdded { card: card.clone(), amount }
+            } else {
+                GameEvent::CountersRemoved { card: card.clone(), amount: before - after }
+            }];
+            if after == 0 {
+                let install = Effect::InstallRunnerCardFromZone { from: crate::dsl::CardZoneRef::HostedOnSource, discount: crate::dsl::Discount::AllCosts, if_installed: None };
+                events.extend(evaluate_effect(state, &install, ctx, registry)?);
+            }
+            Ok(events)
         }
         Effect::SetRunEndedEffect(effect) => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
@@ -4588,7 +4617,7 @@ pub(crate) fn trash_install(
         Side::Runner => {
             let Some(position) = state.runner.rig.iter().position(|c| c.install_id == install) else { return Ok(Vec::new()) };
             let removed = state.runner.rig.remove(position);
-            state.runner.heap.push(removed.card.clone());
+            file_trashed_rig_card(state, registry, removed.card.clone());
             let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: removed.card.clone(), from: crate::dsl::TrashedFrom::Installed, by, install: None, damage: None }];
             events.extend(cascade_trash_hosted_on_rig_card(state, registry, &removed));
             Ok(events)
@@ -4906,7 +4935,7 @@ pub(crate) fn trash_card(
                 .position(|c| &c.card == card)
                 .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: card.clone() })?;
             let removed = state.runner.rig.remove(position);
-            state.runner.heap.push(removed.card.clone());
+            file_trashed_rig_card(state, registry, removed.card.clone());
             let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: card.clone(), from: crate::dsl::TrashedFrom::Installed, by, install: None, damage: None }];
             events.extend(cascade_trash_hosted_on_rig_card(state, registry, &removed));
             Ok(events)
@@ -4981,6 +5010,7 @@ pub(crate) fn trash_card(
 fn trash_hosted_cards(state: &mut GameState, registry: &CardRegistry, ctx: &ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
     let position = acting_rig_position(state, ctx).ok_or(RulesError::UnresolvedCardTarget)?;
     let hosted = std::mem::take(&mut state.runner.rig[position].hosted_cards);
+    state.runner.rig[position].hosted_counters.clear();
     let by = carried_out_by(registry, ctx);
     let mut events: Vec<GameEvent> = hosted.into_iter().map(|card| trash_hosted_card(state, registry, card, by)).collect();
     // And what is installed on it — Flame-out's "trash hosted program".
@@ -5032,7 +5062,7 @@ pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, registry: 
     // the Corp card it took, which went nowhere when the Muse was trashed.
     while let Some(position) = state.runner.rig.iter().position(|c| c.hosted_on_rig_card == Some(host)) {
         let removed = state.runner.rig.remove(position);
-        state.runner.heap.push(removed.card.clone());
+        file_trashed_rig_card(state, registry, removed.card.clone());
         events.push(GameEvent::CardTrashed { side: Side::Runner, card: removed.card.clone(), from: crate::dsl::TrashedFrom::Installed, by: None, install: None, damage: None });
         events.extend(cascade_trash_hosted_on_rig_card(state, registry, &removed));
     }
@@ -5074,6 +5104,22 @@ pub(crate) fn trash_conditions_on(state: &mut GameState, host: InstallId) -> Vec
         }
     }
     events
+}
+
+/// Where a Runner card trashed out of the rig is filed: the heap, or —
+/// for a card that says so of itself (`ContinuousKind::TrashedFacedown`,
+/// Harbinger) — facedown among the Runner's installed cards
+/// (`RunnerState::installed_facedown`, CR 8.1.4), "still considered
+/// trashed": the caller announces the trash as it would have. The one
+/// door every trash of an installed Runner card is filed through, so none
+/// of them can forget it. A Trojan whose ice left play is not asked
+/// (`cascade_trash_hosted_programs`): no Trojan prints it.
+pub(crate) fn file_trashed_rig_card(state: &mut GameState, registry: &CardRegistry, card: CardId) {
+    if crate::rules::continuous::trashed_facedown(state, registry, &card) {
+        state.runner.installed_facedown.push(card);
+    } else {
+        state.runner.heap.push(card);
+    }
 }
 
 pub(crate) fn cascade_trash_hosted_programs(state: &mut GameState, host: InstallId) -> Vec<GameEvent> {
@@ -5373,7 +5419,7 @@ pub(crate) fn trash_this_card(state: &mut GameState, registry: &CardRegistry, ct
     }
     if let Some(position) = acting_rig_position(state, ctx) {
         let removed = state.runner.rig.remove(position);
-        state.runner.heap.push(removed.card.clone());
+        file_trashed_rig_card(state, registry, removed.card.clone());
         let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone(), from: crate::dsl::TrashedFrom::Installed, by, install: None, damage: None }];
         events.extend(cascade_trash_hosted_on_rig_card(state, registry, &removed));
         return Ok(events);
@@ -5446,7 +5492,7 @@ pub(crate) fn cost_is_affordable(
                 && !continuous::cannot(state, registry, crate::dsl::Prohibition::JackOut)
                 && additional_costs_affordable(state, registry, crate::dsl::CostedStep::JackOut)
         }
-        Cost::RemoveCounters(amount) => counters_of(state, ctx).is_some_and(|counters| counters >= *amount),
+        Cost::RemoveCounters(amount) => counters_on_acting(state, registry, ctx).is_some_and(|counters| counters >= *amount),
         // The same scan the payment picks from.
         Cost::VirusCounters(amount) => {
             side == Side::Runner
@@ -5926,9 +5972,14 @@ pub(crate) fn pay_cost_ctx(
 
         Cost::RemoveCounters(amount) => {
             let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?;
-            let available = counters_of(state, ctx).unwrap_or(0);
+            let available = counters_on_acting(state, registry, ctx).unwrap_or(0);
             if available < *amount {
                 return Err(RulesError::InsufficientCounters { card: card_id.clone(), required: *amount, available });
+            }
+            // A rig card's counters are spent through the one door, which
+            // finds a lent one too (Hivemind's) and asks whose to spend.
+            if let Some((position, kind)) = acting_rig_counters(state, registry, ctx) {
+                return crate::rules::pending_choice::spend_counters_on(state, registry, position, kind, *amount);
             }
             // A scored agenda's own counters are agenda counters, spent
             // (CR 4.7.3) — Mark Yale's "whenever you spend an agenda
@@ -6522,7 +6573,7 @@ pub fn check_requirement(
             if stole { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::ThisCardCountersAtMost(amount) => {
-            let current = counters_of(state, ctx).unwrap_or(0);
+            let current = counters_on_acting(state, registry, ctx).unwrap_or(0);
             if current > *amount {
                 return Err(RulesError::RequirementNotMet);
             }
@@ -6533,7 +6584,7 @@ pub fn check_requirement(
             if odd { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::ThisCardCountersAtLeast(amount) => {
-            let current = counters_of(state, ctx).unwrap_or(0);
+            let current = counters_on_acting(state, registry, ctx).unwrap_or(0);
             if current < *amount {
                 return Err(RulesError::RequirementNotMet);
             }
@@ -6844,6 +6895,26 @@ pub fn check_requirement(
                 Err(RulesError::RequirementNotMet)
             }
         }
+    }
+}
+
+/// The acting rig card's position and the kind its counters are, if it is
+/// a rig card whose counters have a kind — the cards whose counters are
+/// read and spent through `pending_choice::counters_on`.
+fn acting_rig_counters(state: &GameState, registry: &CardRegistry, ctx: &ResolutionContext<'_>) -> Option<(usize, crate::dsl::CounterKind)> {
+    let position = acting_rig_position(state, ctx)?;
+    let kind = registry.get(&state.runner.rig[position].card).and_then(|card| card.counter_kind)?;
+    Some((position, kind))
+}
+
+/// `counters_of`, as a card effect reads them: a rig card's are the ones
+/// `pending_choice::counters_on` finds — its own and any lent to it
+/// (Hivemind's). What a card holds, for a recurring credit or a payment,
+/// stays `counters_of`.
+pub(crate) fn counters_on_acting(state: &GameState, registry: &CardRegistry, ctx: &ResolutionContext<'_>) -> Option<u32> {
+    match acting_rig_counters(state, registry, ctx) {
+        Some((position, kind)) => Some(crate::rules::pending_choice::counters_on(state, registry, position, kind)),
+        None => counters_of(state, ctx),
     }
 }
 
@@ -7270,9 +7341,9 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             let controller = ctx.acting_card.and_then(|card| registry.get(card)).map_or(Side::Runner, |card| card.side);
             state.last_turn.times_when(*trigger, when, controller)
         }
-        Amount::HostedCounters => counters_of(state, ctx).unwrap_or(0),
+        Amount::HostedCounters => counters_on_acting(state, registry, ctx).unwrap_or(0),
         Amount::HostedVirusCounters => match acting_rig_position(state, ctx) {
-            Some(position) => crate::rules::pending_choice::virus_on(&state.runner.rig[position], registry),
+            Some(position) => crate::rules::pending_choice::counters_on(state, registry, position, crate::dsl::CounterKind::Virus),
             None => counters_of(state, ctx).unwrap_or(0),
         },
         // Satellite Grid's "considered to have 1 additional advancement

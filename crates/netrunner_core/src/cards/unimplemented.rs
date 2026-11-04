@@ -180,7 +180,6 @@ pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Salsette Island* (`salsette_island`): tranche F6 of the FFG plan.
 pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("jeeves_model_bioroids", "Jeeves Model Bioroids"),
 ];
 
 /// *The Liberated Mind* (`the_liberated_mind`): tranche F6 of the FFG plan.
@@ -193,7 +192,6 @@ pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Fear the Masses* (`fear_the_masses`): tranche F6 of the FFG plan.
 pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("rigged_results", "Rigged Results"),
-    ("harishchandra_ent_where_youre_the_star", "Harishchandra Ent.: Where You're the Star"),
 ];
 
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.
@@ -203,7 +201,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("apex_invasive_predator", "Apex: Invasive Predator"),
     ("apocalypse", "Apocalypse"),
     ("prey", "Prey"),
-    ("harbinger", "Harbinger"),
     ("adam_compulsive_hacker", "Adam: Compulsive Hacker"),
 ];
 
@@ -234,7 +231,6 @@ pub(crate) const UOT_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Order and Chaos* (`order_and_chaos`): tranche F7 of the FFG plan.
 pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("hivemind", "Hivemind"),
 ];
 
 /// *Upstalk* (`upstalk`): tranche F8 of the FFG plan.
@@ -253,7 +249,6 @@ pub(crate) const FC_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Up and Over* (`up_and_over`): tranche F8 of the FFG plan.
 pub(crate) const UAO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("labyrinthine_servers", "Labyrinthine Servers"),
-    ("autoscripter", "Autoscripter"),
 ];
 
 /// *All That Remains* (`all_that_remains`): tranche F8 of the FFG plan.
@@ -312,7 +307,6 @@ pub(crate) const TA_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Cyber Exodus* (`cyber_exodus`): tranche F11 of the FFG plan.
 pub(crate) const CE_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("personal_workshop", "Personal Workshop"),
 ];
 
 /// *A Study in Static* (`a_study_in_static`): tranche F11 of the FFG plan.

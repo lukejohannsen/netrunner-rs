@@ -2305,6 +2305,8 @@ impl CardDefinition {
                 (ContinuousKind::AlsoTheSecondTime, _) => return misfit("AlsoTheSecondTime", "a Runner card says it of the rig cards it names (`Rig(filter)`)"),
                 (ContinuousKind::TraceLinkIsZero, Scope::Player(Side::Runner)) if self.side == Side::Corp => {}
                 (ContinuousKind::TraceLinkIsZero, _) => return misfit("TraceLinkIsZero", "a Corp card says it of the Runner's link (`Player(Runner)`)"),
+                (ContinuousKind::GripRevealed, Scope::Player(Side::Runner)) if self.side == Side::Corp => {}
+                (ContinuousKind::GripRevealed, _) => return misfit("GripRevealed", "a Corp card says it of the Runner's grip (`Player(Runner)`)"),
                 (ContinuousKind::HandSize(_), Scope::Controller) => {}
                 // Dr. Vientiane Keeling's "The Runner gets -1 maximum hand
                 // size": the other player, named by side. The card's own
@@ -2472,6 +2474,8 @@ impl CardDefinition {
                 // Djinn, a program, and Dinosaurus, a console.
                 (ContinuousKind::HostsMemory(_), Scope::This) if matches!(self.card_type, CardType::Program | CardType::Hardware) => {}
                 (ContinuousKind::KeptThroughPurge(_), Scope::Hosted) => {}
+                (ContinuousKind::LendsVirusCounters, Scope::Rig(_)) if self.side == Side::Runner && self.counter_kind == Some(crate::dsl::CounterKind::Virus) => {}
+                (ContinuousKind::LendsVirusCounters, _) => return misfit("LendsVirusCounters", "a Runner card whose counters are virus counters lends them to the rig cards it names (`Rig(filter)`)"),
                 (ContinuousKind::KeptThroughPurge(_), _) => return misfit("KeptThroughPurge", "a host says of the program it hosts (`Hosted`) how many virus counters a purge leaves on it"),
                 (ContinuousKind::HostsMemory(_), _) => return misfit("HostsMemory", "a program or a piece of hardware says of itself (`This`) how many [mu] of programs it hosts"),
                 (ContinuousKind::CannotBeDeclaredSuccessful | ContinuousKind::AccessOthersAtMost(_), Scope::RunsOnThisServer)
@@ -2515,6 +2519,8 @@ impl CardDefinition {
                 }
                 (ContinuousKind::RevealedWhileAccessed, Scope::This) if self.side == Side::Corp => {}
                 (ContinuousKind::TrashedWhenAccessed, Scope::This) if self.side == Side::Corp => {}
+                (ContinuousKind::TrashedFacedown, Scope::This) if self.side == Side::Runner => {}
+                (ContinuousKind::TrashedFacedown, _) => return misfit("TrashedFacedown", "a Runner card says it of itself (`This`): Harbinger"),
                 (ContinuousKind::TrashedWhenAccessed, _) => {
                     return misfit("TrashedWhenAccessed", "only a Corp card is accessed, and Mumbad Virtual Tour says so of itself (`This`)");
                 }

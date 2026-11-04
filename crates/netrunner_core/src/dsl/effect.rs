@@ -2829,6 +2829,19 @@ pub enum Effect {
     /// an install, and this is said of whatever card an access was, for
     /// that access alone.
     MustTrashAccessed,
+    /// Places (`place`) or removes `amount` counters on the card this
+    /// resolves as, among the cards hosted on the acting install
+    /// (`InstalledRunnerCard::hosted_counters`), and a hosted card left
+    /// with none is installed, ignoring all costs — Personal Workshop's
+    /// "place power counters on it equal to its install cost", "remove 1
+    /// power counter from a hosted card" and "When there are no power
+    /// counters left on a hosted card, install it, ignoring all costs", in
+    /// the `then` of a selection over `HostedOnSource`. The install is part
+    /// of the word because it is a countdown's end, met only where a
+    /// counter is moved, so nothing else ever leaves a hosted card at none.
+    /// Composition didn't work: a host's counters were the host's own, and
+    /// two cards hosted on one Personal Workshop count down apart.
+    CountDownHosted { amount: Amount, #[serde(default, skip_serializing_if = "std::ops::Not::not")] place: bool },
     /// The card this resolves as, one of the Runner's facedown installed
     /// cards (`RunnerState::installed_facedown`), is turned faceup —
     /// Assimilator's "Turn one of your facedown installed cards faceup. If
@@ -4862,6 +4875,7 @@ impl Effect {
             }
             Effect::SetIdentityCopy(a) => Effect::SetIdentityCopy(amount(a)),
             Effect::RemoveCounters(a) => Effect::RemoveCounters(amount(a)),
+            Effect::CountDownHosted { amount: a, place } => Effect::CountDownHosted { amount: amount(a), place },
             Effect::RemoveAdvancementCounters(a) => Effect::RemoveAdvancementCounters(amount(a)),
             // Focus Group's "place X advancement counters on 1 installed
             // card": the number rides into the card chosen. And into how
@@ -5133,6 +5147,7 @@ impl Effect {
             | Effect::TakeAllCountersAsCredits(..)
             | Effect::TrashCurrentlyAccessedCard
             | Effect::MustTrashAccessed
+            | Effect::CountDownHosted { .. }
             | Effect::ForgoAccess
             | Effect::RemoveCurrentlyAccessedCardFromGame
             | Effect::DerezCard(..)

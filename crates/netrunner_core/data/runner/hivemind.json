@@ -1,0 +1,42 @@
+{
+  "id": "hivemind",
+  "title": "Hivemind",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "memory_cost": 2,
+  "unique": true,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Place 1 virus counter on Hivemind when it is installed."
+    }
+  ],
+  "continuous": [
+    {
+      "kind": "LendsVirusCounters",
+      "applies_to": {
+        "Rig": {
+          "All": [
+            {
+              "CardType": "Program"
+            },
+            {
+              "HasSubtype": "Virus"
+            }
+          ]
+        }
+      },
+      "text": "Virus counters on Hivemind are considered to be hosted on all other virus programs for the purposes of card effects (and can be spent as if on them)."
+    }
+  ],
+  "built_from": 7042,
+  "is_playable": true
+}

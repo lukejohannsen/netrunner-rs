@@ -726,6 +726,17 @@ pub struct InstalledRunnerCard {
     /// HostedOnSource }`.
     #[serde(default)]
     pub hosted_cards: Vec<CardId>,
+    /// The counters on each of `hosted_cards`, by position — Personal
+    /// Workshop's "place power counters on **it** equal to its install
+    /// cost", counters on the hosted card and not on its host, so two cards
+    /// hosted there count down apart. Shorter than `hosted_cards` means 0
+    /// for the rest, which is every host but a Personal Workshop. Kept in
+    /// step by every door a hosted card leaves through
+    /// ([`InstalledRunnerCard::take_hosted`], `pending_choice::
+    /// forget_hosted_counters`); a host leaving play takes both. Public, as
+    /// the rig is.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosted_counters: Vec<u32>,
     /// How many of `hosted_cards` have been **turned facedown** — Matryoshka's copies,
     /// turned facedown to pay for a break and faceup again as its turn
     /// begins. A count rather than a flag per card: cards hosted facedown
@@ -779,6 +790,7 @@ impl Default for InstalledRunnerCard {
             hosted_on_ice: None,
             hosted_on_rig_card: None,
             hosted_cards: Vec::new(),
+            hosted_counters: Vec::new(),
             turned_facedown: 0,
             hosted_cards_playable: false,
             this_turn: Default::default(),
@@ -787,6 +799,31 @@ impl Default for InstalledRunnerCard {
 }
 
 impl InstalledRunnerCard {
+    /// The counters on the hosted card at `position` (`hosted_counters`).
+    pub fn counters_on_hosted(&self, position: usize) -> u32 {
+        self.hosted_counters.get(position).copied().unwrap_or(0)
+    }
+
+    /// Sets the counters on the hosted card at `position`.
+    pub(crate) fn set_counters_on_hosted(&mut self, position: usize, counters: u32) {
+        if self.hosted_counters.len() <= position {
+            self.hosted_counters.resize(position + 1, 0);
+        }
+        self.hosted_counters[position] = counters;
+        while self.hosted_counters.last() == Some(&0) {
+            self.hosted_counters.pop();
+        }
+    }
+
+    /// Takes the hosted card at `position` off this card, with its
+    /// counters — the door that keeps `hosted_counters` in step.
+    pub(crate) fn take_hosted(&mut self, position: usize) -> CardId {
+        if position < self.hosted_counters.len() {
+            self.hosted_counters.remove(position);
+        }
+        self.hosted_cards.remove(position)
+    }
+
     /// How many of `hosted_cards` are faceup: all but `turned_facedown`.
     pub fn faceup_hosted(&self) -> u32 {
         u32::try_from(self.hosted_cards.len()).unwrap_or(u32::MAX).saturating_sub(self.turned_facedown)

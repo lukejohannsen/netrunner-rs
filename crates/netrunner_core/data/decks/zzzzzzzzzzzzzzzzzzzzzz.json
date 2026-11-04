@@ -1,0 +1,101 @@
+{
+  "id": "zzzzzzzzzzzzzzzzzzzzzz",
+  "name": "Zzzzzzzzzzzzzzzzzzzzzz",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Harishchandra Ent.: Where You're the Star, the NBN identity under whose text the Runner plays with the grip revealed while tagged. Pay to Win's list, its identity swapped: its Data Raven, Peeping Tom and SYNC Rerouting are what tag the Runner. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words Stage 33 (FFG).",
+  "style": [
+    "fast-advance"
+  ],
+  "identity": "harishchandra_ent_where_youre_the_star",
+  "cards": [
+    {
+      "card": "gold_farmer",
+      "count": 3
+    },
+    {
+      "card": "f2p",
+      "count": 3
+    },
+    {
+      "card": "capacitor",
+      "count": 2
+    },
+    {
+      "card": "scapenet",
+      "count": 2
+    },
+    {
+      "card": "kingmaking",
+      "count": 3
+    },
+    {
+      "card": "freedom_of_information",
+      "count": 2
+    },
+    {
+      "card": "the_holo_man",
+      "count": 1
+    },
+    {
+      "card": "janaina_jk_dumont_kindelan",
+      "count": 1
+    },
+    {
+      "card": "virtual_service_agent",
+      "count": 2
+    },
+    {
+      "card": "oracle_thinktank",
+      "count": 2
+    },
+    {
+      "card": "post_truth_dividend",
+      "count": 2
+    },
+    {
+      "card": "klevetnik",
+      "count": 2
+    },
+    {
+      "card": "peeping_tom",
+      "count": 2
+    },
+    {
+      "card": "drago_ivanov",
+      "count": 2
+    },
+    {
+      "card": "chekist_scion",
+      "count": 2
+    },
+    {
+      "card": "bellona",
+      "count": 2
+    },
+    {
+      "card": "sync_rerouting",
+      "count": 2
+    },
+    {
+      "card": "ganked",
+      "count": 2
+    },
+    {
+      "card": "game_over",
+      "count": 2
+    },
+    {
+      "card": "data_raven",
+      "count": 2
+    },
+    {
+      "card": "intake",
+      "count": 2
+    },
+    {
+      "card": "personalized_portal",
+      "count": 2
+    }
+  ]
+}
