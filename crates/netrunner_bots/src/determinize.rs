@@ -321,6 +321,7 @@ pub(crate) fn visible_cards(view: &ClientView) -> Vec<CardId> {
     ids.extend(view.corp.set_aside.iter().cloned());
     ids.extend(view.corp.play_area.iter().map(|played| played.card.clone()));
     ids.extend(view.corp.conditions.iter().map(|condition| condition.card.clone()));
+    ids.extend(view.corp.hosted_facedown.iter().flat_map(|hosted| hosted.cards.iter().cloned()));
     for server in &view.corp.servers {
         for card in server.ice.iter().chain(server.root.iter()) {
             if let Some(id) = &card.card {
@@ -404,6 +405,7 @@ fn cards_in_game(view: &ClientView, side: Side, registry: &CardRegistry) -> usiz
                 + view.corp.set_aside.len()
                 + view.corp.play_area.len()
                 + view.corp.conditions.len()
+                + view.corp.hosted_facedown.iter().map(|hosted| hosted.cards.len() + hosted.unseen).sum::<usize>()
         }
         Side::Runner => {
             view.runner.grip_count
@@ -1068,6 +1070,19 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
                 None => ArchivedCard { card: pools.draw(Slot::CorpAny), facedown: true },
             })
             .collect(),
+        // Glenn Station's facedown card: the Corp's own are carried, and
+        // the Runner draws one from the pool for each it cannot name, as
+        // for any hidden Corp card. Drawn after Archives, so a sample
+        // without one draws as it did.
+        hosted_facedown: view
+            .corp
+            .hosted_facedown
+            .iter()
+            .map(|hosted| netrunner_core::rules::HostedFacedown {
+                host: hosted.host,
+                cards: hosted.cards.iter().cloned().chain(pools.draw_n(Slot::CorpAny, hosted.unseen)).collect(),
+            })
+            .collect(),
         installed,
     };
 
@@ -1556,7 +1571,7 @@ mod tests {
                 identity_copy: 0,
                 identity_flipped: false,
                 bad_publicity: 0,
-                removed_from_game: Vec::new(), set_aside: Vec::new(), play_area: Vec::new(), conditions: Vec::new(), once_per_turn_used: Default::default(),
+                removed_from_game: Vec::new(), set_aside: Vec::new(), play_area: Vec::new(), conditions: Vec::new(), hosted_facedown: Vec::new(), once_per_turn_used: Default::default(),
                 scored_agendas: Vec::new(),
                 playable_from_archives: Vec::new(),
                 resources: PR { credits: Cr(5), clicks: C(3), agenda_points: AP(0) },
@@ -1634,6 +1649,7 @@ mod tests {
                 .chain(&state.corp.set_aside)
                 .chain(state.corp.play_area.iter().map(|played| &played.card))
                 .chain(state.corp.conditions.iter().map(|condition| &condition.card))
+                .chain(state.corp.hosted_facedown.iter().flat_map(|hosted| hosted.cards.iter()))
                 .cloned(),
         )
     }

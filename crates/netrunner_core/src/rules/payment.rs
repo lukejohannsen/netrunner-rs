@@ -747,6 +747,21 @@ pub(crate) fn could_ask(state: &GameState, registry: &CardRegistry, action: &cra
         || an_interrupt_could_ask(state, registry)
         || crate::rules::lingering::additional_costs_could_ask(state)
         || crate::rules::continuous::any_damage_chooser(state, registry)
+        || a_run_cost_could_ask(state, registry)
+}
+
+/// An additional cost to run that takes cards asks which (Hired Help's
+/// "trash 1 agenda from their score area", with two there), and a run is
+/// begun by the basic action and by a card's text alike — an event, a
+/// choice of server, a paid choice — so while a Corp card that could
+/// impose one is rezzed, any action could. A necessary condition, as the
+/// others are: it costs the copy only while such a card is on the table.
+fn a_run_cost_could_ask(state: &GameState, registry: &CardRegistry) -> bool {
+    use crate::dsl::ContinuousKind;
+    let imposes = |card: &crate::dsl::CardId| {
+        registry.get(card).is_some_and(|def| def.continuous.iter().any(|effect| matches!(&effect.kind, ContinuousKind::RunCost(cost) if cost.may_ask())))
+    };
+    state.corp.installed.iter().any(|card| card.rezzed && imposes(&card.card)) || state.corp.play_area.iter().any(|played| imposes(&played.card))
 }
 
 /// A card's text that rezzes a card and pays for it meets the card's own

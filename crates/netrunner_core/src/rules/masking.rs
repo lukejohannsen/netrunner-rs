@@ -166,6 +166,12 @@ pub struct PublicCorpState {
     /// (`CorpState::conditions`, Eavesdrop).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conditions: Vec<crate::rules::HostedCondition>,
+    /// `CorpState::hosted_facedown` — Glenn Station's facedown card. Which
+    /// card is the Corp's alone: the Runner is given how many each host
+    /// holds (`PublicHostedFacedown::unseen`) and no card, as HQ is given
+    /// to them as a count.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosted_facedown: Vec<PublicHostedFacedown>,
     /// `CorpState::identity_counters` — power counters on the Corp's
     /// identity (AU Co.). Never masked: an identity is faceup, and its
     /// counters are tokens on the table, the same rule
@@ -1557,6 +1563,8 @@ fn corp_card_concealed_from(state: &GameState, card: &CardId, viewer: Viewer) ->
     let remembered = |installed: &InstalledCard| viewer.is(Side::Runner) && installed.seen_by_runner;
     state.corp.installed.iter().any(|installed| installed.card == *card && !installed.rezzed && !remembered(installed))
         || state.corp.archives.iter().any(|archived| archived.card == *card && archived.facedown)
+        // Hosted facedown on a scored agenda (Glenn Station).
+        || state.corp.hosted_facedown.iter().any(|hosted| hosted.cards.contains(card))
 }
 
 fn mask_run_ice(state: &GameState, registry: &CardRegistry, ice: &RunIce, owner_view: bool) -> PublicRunIce {
@@ -1790,6 +1798,18 @@ fn mask_archives(archives: &[ArchivedCard], owner_view: bool) -> Vec<PublicArchi
     masked
 }
 
+/// The cards hosted facedown on one Corp score-area card, as a viewer sees
+/// them — see `PublicCorpState::hosted_facedown`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicHostedFacedown {
+    pub host: InstallId,
+    /// The cards, to the Corp; empty to anyone else.
+    pub cards: Vec<CardId>,
+    /// How many are hosted that this viewer cannot name: all of them to the
+    /// Runner, none to the Corp.
+    pub unseen: usize,
+}
+
 fn mask_corp_state(state: &GameState, registry: &CardRegistry, owner_view: bool, runner_view: bool) -> PublicCorpState {
     let corp = &state.corp;
     let identity_recurring = corp.identity.as_ref().and_then(|identity| registry.get(identity)).and_then(|definition| definition.recurring_credits);
@@ -1811,6 +1831,16 @@ fn mask_corp_state(state: &GameState, registry: &CardRegistry, owner_view: bool,
         set_aside: corp.set_aside.clone(),
         play_area: corp.play_area.clone(),
         conditions: corp.conditions.clone(),
+        hosted_facedown: corp
+            .hosted_facedown
+            .iter()
+            .filter(|hosted| !hosted.cards.is_empty())
+            .map(|hosted| PublicHostedFacedown {
+                host: hosted.host,
+                cards: if owner_view { hosted.cards.clone() } else { Vec::new() },
+                unseen: if owner_view { 0 } else { hosted.cards.len() },
+            })
+            .collect(),
         identity_counters: corp.identity_counters,
         identity_flipped: corp.identity_flipped,
         identity_copy: (owner_view || corp.identity_flipped).then_some(corp.identity_copy),
@@ -1883,7 +1913,9 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         scored_agendas: runner.scored_agendas.clone(),
         // Asked, like a strength: the identity's printed link and what the
         // rig adds. It was a stored field that only the identity ever wrote.
-        link_strength: crate::rules::continuous::link(state, registry),
+        // In a trace, the link the trace reads (Net Quarantine's "treated
+        // as 0"), which is the number the Runner bids against.
+        link_strength: if state.active_trace.is_some() { crate::rules::continuous::trace_link(state, registry) } else { crate::rules::continuous::link(state, registry) },
         servers_run_this_turn: runner.servers_run_this_turn.clone(),
         servers_run_successfully: runner.servers_run_successfully.clone(),
         discarded_this_discard_phase: runner.discarded_this_discard_phase.clone(),

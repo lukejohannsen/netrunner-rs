@@ -1,0 +1,43 @@
+{
+  "id": "hired_help",
+  "title": "Hired Help",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "trash_cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "RunCost": {
+          "Trash": {
+            "from": "OwnScoreArea",
+            "filter": "Any",
+            "count": 1
+          }
+        }
+      },
+      "applies_to": "RunsOnThisServer",
+      "while": {
+        "Not": {
+          "AmountAtLeast": [
+            {
+              "TimesThisTurnWhen": {
+                "trigger": "OnSuccessfulRun",
+                "when": {
+                  "Server": [
+                    "Hq"
+                  ]
+                }
+              }
+            },
+            1
+          ]
+        }
+      },
+      "text": "As an additional cost to run this server, the Runner must trash 1 agenda from their score area. Ignore this ability if the Runner made a successful run on HQ this turn."
+    }
+  ],
+  "triggers": [],
+  "built_from": 23101,
+  "is_playable": true
+}

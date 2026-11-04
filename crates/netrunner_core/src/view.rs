@@ -86,6 +86,11 @@ pub struct CorpClientView {
     /// bot's sample copies.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conditions: Vec<crate::rules::HostedCondition>,
+    /// Masked — see `CorpState::hosted_facedown`: Glenn Station's facedown
+    /// card, named to the Corp and counted to the Runner, on the handle of
+    /// the scored agenda that hosts it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosted_facedown: Vec<crate::rules::PublicHostedFacedown>,
     /// Power counters on the Corp's identity (AU Co.) — public, and
     /// carried so a determinized sample can pay a cost that spends them.
     #[serde(default)]
@@ -480,6 +485,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         set_aside: public.corp.set_aside,
         play_area: public.corp.play_area,
         conditions: public.corp.conditions,
+        hosted_facedown: public.corp.hosted_facedown,
     };
 
     let runner = RunnerClientView {

@@ -297,7 +297,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // Not scored (CR 1.17.3f), but added (Jackpot!'s "whenever an agenda
         // is added to your score area").
         GameEvent::AddedToScoreAreaAsAgenda { side, card: added, .. } => vec![moment(Trigger::OnAgendaAddedToScoreArea, &card(added, None), Some(*side))],
-        GameEvent::AgendaAddedToScoreArea { card: added, .. } => vec![moment(Trigger::OnAgendaAddedToScoreArea, &card(added, None), Some(Side::Corp))],
+        GameEvent::AgendaAddedToScoreArea { card: added, side, .. } => vec![moment(Trigger::OnAgendaAddedToScoreArea, &card(added, None), Some(*side))],
         GameEvent::CardAddedToHand { .. } => Vec::new(),
         // Whoever turned it facedown: Saci hears its host derezzed by a
         // Tranquilizer as by a Corp's cost, and the moment is the side's
@@ -476,6 +476,10 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::CreditsLost { .. } => Vec::new(),
         // CR 10.8.6a; the Corp initiates every trace in the pool.
         GameEvent::TraceInitiated { .. } => vec![moment(Trigger::OnTraceInitiated, &About::Nothing, Some(Side::Corp))],
+        // The Runner's bid (CR 10.8.6d), a moment only when it spent
+        // something (Net Quarantine's "spends credits to increase their
+        // link strength").
+        GameEvent::TraceRunnerBidSubmitted { runner_bid, .. } if *runner_bid > 0 => vec![moment(Trigger::OnLinkBoosted, &About::Nothing, Some(Side::Runner))],
         // A selection that reveals what it chose (Hyoubu Institute's own
         // "reveal the top card of the stack") is its chooser revealing
         // each card.

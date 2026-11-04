@@ -1723,7 +1723,7 @@ pub(crate) fn move_currently_accessed_card(state: &mut GameState, registry: &Car
             crate::rules::dispatcher::emit(state, registry, &mut events, added)?;
         }
         AccessedTo::CorpScoreArea => {
-            let added = ability::add_agenda_to_score_area(state, registry, card_id.clone());
+            let added = ability::add_agenda_to_score_area(state, registry, Side::Corp, card_id.clone());
             crate::rules::dispatcher::emit(state, registry, &mut events, added)?;
         }
     }
@@ -2060,7 +2060,7 @@ mod tests {
         seed: u64,
     ) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { identity: None, identity_counters: 0, identity_flipped: false, identity_copy: 0, bad_publicity: 0, removed_from_game: Vec::new(), set_aside: Vec::new(), play_area: Vec::new(), conditions: Vec::new(), once_per_turn_used: Default::default(),
+            corp: crate::rules::state::CorpState { identity: None, identity_counters: 0, identity_flipped: false, identity_copy: 0, bad_publicity: 0, removed_from_game: Vec::new(), set_aside: Vec::new(), play_area: Vec::new(), conditions: Vec::new(), hosted_facedown: Vec::new(), once_per_turn_used: Default::default(),
                 scored_agendas: Vec::new(),
                 playable_from_archives: Vec::new(),
                 resources: PlayerResources {

@@ -2778,6 +2778,18 @@ pub enum Effect {
     /// `then` is the card selected (the convention every `then` follows),
     /// and the operation has no install for a `CardTarget` to name.
     AsThisCard(Box<Effect>),
+    /// `effect` resolved as the install `install` — in a `ForEach`, each
+    /// card it names (`InstallId::PLACEHOLDER` written over by
+    /// `Effect::with_each_install`): Security Chip's "Choose … any number
+    /// of **cloud icebreakers**. **Each chosen icebreaker** has +1 strength
+    /// for each [link] you have for the remainder of this run", a
+    /// `BoostStrengthAmount` on every chosen breaker. The prompting card
+    /// stays the card whose text it is. Composition didn't work: a
+    /// selection's `then` acts as the first card chosen only, and `ForEach`
+    /// resolves as the card whose text it is, naming each card through a
+    /// `CardTarget` that `BoostStrength` — which boosts the card it
+    /// resolves as — does not read.
+    AsInstall { install: crate::rules::InstallId, effect: Box<Effect> },
     /// The card this resolves as, one of the Runner's facedown installed
     /// cards (`RunnerState::installed_facedown`), is turned faceup —
     /// Assimilator's "Turn one of your facedown installed cards faceup. If
@@ -3406,6 +3418,13 @@ pub enum Amount {
     /// same way (a selection over the Runner's installed cards). Composition
     /// didn't work: `InstalledIcebreakerCount` is one sentence's count.
     RunnerInstalls(crate::dsl::CardFilter),
+    /// What the Runner spent to increase their link strength, in the trace
+    /// whose bid is the moment heard (`Trigger::OnLinkBoosted`) — Net
+    /// Quarantine's "gain 1[credit] for every 2[credit] they spent", an
+    /// `Every { LinkBoostSpent, 2 }`. 0 outside such a resolution.
+    /// Composition didn't work: no amount read a bid off the event that
+    /// carries it.
+    LinkBoostSpent,
     /// The Runner's link (`continuous::link`, the identity's printed link
     /// plus what the rig declares) — DreamNet's "or you have at least
     /// 2[link]", `AmountAtLeast(Link, 2)`. Composition didn't work: link
@@ -4538,6 +4557,7 @@ impl Effect {
         match self {
             Effect::TrashCard(t) => Effect::TrashCard(target(t)),
             Effect::DerezCard(t) => Effect::DerezCard(target(t)),
+            Effect::AsInstall { install: crate::rules::InstallId::PLACEHOLDER, effect } => Effect::AsInstall { install, effect },
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
@@ -4808,6 +4828,7 @@ impl Effect {
             // and `on_success` has its margin written in when it succeeds.
             Effect::Trace { base, on_success, on_failure } => Effect::Trace { base: amount(base), on_success, on_failure },
             Effect::AsThisCard(effect) => Effect::AsThisCard(boxed(effect)),
+            Effect::AsInstall { install, effect } => Effect::AsInstall { install, effect: boxed(effect) },
             // Bribery's "Make a run. During this run, the Corp must pay
             // X[credit]": X rides into the run's riders and the cost they
             // leave waiting.
@@ -4970,6 +4991,7 @@ impl Effect {
             Effect::SetRunEndedEffect(effect)
             | Effect::Unpreventable(effect)
             | Effect::AsThisCard(effect)
+            | Effect::AsInstall { effect, .. }
             | Effect::LaterThisTurn { effect, .. }
             | Effect::ChooseNumber { then: effect, .. }
             | Effect::ChooseCardName { then: effect, .. }

@@ -1,0 +1,49 @@
+{
+  "id": "net_quarantine",
+  "title": "Net Quarantine",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "continuous": [
+    {
+      "kind": "TraceLinkIsZero",
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "while": {
+        "Not": {
+          "AmountAtLeast": [
+            {
+              "TimesThisTurn": "OnTraceInitiated"
+            },
+            2
+          ]
+        }
+      },
+      "text": "For the first trace each turn, the Runner's [link] is treated as 0."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnLinkBoosted",
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            {
+              "Every": {
+                "amount": "LinkBoostSpent",
+                "every": 2
+              }
+            }
+          ]
+        }
+      ],
+      "text": "Whenever the Runner spends credits to increase their link strength, gain 1[credit] for every 2[credit] they spent."
+    }
+  ],
+  "built_from": 11114,
+  "is_playable": true
+}

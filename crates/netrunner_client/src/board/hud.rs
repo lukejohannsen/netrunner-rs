@@ -667,6 +667,19 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 .map_or_else(|| "a card".to_string(), |card| title(&card));
             format!("hosted on {on}: {}", title(&condition.card))
         }))
+        // A card hosted facedown on a scored agenda (Glenn Station's): named
+        // to the Corp, counted to the Runner, since nothing on the board
+        // stands for a card hosted in a score area.
+        .chain(view.corp.hosted_facedown.iter().map(|hosted| {
+            let on = view.corp.scored_agendas.iter().find(|scored| scored.install_id == hosted.host).map_or_else(|| "a scored agenda".to_string(), |scored| title(&scored.card));
+            let mut named: Vec<String> = hosted.cards.iter().map(&title).collect();
+            if hosted.unseen > 0 {
+                named.push(format!("{} facedown card{}", hosted.unseen, if hosted.unseen == 1 { "" } else { "s" }));
+            }
+            format!("hosted facedown on {on}: {}", named.join(", "))
+        }))
+        // A Corp card hosted on a rig card (Film Critic's agenda, Detente's
+        // card) is drawn by `facts` on the host ("Hosts …").
         // An identity a rig card hosts and has the text of (DJ Fenris's):
         // faceup, and nothing on the board stands for it.
         .chain(view.runner.hosted_identities.iter().map(|hosted| {

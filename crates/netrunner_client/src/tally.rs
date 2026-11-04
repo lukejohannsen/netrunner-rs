@@ -134,7 +134,8 @@ impl Tally {
             // the same.
             GameEvent::AddedToScoreAreaAsAgenda { side: Side::Corp, points, .. } => self.corp.agenda_points += points,
             GameEvent::AddedToScoreAreaAsAgenda { side: Side::Runner, points, .. } => self.runner.agenda_points += points,
-            GameEvent::AgendaAddedToScoreArea { agenda_points, .. } => self.corp.agenda_points += *agenda_points as i32,
+            GameEvent::AgendaAddedToScoreArea { agenda_points, side: Side::Corp, .. } => self.corp.agenda_points += *agenda_points as i32,
+            GameEvent::AgendaAddedToScoreArea { agenda_points, side: Side::Runner, .. } => self.runner.agenda_points += *agenda_points as i32,
             // Every Corp card is turned faceup by the one rez, whatever
             // the event's name says (`engine::rez_install`).
             GameEvent::IceRezzed { .. } => self.corp.cards_rezzed += 1,

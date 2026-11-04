@@ -376,12 +376,20 @@ fn assert_cards_are_conserved(state: &GameState, registry: &netrunner_core::card
             // A condition counter on its host (CR 1.13.6d: Eavesdrop,
             // Transparency Initiative), in no other zone.
             .chain(corp.conditions.iter().map(|condition| &condition.card))
+            // Hosted facedown on a card in the score area (Glenn
+            // Station), in no other zone.
+            .chain(corp.hosted_facedown.iter().flat_map(|hosted| hosted.cards.iter()))
             .chain(hosted_corp),
     );
     // …and only while its host is on the table: a condition goes with it.
     for condition in &corp.conditions {
         let hosted = corp.installed.iter().any(|card| card.install_id == condition.host) || state.runner.rig.iter().any(|card| card.install_id == condition.host);
         assert!(hosted, "seed {seed} ({matchup}): {} is a condition on a host no longer installed", condition.card.0);
+    }
+    // …and only while its host is in the Corp's score area: an agenda
+    // that leaves takes them to Archives.
+    for hosted in corp.hosted_facedown.iter().filter(|hosted| !hosted.cards.is_empty()) {
+        assert!(corp.scored_agendas.iter().any(|scored| scored.install_id == hosted.host), "seed {seed} ({matchup}): {:?} hosted facedown on a card no longer in the Corp's score area", hosted.cards);
     }
     assert_eq!(corp_cards, deck_tally(corp_deck), "seed {seed} ({matchup}): Corp cards are not conserved");
 
@@ -673,7 +681,14 @@ fn assert_no_concealed_card_is_named_in_log(
 
     let mut concealed = masked_install_ids(view, state, &visible);
     let corp_hidden = || {
-        state.corp.hq.iter().chain(&state.corp.r_and_d).chain(state.corp.archives.iter().filter(|a| a.facedown).map(|a| &a.card))
+        state
+            .corp
+            .hq
+            .iter()
+            .chain(&state.corp.r_and_d)
+            .chain(state.corp.archives.iter().filter(|a| a.facedown).map(|a| &a.card))
+            // Glenn Station's facedown card, hidden as HQ is.
+            .chain(state.corp.hosted_facedown.iter().flat_map(|hosted| hosted.cards.iter()))
     };
     let runner_hidden = || state.runner.grip.iter().chain(&state.runner.stack);
     let opponent_hidden: Vec<&netrunner_core::dsl::CardId> = match side {

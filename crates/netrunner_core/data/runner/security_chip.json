@@ -1,0 +1,81 @@
+{
+  "id": "security_chip",
+  "title": "Security Chip",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": "RunInProgress",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Runner",
+          "options": [
+            {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnInstalled",
+                "filter": "Icebreaker",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "BoostStrengthAmount": {
+                    "amount": "Link",
+                    "duration": "Run"
+                  }
+                }
+              }
+            },
+            {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnInstalled",
+                "filter": {
+                  "All": [
+                    "Icebreaker",
+                    {
+                      "HasSubtype": "Cloud"
+                    }
+                  ]
+                },
+                "min": 1,
+                "max": 20,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "ForEach": {
+                    "source": "OwnInstalled",
+                    "filter": "ChosenThisWay",
+                    "effect": {
+                      "AsInstall": {
+                        "install": 0,
+                        "effect": {
+                          "BoostStrengthAmount": {
+                            "amount": "Link",
+                            "duration": "Run"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "texts": [
+            "Choose an icebreaker",
+            "or any number of cloud icebreakers"
+          ]
+        }
+      },
+      "text": "[trash]: Choose an icebreaker (or any number of cloud icebreakers). Each chosen icebreaker has +1 strength for each [link] you have for the remainder of this run. Use this ability only during a run."
+    }
+  ],
+  "built_from": 9046,
+  "is_playable": true
+}

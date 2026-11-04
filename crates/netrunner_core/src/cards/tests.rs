@@ -59067,3 +59067,406 @@ mod engine_words_stage_29 {
         assert!(!crate::rules::continuous::has_subtype(&over, &registry, wall, Some(InstallId(31)), crate::dsl::CardSubtype::Destroyer));
     }
 }
+
+mod engine_words_stage_30 {
+    use super::*;
+    use crate::rules::ScoredAgenda;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn installed(card: &str, install: u32, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn scored(card: &str, install: u32) -> ScoredAgenda {
+        ScoredAgenda { install_id: InstallId(install), ..ScoredAgenda::plain(id(card)) }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<PlayerAction> {
+        crate::rules::legal_actions_for(state, registry, side).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect()
+    }
+
+    fn select_first(state: GameState, registry: &CardRegistry, side: Side) -> GameState {
+        let toggle = toggles(&state, registry, side).into_iter().next().expect("a card to choose");
+        let chosen = act(&state, registry, toggle);
+        act(&chosen, registry, PlayerAction::ConfirmCardSelection)
+    }
+
+    /// A run on `server` up to the first card it accesses.
+    fn breach(state: GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let state = act(&state, registry, PlayerAction::InitiateRun { server });
+        let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("to the server");
+        let mut state = act(&state, registry, PlayerAction::CompleteRun);
+        while let Some(crate::rules::AccessPhase::SelectNextCard { selectable_cards }) =
+            state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| access.phase.clone())
+        {
+            state = act(&state, registry, PlayerAction::SelectCardToAccess { candidate: selectable_cards[0].clone() });
+        }
+        state
+    }
+
+    /// "Whenever you access an agenda, you may host that agenda on Film
+    /// Critic (the agenda is no longer being accessed and is
+    /// uninstalled). [click],[click]: Add an agenda hosted on Film Critic
+    /// to your score area." Not a steal: nothing that hears one hears it.
+    #[test]
+    fn film_critic_hosts_an_accessed_agenda_and_adds_it_to_the_score_area_for_two_clicks() {
+        let registry = registry();
+        let host = PlayerAction::ActivateAbility { target: InstallId(30), ability_index: 0 };
+        let add = PlayerAction::ActivateAbility { target: InstallId(30), ability_index: 1 };
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("film_critic", 30)];
+        state.corp.installed = vec![installed("hostile_takeover", 5, ServerId::Remote(0), InstallSlot::Root, false)];
+        let accessing = breach(state, &registry, ServerId::Remote(0));
+        assert!(crate::rules::legal_actions_for(&accessing, &registry, Side::Runner).contains(&host), "the agenda being accessed may be hosted");
+        let (hosted, events) = apply_action(&accessing, &registry, host.clone()).expect("host it");
+        assert_eq!(hosted.runner.rig[0].hosted_cards, vec![id("hostile_takeover")]);
+        assert!(hosted.corp.installed.is_empty(), "uninstalled");
+        assert!(hosted.runner.scored_agendas.is_empty() && hosted.runner.resources.agenda_points.0 == 0, "not stolen");
+        assert!(!events.iter().any(|event| matches!(event, crate::rules::GameEvent::AgendaStolen { .. })));
+        assert!(hosted.active_run.is_none(), "its access ended, and the run with it");
+        // Public: the Corp sees its agenda on the Runner's card.
+        let corp = crate::view::build_client_view(&hosted, &registry, Side::Corp);
+        assert_eq!(corp.runner.rig[0].hosted_cards, vec![id("hostile_takeover")]);
+
+        // "Can host a single agenda": the next one is not offered.
+        let mut again = hosted.clone();
+        again.corp.installed = vec![installed("priority_requisition", 6, ServerId::Remote(1), InstallSlot::Root, false)];
+        let again = breach(again, &registry, ServerId::Remote(1));
+        assert!(!crate::rules::legal_actions_for(&again, &registry, Side::Runner).contains(&host));
+
+        // A non-agenda is not offered either.
+        let mut asset = runner_turn();
+        asset.runner.rig = vec![rig("film_critic", 30)];
+        asset.corp.installed = vec![installed("pad_campaign", 5, ServerId::Remote(0), InstallSlot::Root, false)];
+        let asset = breach(asset, &registry, ServerId::Remote(0));
+        assert!(!crate::rules::legal_actions_for(&asset, &registry, Side::Runner).contains(&host));
+
+        // [click][click]: into the Runner's score area, worth what it prints.
+        assert!(crate::rules::legal_actions_for(&hosted, &registry, Side::Runner).contains(&add));
+        let asked = act(&hosted, &registry, add.clone());
+        let clicks = asked.runner.resources.clicks.0;
+        let (added, events) = {
+            let toggle = toggles(&asked, &registry, Side::Runner).into_iter().next().expect("the hosted agenda");
+            let chosen = act(&asked, &registry, toggle);
+            apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("add it")
+        };
+        assert_eq!(clicks, 4 - 1 - 2, "a run and two clicks");
+        assert!(added.runner.rig[0].hosted_cards.is_empty());
+        assert_eq!(added.runner.scored_agendas.iter().map(|scored| scored.card.clone()).collect::<Vec<_>>(), vec![id("hostile_takeover")]);
+        assert_eq!(added.runner.resources.agenda_points.0, 1);
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::AgendaAddedToScoreArea { side: Side::Runner, agenda_points: 1, .. })));
+        assert!(!events.iter().any(|event| matches!(event, crate::rules::GameEvent::AgendaStolen { .. })), "added, not stolen");
+        // Nothing hosted, nothing to add.
+        assert!(!crate::rules::legal_actions_for(&added, &registry, Side::Runner).contains(&add));
+    }
+
+    /// Film Critic trashed with an agenda on it sends the agenda to the
+    /// Corp's discard pile, faceup: it sat faceup on the table.
+    #[test]
+    fn a_trashed_film_critic_sends_its_agenda_to_archives() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.tags = 1;
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { hosted_cards: vec![id("hostile_takeover")], ..rig("film_critic", 30) }];
+        let gone = close_all_windows(act(&state, &registry, PlayerAction::TrashResource { target: InstallId(30) }), &registry).0;
+        assert!(gone.runner.rig.is_empty());
+        assert!(gone.corp.archives.iter().any(|card| card.card == id("hostile_takeover") && !card.facedown));
+    }
+
+    fn glenn_station_scored() -> GameState {
+        let mut state = base_state();
+        state.corp.scored_agendas = vec![scored("glenn_station", 40)];
+        state.corp.resources.agenda_points = AgendaPoints(2);
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall")];
+        state
+    }
+
+    /// "[click]: Host a card from HQ facedown on Glenn Station." The card
+    /// is the Corp's to see and the Runner's to count: their view names
+    /// it nowhere, and nor does their copy of the log.
+    #[test]
+    fn glenn_station_hosts_a_card_from_hq_facedown_hidden_from_the_runner() {
+        let registry = registry();
+        let host = PlayerAction::ActivateAbility { target: InstallId(40), ability_index: 0 };
+        let take = PlayerAction::ActivateAbility { target: InstallId(40), ability_index: 1 };
+        let state = glenn_station_scored();
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&host));
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&take), "nothing hosted to take");
+        let asked = act(&state, &registry, host.clone());
+        let toggle = toggles(&asked, &registry, Side::Corp).into_iter().next().expect("an HQ card");
+        let chosen = act(&asked, &registry, toggle);
+        let (hosted, events) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("host it");
+        assert_eq!(hosted.corp.hosted_facedown, vec![crate::rules::HostedFacedown { host: InstallId(40), cards: vec![id("hedge_fund")] }]);
+        assert_eq!(hosted.corp.hq, vec![id("ice_wall")]);
+        assert_eq!(hosted.corp.resources.clicks, Clicks(2));
+
+        let corp = crate::view::build_client_view(&hosted, &registry, Side::Corp);
+        assert_eq!(corp.corp.hosted_facedown[0].cards, vec![id("hedge_fund")]);
+        let runner = crate::view::build_client_view(&hosted, &registry, Side::Runner);
+        assert_eq!(runner.corp.hosted_facedown[0].cards, Vec::<CardId>::new(), "masked");
+        assert_eq!(runner.corp.hosted_facedown[0].unseen, 1, "counted");
+        assert!(!format!("{runner:?}").contains("\"hedge_fund\""), "the Runner's view names it nowhere");
+        for event in &events {
+            if let Some(masked) = crate::rules::mask_event_for_player(event, &hosted, Side::Runner) {
+                assert!(!format!("{masked:?}").contains("\"hedge_fund\""), "the Runner's log names it: {masked:?}");
+            }
+        }
+
+        // "Can host a single card."
+        assert!(!crate::rules::legal_actions_for(&hosted, &registry, Side::Corp).contains(&host));
+        // "[click]: Add a card on Glenn Station to HQ."
+        let back = select_first(act(&hosted, &registry, take), &registry, Side::Corp);
+        assert!(back.corp.hosted_facedown.iter().all(|hosted| hosted.cards.is_empty()));
+        assert_eq!(back.corp.hq.len(), 2);
+        assert!(back.corp.hq.contains(&id("hedge_fund")));
+        assert_eq!(back.corp.resources.clicks, Clicks(1));
+    }
+
+    /// Glenn Station leaving the score area takes its card to Archives,
+    /// facedown (CR 10.1.4): swapped into the Runner's here, as Turntable
+    /// swaps.
+    #[test]
+    fn a_glenn_station_leaving_the_score_area_trashes_its_hosted_card_facedown() {
+        let registry = registry();
+        let mut state = glenn_station_scored();
+        state.corp.hosted_facedown = vec![crate::rules::HostedFacedown { host: InstallId(40), cards: vec![id("hedge_fund")] }];
+        state.corp.hq = vec![id("ice_wall")];
+        state.runner.scored_agendas = vec![ScoredAgenda::plain(id("hostile_takeover"))];
+        let swap = crate::dsl::Effect::SwapScoredAgenda { yours: Some(InstallId(40)), that_agenda: None };
+        crate::rules::evaluate_effect(&mut state, &swap, &mut crate::rules::ResolutionContext::for_card(Some(&id("hostile_takeover"))), &registry).expect("swap");
+        assert_eq!(state.runner.scored_agendas[0].card, id("glenn_station"));
+        assert!(state.corp.hosted_facedown.is_empty());
+        assert!(state.corp.archives.iter().any(|card| card.card == id("hedge_fund") && card.facedown), "trashed facedown");
+        let runner = crate::view::build_client_view(&state, &registry, Side::Runner);
+        assert!(!format!("{:?}", runner.corp.archives).contains("\"hedge_fund\""));
+    }
+
+    fn hired_help_turn(stolen: &[&str]) -> GameState {
+        let mut state = runner_turn();
+        state.corp.installed = vec![installed("hired_help", 7, ServerId::Remote(0), InstallSlot::Root, true)];
+        state.runner.scored_agendas = stolen.iter().map(|card| ScoredAgenda::plain(id(card))).collect();
+        let registry = registry();
+        state.runner.resources.agenda_points = AgendaPoints(crate::rules::score(&state, &registry, Side::Runner));
+        state
+    }
+
+    /// "As an additional cost to run this server, the Runner must trash 1
+    /// agenda from their score area." Into Archives, faceup, its points
+    /// with it; and no agenda, no run.
+    #[test]
+    fn hired_help_makes_a_run_on_its_server_trash_an_agenda_from_the_runners_score_area() {
+        let registry = registry();
+        let run = PlayerAction::InitiateRun { server: ServerId::Remote(0) };
+        let state = hired_help_turn(&["hostile_takeover"]);
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&run));
+        let running = act(&state, &registry, run.clone());
+        assert!(running.active_run.is_some());
+        assert!(running.runner.scored_agendas.is_empty());
+        assert_eq!(running.runner.resources.agenda_points.0, 0);
+        assert!(running.corp.archives.iter().any(|card| card.card == id("hostile_takeover") && !card.facedown), "to its owner's discard pile, faceup");
+
+        // Nothing to trash: the run cannot be made, though another server's can.
+        let none = hired_help_turn(&[]);
+        assert!(!crate::rules::legal_actions_for(&none, &registry, Side::Runner).contains(&run));
+        assert!(apply_action(&none, &registry, run.clone()).is_err());
+        assert!(crate::rules::legal_actions_for(&none, &registry, Side::Runner).contains(&PlayerAction::InitiateRun { server: ServerId::Hq }));
+    }
+
+    /// Two agendas to choose between: the Runner is asked which, by replay.
+    #[test]
+    fn hired_help_asks_which_agenda_when_the_runner_has_two() {
+        let registry = registry();
+        let run = PlayerAction::InitiateRun { server: ServerId::Remote(0) };
+        let state = hired_help_turn(&["hostile_takeover", "priority_requisition"]);
+        assert_eq!(state.runner.resources.agenda_points.0, 4);
+        let asked = act(&state, &registry, run);
+        assert!(asked.pending_payment.is_some(), "which agenda");
+        assert!(asked.active_run.is_none(), "not yet begun");
+        let pick = PlayerAction::ToggleCardSelection { position: 1 };
+        assert!(crate::rules::legal_actions_for(&asked, &registry, Side::Runner).contains(&pick));
+        let running = act(&asked, &registry, pick);
+        assert!(running.active_run.is_some());
+        assert_eq!(running.runner.scored_agendas.iter().map(|scored| scored.card.clone()).collect::<Vec<_>>(), vec![id("hostile_takeover")]);
+        assert_eq!(running.runner.resources.agenda_points.0, 1);
+    }
+
+    /// "Ignore this ability if the Runner made a successful run on HQ this
+    /// turn."
+    #[test]
+    fn hired_help_is_ignored_after_a_successful_hq_run() {
+        let registry = registry();
+        let state = hired_help_turn(&["hostile_takeover"]);
+        let (after_hq, _) = run_to_completion(state, &registry, ServerId::Hq);
+        let after_hq = close_all_windows(after_hq, &registry).0;
+        let running = act(&after_hq, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
+        assert!(running.active_run.is_some());
+        assert_eq!(running.runner.scored_agendas.len(), 1, "nothing trashed");
+        // With nothing in the score area, the run is made all the same.
+        let mut none = hired_help_turn(&[]);
+        none.this_turn = after_hq.this_turn;
+        assert!(crate::rules::legal_actions_for(&none, &registry, Side::Runner).contains(&PlayerAction::InitiateRun { server: ServerId::Remote(0) }));
+    }
+
+    fn chip_run(registry: &CardRegistry, rig_cards: Vec<crate::rules::InstalledRunnerCard>) -> GameState {
+        let mut state = runner_turn();
+        state.runner.rig = rig_cards;
+        state.corp.installed = vec![installed("ice_wall", 9, ServerId::Hq, InstallSlot::Ice, false)];
+        act(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq })
+    }
+
+    fn strength_of(state: &GameState, registry: &CardRegistry, install: u32) -> i32 {
+        crate::rules::continuous::breaker_strength(state, registry, state.find_rig_install(InstallId(install)).expect("installed"))
+    }
+
+    /// "[trash]: Choose an icebreaker (or any number of cloud
+    /// icebreakers). Each chosen icebreaker has +1 strength for each [link]
+    /// you have for the remainder of this run." Two cloud breakers both
+    /// gain; a third breaker, unchosen, does not.
+    #[test]
+    fn security_chip_boosts_every_chosen_cloud_breaker_by_the_link_for_the_run() {
+        let registry = registry();
+        let chip = PlayerAction::ActivateAbility { target: InstallId(50), ability_index: 0 };
+        let state = chip_run(&registry, vec![rig("access_to_globalsec", 49), rig("security_chip", 50), rig("crowbar", 51), rig("shiv", 52), rig("corroder", 53)]);
+        assert_eq!(crate::rules::continuous::link(&state, &registry), 1);
+        let before: Vec<i32> = [51, 52, 53].iter().map(|install| strength_of(&state, &registry, *install)).collect();
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&chip), "during a run");
+        let asked = act(&state, &registry, chip);
+        assert!(!asked.runner.rig.iter().any(|card| card.card == id("security_chip")), "trashed to pay");
+        // The second option: any number of cloud icebreakers.
+        let clouds = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 });
+        let offered = toggles(&clouds, &registry, Side::Runner);
+        assert_eq!(offered.len(), 2, "Crowbar and Shiv, not Corroder: {offered:?}");
+        let mut chosen = clouds;
+        for toggle in offered {
+            chosen = act(&chosen, &registry, toggle);
+        }
+        let boosted = act(&chosen, &registry, PlayerAction::ConfirmCardSelection);
+        let after: Vec<i32> = [51, 52, 53].iter().map(|install| strength_of(&boosted, &registry, *install)).collect();
+        assert_eq!(after, vec![before[0] + 1, before[1] + 1, before[2]], "each chosen cloud breaker, +1 for the 1[link]");
+        // For the remainder of this run.
+        let mut over = boosted.clone();
+        over.active_run = None;
+        over.paid_ability_window = None;
+        assert_eq!([51, 52, 53].iter().map(|install| strength_of(&over, &registry, *install)).collect::<Vec<_>>(), before);
+    }
+
+    /// The first option: one icebreaker, of any kind. Not outside a run.
+    #[test]
+    fn security_chip_boosts_one_chosen_icebreaker_and_only_during_a_run() {
+        let registry = registry();
+        let chip = PlayerAction::ActivateAbility { target: InstallId(50), ability_index: 0 };
+        let mut quiet = runner_turn();
+        quiet.runner.rig = vec![rig("security_chip", 50), rig("corroder", 53)];
+        assert!(!crate::rules::legal_actions_for(&quiet, &registry, Side::Runner).contains(&chip), "only during a run");
+        let state = chip_run(&registry, vec![rig("access_to_globalsec", 49), rig("security_chip", 50), rig("corroder", 53)]);
+        let before = strength_of(&state, &registry, 53);
+        let asked = act(&state, &registry, chip);
+        let one = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        let boosted = select_first(one, &registry, Side::Runner);
+        assert_eq!(strength_of(&boosted, &registry, 53), before + 1);
+    }
+
+    /// "Trace[2]. If successful, look at the top X cards of the stack,
+    /// where X is equal to the amount by which your trace strength
+    /// exceeded the Runner's link strength. Trash 1 of those cards and
+    /// arrange the rest in any order." The look is the Corp's: the
+    /// Runner's view offers no selection and their log names no card.
+    #[test]
+    fn data_hound_looks_at_the_top_of_the_stack_by_the_margin_trashes_one_and_arranges_the_rest() {
+        let registry = registry();
+        let mut state = runner_turn();
+        // The top of the stack is the end of the list.
+        state.runner.stack = vec![id("sure_gamble"), id("diesel"), id("corroder"), id("easy_mark")];
+        state.corp.resources.credits = Credits(10);
+        state.corp.installed = vec![super::reprints::ice_at_hq("data_hound")];
+        let tracing = super::reprints::fire(&state, &registry);
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(2), "trace[2]");
+        let link = crate::rules::continuous::link(&tracing, &registry);
+        let bid = act(&tracing, &registry, PlayerAction::SubmitCorpTraceBid { amount: 1 + link });
+        let (looking, events) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 }).expect("the Runner bids nothing");
+
+        let corp_view = crate::view::build_client_view(&looking, &registry, Side::Corp);
+        let mut offered: Vec<CardId> = corp_view.selection.iter().filter_map(|candidate| candidate.card.clone()).collect();
+        offered.sort();
+        assert_eq!(offered, vec![id("corroder"), id("diesel"), id("easy_mark")], "the top 3: the trace beat the link by 3");
+        let runner_view = crate::view::build_client_view(&looking, &registry, Side::Runner);
+        assert!(runner_view.selection.is_empty(), "the look is the Corp's");
+        for event in &events {
+            if let Some(masked) = crate::rules::mask_event_for_player(event, &looking, Side::Runner) {
+                let rendered = format!("{masked:?}");
+                assert!(!rendered.contains("\"diesel\"") && !rendered.contains("\"corroder\""), "{rendered}");
+            }
+        }
+
+        let trash = corp_view.selection.iter().find(|candidate| candidate.card == Some(id("easy_mark"))).expect("Easy Mark is offered").position;
+        let chosen = act(&looking, &registry, PlayerAction::ToggleCardSelection { position: trash });
+        let arranging = act(&chosen, &registry, PlayerAction::ConfirmCardSelection);
+        assert_eq!(arranging.runner.heap, vec![id("easy_mark")], "trash 1 of those cards");
+
+        // The arrangement: Diesel chosen first goes on top.
+        let view = crate::view::build_client_view(&arranging, &registry, Side::Corp);
+        let mut offered: Vec<CardId> = view.selection.iter().filter_map(|candidate| candidate.card.clone()).collect();
+        offered.sort();
+        assert_eq!(offered, vec![id("corroder"), id("diesel")], "the rest of the three, and no deeper");
+        let position = |card: &str| view.selection.iter().find(|candidate| candidate.card == Some(id(card))).expect("offered").position;
+        let first = act(&arranging, &registry, PlayerAction::ToggleCardSelection { position: position("diesel") });
+        let both = act(&first, &registry, PlayerAction::ToggleCardSelection { position: position("corroder") });
+        let (arranged, _) = pass_until_settled(act(&both, &registry, PlayerAction::ConfirmCardSelection), &registry);
+        assert_eq!(arranged.runner.stack, vec![id("sure_gamble"), id("corroder"), id("diesel")], "arranged, the first chosen uppermost");
+    }
+
+    /// "For the first trace each turn, the Runner's [link] is treated as
+    /// 0. Whenever the Runner spends credits to increase their link
+    /// strength, gain 1[credit] for every 2[credit] they spent."
+    #[test]
+    fn net_quarantine_zeroes_the_link_for_the_first_trace_and_pays_for_the_runners_boost() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.scored_agendas = vec![scored("net_quarantine", 40)];
+        state.corp.resources.agenda_points = AgendaPoints(2);
+        state.corp.resources.credits = Credits(0);
+        state.runner.rig = vec![rig("access_to_globalsec", 31)];
+        state.runner.resources.credits = Credits(10);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.installed = vec![super::reprints::ice_at_hq("hunter")];
+        let link = crate::rules::continuous::link(&state, &registry);
+        assert!(link >= 1, "Access to Globalsec gives link");
+
+        let tracing = super::reprints::fire(&state, &registry);
+        let bid = act(&tracing, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 });
+        assert_eq!(crate::view::build_client_view(&bid, &registry, Side::Runner).runner.link_strength, 0, "the view shows the link the trace counts");
+        let (traced, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 5 }).expect("the Runner bids 5");
+        assert_eq!(traced.corp.resources.credits, Credits(2), "1[credit] for every 2[credit] spent, rounded down");
+        assert_eq!(traced.runner.tags, 0, "a link of 0 and 5 spent beats strength 3");
+
+        // The turn's second trace counts the link.
+        // The rest of the run is not the card's: end it where it stands,
+        // the turn log keeping the trace it counted.
+        let mut done = traced;
+        done.active_run = None;
+        assert!(done.active_trace.is_none(), "the first trace is over");
+        let tracing = super::reprints::fire(&done, &registry);
+        let bid = act(&tracing, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 });
+        assert_eq!(crate::view::build_client_view(&bid, &registry, Side::Runner).runner.link_strength, link, "the second trace counts the link");
+        let (traced, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 }).expect("the Runner bids nothing");
+        assert_eq!(traced.corp.resources.credits, Credits(2), "nothing spent, nothing gained");
+        assert_eq!(traced.runner.tags, u32::from(link < 3), "strength 3 against the link alone");
+    }
+}

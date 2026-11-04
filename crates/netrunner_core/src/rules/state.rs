@@ -436,6 +436,21 @@ pub struct CorpState {
     /// the view.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conditions: Vec<HostedCondition>,
+    /// The Corp's cards hosted **facedown, without being installed**, on a
+    /// Corp card in its score area — Glenn Station's "[click]: Host a card
+    /// from HQ facedown on Glenn Station" (CR 1.13.7: a hosted card that is
+    /// not installed is in no other zone). One entry per host, by the
+    /// handle the agenda keeps in the score area (`ScoredAgenda::
+    /// install_id`), read and written as `CardZoneRef::HostedOnSource` of
+    /// that host (`pending_choice::hosted_cards_of`), so the selections that
+    /// host and take back are the ones a rig card's are. **Hidden from the
+    /// Runner** (`masking::PublicCorpState::hosted_facedown` gives them a
+    /// count), as HQ is: the card came from HQ facedown and nobody turned
+    /// it over. Not on `ScoredAgenda`, which the view carries whole as the
+    /// public score area. An agenda leaving the score area takes its cards
+    /// to Archives facedown (`ability::trash_conditions_on`, CR 10.1.4).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosted_facedown: Vec<HostedFacedown>,
     /// Ids of the cards in this deck that can be *played from Archives*
     /// (`CardDefinition::playable_from_archives` — Petty Cash's "[click]:
     /// Play this operation from Archives"). Seeded once by
@@ -467,6 +482,15 @@ pub struct HostedCondition {
     /// (`ability::modify_counters`, `counters_of`).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub counters: u32,
+}
+
+/// Cards hosted facedown on a Corp score-area card — see
+/// `CorpState::hosted_facedown`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostedFacedown {
+    /// The host's handle in the score area.
+    pub host: InstallId,
+    pub cards: Vec<CardId>,
 }
 
 /// An identity hosted on a rig card — see `RunnerState::hosted_identities`.

@@ -2293,6 +2293,8 @@ impl CardDefinition {
                 (ContinuousKind::MemoryCost(_), _) => return misfit("MemoryCost", "a program says of itself (`This`) what it costs in memory"),
                 (ContinuousKind::Link(_), Scope::Controller) if self.side == Side::Runner => {}
                 (ContinuousKind::Link(_), _) => return misfit("Link", "link is the Runner's, so it applies to a Runner card's `Controller`"),
+                (ContinuousKind::TraceLinkIsZero, Scope::Player(Side::Runner)) if self.side == Side::Corp => {}
+                (ContinuousKind::TraceLinkIsZero, _) => return misfit("TraceLinkIsZero", "a Corp card says it of the Runner's link (`Player(Runner)`)"),
                 (ContinuousKind::HandSize(_), Scope::Controller) => {}
                 // Dr. Vientiane Keeling's "The Runner gets -1 maximum hand
                 // size": the other player, named by side. The card's own

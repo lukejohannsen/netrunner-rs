@@ -156,7 +156,6 @@ pub(crate) const ML_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Quorum* (`quorum`): tranche F5 of the FFG plan.
 pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("encore", "Encore"),
-    ("net_quarantine", "Net Quarantine"),
 ];
 
 /// *Terminal Directive Cards* (`terminal_directive_cards`): tranche F5 of the FFG
@@ -210,7 +209,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("harbinger", "Harbinger"),
     ("adam_compulsive_hacker", "Adam: Compulsive Hacker"),
     ("neutralize_all_threats", "Neutralize All Threats"),
-    ("security_chip", "Security Chip"),
 ];
 
 /// *The Valley* (`the_valley`): tranche F7 of the FFG plan.
@@ -233,7 +231,6 @@ pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Old Hollywood* (`old_hollywood`): tranche F7 of the FFG plan.
 pub(crate) const OH_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("film_critic", "Film Critic"),
     ("an_offer_you_cant_refuse", "An Offer You Can’t Refuse"),
 ];
 
@@ -243,7 +240,6 @@ pub(crate) const UOT_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Order and Chaos* (`order_and_chaos`): tranche F7 of the FFG plan.
 pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("glenn_station", "Glenn Station"),
     ("mark_yale", "Mark Yale"),
     ("hivemind", "Hivemind"),
 ];
@@ -334,7 +330,6 @@ pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Humanity's Shadow* (`humanitys_shadow`): tranche F11 of the FFG plan.
 pub(crate) const HS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("surge", "Surge"),
-    ("data_hound", "Data Hound"),
 ];
 
 /// *Future Proof* (`future_proof`): tranche F11 of the FFG plan.
@@ -349,7 +344,6 @@ pub(crate) const NAPD_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Magnum Opus* (`magnum_opus`): tranche F12 of the FFG plan.
 pub(crate) const MO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("watch_the_world_burn", "Watch the World Burn"),
-    ("hired_help", "Hired Help"),
 ];
 
 /// *System Core 2019* (`system_core_2019`): tranche F12 of the FFG plan.
