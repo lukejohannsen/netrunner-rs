@@ -676,6 +676,19 @@ pub fn link(state: &GameState, registry: &CardRegistry) -> u32 {
     (i64::from(printed) + i64::from(table)).max(0) as u32
 }
 
+/// The Runner's link in the trace under way: [`link`], or 0 while a card
+/// says it is treated as 0 (Net Quarantine's "for the first trace each
+/// turn", its `while`). The trace's own question, and the view's while a
+/// trace is under way; everything else asks `link`. A Corp card binding
+/// the Runner, so asked across both tables (`Target::Bound`), as a hand
+/// size is.
+pub fn trace_link(state: &GameState, registry: &CardRegistry) -> u32 {
+    if any(state, registry, Target::Bound(Side::Runner), |kind| *kind == ContinuousKind::TraceLinkIsZero) {
+        return 0;
+    }
+    link(state, registry)
+}
+
 /// A rig card's strength right now: what is stored on the install (printed,
 /// plus the boosts paid for) and what the table adds. **The one number** —
 /// the break contest, the view and the bots' pricing all read this, where

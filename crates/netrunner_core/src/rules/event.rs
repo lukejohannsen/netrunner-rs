@@ -650,12 +650,20 @@ pub enum GameEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         subtype: Option<crate::dsl::CardSubtype>,
     },
-    /// An agenda was added to the Corp's score area by a card's text, worth
+    /// An agenda was added to `side`'s score area by a card's text, worth
     /// what it prints (CR 1.17.3e) — Kingmaking's "add 1 agenda worth 1 or
     /// less agenda points from HQ to your score area", a selection whose
-    /// `destination` is the score area. Neither scored nor stolen, so an
-    /// occurrence of nothing a card hears; public, as the score area is.
-    AgendaAddedToScoreArea { card: CardId, agenda_points: u32 },
+    /// `destination` is the score area; Film Critic's "Add an agenda hosted
+    /// on Film Critic to your score area", the Runner's. Neither scored nor
+    /// stolen, so an occurrence of nothing a card hears; public, as the
+    /// score area is. `side` defaults to the Corp, the only side a record
+    /// written before Film Critic could name.
+    AgendaAddedToScoreArea {
+        card: CardId,
+        agenda_points: u32,
+        #[serde(default = "crate::rules::event::the_corp")]
+        side: Side,
+    },
     /// Credits gained by a resolving card's ability, naming the card —
     /// emitted with `CreditsGained` whenever the resolution has an acting
     /// card. The Zwicky Group: Invisible Hands draws off it. Carries no

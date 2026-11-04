@@ -1,0 +1,62 @@
+{
+  "id": "film_critic",
+  "title": "Film Critic",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "access": true,
+      "requirement": {
+        "And": [
+          {
+            "Not": "CurrentlyAccessingNonAgenda"
+          },
+          {
+            "Not": {
+              "AmountAtLeast": [
+                "HostedCards",
+                1
+              ]
+            }
+          }
+        ]
+      },
+      "effect": {
+        "HostCardOnThisCard": "AccessedCard"
+      },
+      "text": "Whenever you access an agenda, you may host that agenda on Film Critic (the agenda is no longer being accessed and is uninstalled)."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 2
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedCards",
+          1
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "HostedOnSource",
+          "filter": {
+            "CardType": "Agenda"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnScoreArea"
+        }
+      },
+      "text": "[click],[click]: Add an agenda hosted on Film Critic to your score area."
+    }
+  ],
+  "built_from": 8086,
+  "is_playable": true
+}

@@ -67,8 +67,10 @@ pub(crate) fn submit_runner_bid(
 
     let trace = state.active_trace.take().expect("checked Some above");
     let corp_total = trace.base_strength.saturating_add(trace.corp_bid.expect("checked Some above"));
-    let runner_total = crate::rules::continuous::link(state, registry).saturating_add(amount);
-    events.push(GameEvent::TraceRunnerBidSubmitted { runner_bid: amount, total_strength: runner_total });
+    let runner_total = crate::rules::continuous::trace_link(state, registry).saturating_add(amount);
+    // A moment when it spent something (Net Quarantine), through the one
+    // door; an occurrence of nothing when it did not.
+    crate::rules::dispatcher::emit(state, registry, &mut events, GameEvent::TraceRunnerBidSubmitted { runner_bid: amount, total_strength: runner_total })?;
 
     if runner_total >= corp_total {
         events.push(GameEvent::TraceAvoided { corp_total, runner_total });

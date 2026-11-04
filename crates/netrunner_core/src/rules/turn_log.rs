@@ -378,7 +378,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // A placement strikes the card as an advance does.
         Trigger::OnAdvancementCounterPlaced => true,
         // About no card: a credit pool, and a trace, are public.
-        Trigger::OnCreditsLost | Trigger::OnTraceInitiated => false,
+        Trigger::OnCreditsLost | Trigger::OnTraceInitiated | Trigger::OnLinkBoosted => false,
         // Played, rezzed, encountered, scored, stolen, forfeited, trashed
         // faceup by the Runner, or a faceup card's ability: on the table.
         Trigger::OnPlay

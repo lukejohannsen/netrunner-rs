@@ -1304,6 +1304,18 @@ pub fn evaluate_effect(
             let card = ctx.prompting_card.or(acting_card).ok_or(RulesError::MissingActingCardContext)?.clone();
             evaluate_effect(state, effect, &mut ResolutionContext::for_parked(ctx.prompting_install, Some(&card)), registry)
         }
+        // Each card a `ForEach` names, as itself (Security Chip's breakers);
+        // the card whose text it is stays the prompting card. A card that
+        // has left the table since is passed over.
+        Effect::AsInstall { install, effect } => {
+            let Some(card) = state.find_rig_install(*install).map(|c| c.card.clone()).or_else(|| state.find_corp_install(*install).map(|c| c.card.clone())) else {
+                return Ok(Vec::new());
+            };
+            let mut inner = ResolutionContext::for_parked(Some(*install), Some(&card));
+            inner.prompting_card = ctx.prompting_card.or(acting_card);
+            inner.prompting_install = ctx.prompting_install.or(ctx.acting_install);
+            evaluate_effect(state, effect, &mut inner, registry)
+        }
         Effect::SetRunEndedEffect(effect) => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
             run.on_end.push(crate::rules::run::RunEndRider { effect: effect.clone(), card: acting_card.cloned(), install: ctx.acting_install });
@@ -4967,6 +4979,16 @@ pub(crate) fn trash_conditions_on(state: &mut GameState, host: InstallId) -> Vec
         state.runner.heap.push(removed.card.clone());
         events.push(GameEvent::CardTrashed { side: Side::Runner, card: removed.card, from: crate::dsl::TrashedFrom::Installed, by: None, install: None, damage: None });
     }
+    // Glenn Station's facedown card goes with it too, facedown: nobody
+    // turned it over (CR 1.19.4). Named in the event, which the log masks
+    // as a trash out of a hidden zone.
+    if let Some(position) = state.corp.hosted_facedown.iter().position(|hosted| hosted.host == host) {
+        let removed = state.corp.hosted_facedown.remove(position);
+        for card in removed.cards {
+            crate::rules::turn_log::file_in_archives(state, ArchivedCard::facedown(card.clone()));
+            events.push(GameEvent::CardTrashed { side: Side::Corp, card, from: crate::dsl::TrashedFrom::Elsewhere, by: None, install: None, damage: None });
+        }
+    }
     events
 }
 
@@ -5048,23 +5070,33 @@ pub(crate) fn add_to_score_area_as_agenda(state: &mut GameState, side: Side, car
     GameEvent::AddedToScoreAreaAsAgenda { side, card, points: as_agenda.points, subtype: as_agenda.subtype }
 }
 
-/// Adds `card`, an agenda out of whatever Corp zone it just left, to the
-/// Corp's score area as itself (CR 1.17.3e): worth what it prints, never
-/// scored (`ScoredAgenda::scored_on_turn` 0), so nothing that hears a score
-/// hears it. The checkpoint after the action is what a win by it waits for.
-pub(crate) fn add_agenda_to_score_area(state: &mut GameState, registry: &CardRegistry, card: CardId) -> GameEvent {
-    let agenda_points = registry.get(&card).map_or(0, |def| crate::rules::continuous::agenda_points_in(state, registry, def, Side::Corp, None));
+/// Adds `card`, an agenda out of whatever zone it just left, to `side`'s
+/// score area as itself (CR 1.17.3e): worth what it prints, never scored
+/// or stolen (`ScoredAgenda::scored_on_turn` 0), so nothing that hears a
+/// score or a steal hears it. The checkpoint after the action is what a
+/// win by it waits for. The Corp's out of HQ (Kingmaking) or an access
+/// (Quantum Predictive Model); the Runner's off the card hosting it (Film
+/// Critic's "Add an agenda hosted on Film Critic to your score area"),
+/// which is not a steal (CR 1.17.4 is the steal's door, and Film Critic
+/// says "add").
+pub(crate) fn add_agenda_to_score_area(state: &mut GameState, registry: &CardRegistry, side: Side, card: CardId) -> GameEvent {
+    let agenda_points = registry.get(&card).map_or(0, |def| crate::rules::continuous::agenda_points_in(state, registry, def, side, None));
     let install_id = state.allocate_install_id();
-    state.corp.scored_agendas.push(crate::rules::state::ScoredAgenda {
+    let entry = crate::rules::state::ScoredAgenda {
         card: card.clone(),
         install_id,
         agenda_counters: 0,
         scored_on_turn: 0,
         installed_on_scoring_turn: false, advanced_on_scoring_turn: false,
         as_agenda: None,
-    });
-    state.corp.resources.agenda_points = state.corp.resources.agenda_points.gain(agenda_points as i32);
-    GameEvent::AgendaAddedToScoreArea { card, agenda_points }
+    };
+    let (scored, resources) = match side {
+        Side::Corp => (&mut state.corp.scored_agendas, &mut state.corp.resources),
+        Side::Runner => (&mut state.runner.scored_agendas, &mut state.runner.resources),
+    };
+    scored.push(entry);
+    resources.agenda_points = resources.agenda_points.gain(agenda_points as i32);
+    GameEvent::AgendaAddedToScoreArea { card, agenda_points, side }
 }
 
 /// The positions in `side`'s score area that may be forfeited: every one
@@ -7229,6 +7261,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             crate::rules::pending_choice::eligible_positions(state, registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, filter, None, None).len() as u32
         }
         Amount::Link => crate::rules::continuous::link(state, registry),
+        Amount::LinkBoostSpent => match ctx.triggering_event {
+            Some(GameEvent::TraceRunnerBidSubmitted { runner_bid, .. }) => *runner_bid,
+            _ => 0,
+        },
         Amount::UnusedMemory => crate::rules::memory::available_memory(state, registry),
         Amount::Reduced { amount, by } => resolve_amount(amount, ctx, state, registry).saturating_sub(resolve_amount(by, ctx, state, registry)),
         Amount::Increased { amount, by } => resolve_amount(amount, ctx, state, registry).saturating_add(resolve_amount(by, ctx, state, registry)),

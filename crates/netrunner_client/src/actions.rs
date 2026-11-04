@@ -638,8 +638,9 @@ pub fn narrate_event(
                 None => format!("a facedown card went back to {hand}"),
             }
         }
-        GameEvent::AgendaAddedToScoreArea { card, agenda_points } => {
-            format!("added {} to the Corp's score area for {agenda_points} point(s)", title(card))
+        GameEvent::AgendaAddedToScoreArea { card, agenda_points, side } => {
+            let whose = if *side == Side::Corp { "the Corp's" } else { "the Runner's" };
+            format!("added {} to {whose} score area for {agenda_points} point(s)", title(card))
         }
         GameEvent::AddedToScoreAreaAsAgenda { side, card, points, subtype } => {
             let whose = if *side == Side::Corp { "the Corp's" } else { "the Runner's" };

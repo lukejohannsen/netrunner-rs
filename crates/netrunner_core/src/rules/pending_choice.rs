@@ -259,7 +259,11 @@ pub(crate) struct SelectionPositions {
 /// the rig, the ones that cost set aside (`RunnerState::set_aside_by_host`,
 /// CR 9.5.5): Street Peddler's choice of a card to install is parked after
 /// Street Peddler is trashed.
+///
+/// A card in the Corp's score area hosts too — Glenn Station's facedown
+/// card (`CorpState::hosted_facedown`), read by its handle there.
 pub(crate) fn hosted_cards_of(state: &GameState, source: Option<InstallId>) -> Option<&Vec<CardId>> {
+    static NONE: Vec<CardId> = Vec::new();
     let source = source?;
     state
         .runner
@@ -268,6 +272,8 @@ pub(crate) fn hosted_cards_of(state: &GameState, source: Option<InstallId>) -> O
         .find(|c| c.install_id == source)
         .map(|c| &c.hosted_cards)
         .or_else(|| state.runner.set_aside_by_host.as_ref().filter(|aside| aside.host == source).map(|aside| &aside.cards))
+        .or_else(|| state.corp.hosted_facedown.iter().find(|hosted| hosted.host == source).map(|hosted| &hosted.cards))
+        .or_else(|| state.corp.find_scored(source).map(|_| &NONE))
 }
 
 pub(crate) fn hosted_cards_of_mut(state: &mut GameState, source: Option<InstallId>) -> Option<&mut Vec<CardId>> {
@@ -275,7 +281,18 @@ pub(crate) fn hosted_cards_of_mut(state: &mut GameState, source: Option<InstallI
     if state.runner.rig.iter().any(|c| c.install_id == source) {
         return state.runner.rig.iter_mut().find(|c| c.install_id == source).map(|c| &mut c.hosted_cards);
     }
-    state.runner.set_aside_by_host.as_mut().filter(|aside| aside.host == source).map(|aside| &mut aside.cards)
+    if state.runner.set_aside_by_host.as_ref().is_some_and(|aside| aside.host == source) {
+        return state.runner.set_aside_by_host.as_mut().map(|aside| &mut aside.cards);
+    }
+    // A card in the Corp's score area, given a list the first time it
+    // hosts one.
+    if state.corp.find_scored(source).is_some() {
+        if !state.corp.hosted_facedown.iter().any(|hosted| hosted.host == source) {
+            state.corp.hosted_facedown.push(crate::rules::state::HostedFacedown { host: source, cards: Vec::new() });
+        }
+        return state.corp.hosted_facedown.iter_mut().find(|hosted| hosted.host == source).map(|hosted| &mut hosted.cards);
+    }
+    None
 }
 
 /// The **positions** within `zone_card_ids(chooser, zone)` currently
@@ -1161,6 +1178,39 @@ pub(crate) fn trash_as_cost(
     let mut events = vec![GameEvent::CardsSelected { side, cards: selected.clone(), revealed: reveal }];
     let mut trashed_from_hq = 0u32;
     for (index, card_id) in selected.iter().enumerate() {
+        // A card out of a score area — Hired Help's "the Runner must trash
+        // 1 agenda from their score area" — takes its points with it (CR
+        // 1.17.1, as a forfeit does) and goes to its owner's discard pile
+        // (CR 1.19.1): a stolen agenda is the Corp's, into Archives faceup,
+        // since it sat faceup in the score area. What it hosted goes with
+        // it (CR 10.1.4).
+        if matches!(zone, CardZoneRef::OwnScoreArea | CardZoneRef::OpponentScoreArea) {
+            let chosen = positions[index];
+            let at = chosen - positions[..index].iter().filter(|earlier| **earlier < chosen).count();
+            let area_owner = owning_side(side, zone);
+            let area = match area_owner {
+                Side::Corp => &mut state.corp.scored_agendas,
+                Side::Runner => &mut state.runner.scored_agendas,
+            };
+            if area.get(at).map(|scored| &scored.card) != Some(card_id) {
+                return Err(RulesError::CardNotEligibleForSelection(chosen));
+            }
+            let taken = area.remove(at);
+            let points = crate::rules::win::scored_value(state, registry, &taken, area_owner);
+            let resources = match area_owner {
+                Side::Corp => &mut state.corp.resources,
+                Side::Runner => &mut state.runner.resources,
+            };
+            resources.agenda_points = resources.agenda_points.gain(-points);
+            let card_owner = registry.get(card_id).map_or(Side::Corp, |card| card.side);
+            match card_owner {
+                Side::Corp => crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(card_id.clone())),
+                Side::Runner => state.runner.heap.push(card_id.clone()),
+            }
+            events.push(GameEvent::CardTrashed { side: card_owner, card: card_id.clone(), from: crate::dsl::TrashedFrom::Elsewhere, by: Some(side), install: None, damage: None });
+            events.extend(ability::trash_conditions_on(state, taken.install_id));
+            continue;
+        }
         let mut cascade = Vec::new();
         let mut trashed = None;
         let was_public = match (&installs, zone) {
@@ -1871,8 +1921,10 @@ pub(crate) fn resolve_confirm_card_selection(
                     } else {
                         ArchivedCard::facedown(card_id.clone())
                     });
-                } else if matches!(dest, CardZoneRef::OwnScoreArea) && side == Side::Corp {
-                    let added = ability::add_agenda_to_score_area(state, registry, card_id.clone());
+                } else if matches!(dest, CardZoneRef::OwnScoreArea) {
+                    // The Corp's out of HQ (Kingmaking), the Runner's off
+                    // the card hosting it (Film Critic).
+                    let added = ability::add_agenda_to_score_area(state, registry, side, card_id.clone());
                     crate::rules::dispatcher::emit(state, registry, &mut events, added)?;
                 } else if matches!(dest, CardZoneRef::BottomOfOwnDeck) {
                     // The top of a deck is its end, so its bottom is the

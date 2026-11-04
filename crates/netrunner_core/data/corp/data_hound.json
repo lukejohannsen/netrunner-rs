@@ -1,0 +1,70 @@
+{
+  "id": "data_hound",
+  "title": "Data Hound",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 1,
+  "strength": 2,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Trace[2]. If successful, look at the top X cards of the stack, where X is equal to the amount by which your trace strength exceeded the Runner's link strength. Trash 1 of those cards and arrange the rest in any order.",
+      "effect": {
+        "Trace": {
+          "base": 2,
+          "on_success": {
+            "Sequence": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OpponentDeck",
+                  "filter": {
+                    "TopOf": "TraceMargin"
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "destination": "OpponentDiscard"
+                }
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OpponentDeck",
+                  "filter": {
+                    "TopOf": {
+                      "Reduced": {
+                        "amount": "TraceMargin",
+                        "by": {
+                          "Fixed": 1
+                        }
+                      }
+                    }
+                  },
+                  "min": 0,
+                  "max": 0,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "destination": "OpponentDeck",
+                  "count": {
+                    "Reduced": {
+                      "amount": "TraceMargin",
+                      "by": {
+                        "Fixed": 1
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 2096,
+  "is_playable": true
+}

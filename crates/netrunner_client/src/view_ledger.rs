@@ -88,6 +88,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         set_aside: _,           // drawn: hud::in_effect ("set aside: …"), both clients, as the Runner's is; the access pop-up draws the ones offered
         play_area: _,           // drawn: hud::in_effect ("in play until the Corp's next turn: …", or "current, until …" for a current), both clients: a lockdown or a current, faceup and active (CR 3.5.1c, 8.6.6c)
         conditions: _,          // drawn: hud::in_effect ("hosted on …: …"), both clients: a condition counter, faceup and active on its host (CR 1.9.5j)
+        hosted_facedown: _,     // drawn: hud::in_effect ("hosted facedown on Glenn Station: …"), both clients: the card to the Corp, a count to the Runner
         identity_counters: _,   // drawn: hud::identity_facts / identity_chip (AU Co.'s power counters)
         identity_flipped: _,    // drawn: hud::identity_side — the avatar chip, the identity sheet, the terminal's identity line
         identity_copy: _,       // drawn: hud::identity_side ("Side 2")

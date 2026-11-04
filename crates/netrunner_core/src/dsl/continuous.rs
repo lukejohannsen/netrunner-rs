@@ -162,6 +162,15 @@ pub enum ContinuousKind {
     /// at setup, so there was nowhere for a console's link to be said at
     /// all. `continuous::link` is asked by the trace.
     Link(Number),
+    /// The Runner's link is treated as 0 in a trace (CR 10.8.3: their link
+    /// strength is their link value plus what they spend, so the spend
+    /// still counts) — Net Quarantine's "For the first trace each turn, the
+    /// Runner's [link] is treated as 0", said of the Runner (`Scope::
+    /// Player`), "the first trace each turn" its `while`. Asked by the trace
+    /// alone (`continuous::trace_link`) and by the view while one is under
+    /// way. Composition didn't work: `Link` adds a number, and treating a
+    /// value as 0 is not a sum.
+    TraceLinkIsZero,
     /// Tags the Runner is considered to have and was never given (CR
     /// 1.9.4) — Acme Consulting's "The Runner is considered to have 1
     /// additional tag (even if they have 0) during encounters with the

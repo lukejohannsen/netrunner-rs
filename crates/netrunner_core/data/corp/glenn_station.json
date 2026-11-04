@@ -1,0 +1,66 @@
+{
+  "id": "glenn_station",
+  "title": "Glenn Station",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [
+            "HostedCards",
+            1
+          ]
+        }
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnHq",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "HostedOnSource"
+        }
+      },
+      "text": "[click]: Host a card from HQ facedown on Glenn Station."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedCards",
+          1
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "HostedOnSource",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnHq"
+        }
+      },
+      "text": "[click]: Add a card on Glenn Station to HQ."
+    }
+  ],
+  "built_from": 7005,
+  "is_playable": true
+}
