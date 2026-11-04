@@ -1,0 +1,77 @@
+{
+  "id": "false_echo",
+  "title": "False Echo",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            "Ice",
+            "Unrezzed"
+          ]
+        }
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "TrashCard": "ThisCard"
+                  },
+                  {
+                    "PresentChoice": {
+                      "chooser": "Corp",
+                      "options": [
+                        {
+                          "AsInstall": {
+                            "install": 0,
+                            "effect": {
+                              "RezInstalled": {
+                                "install": 0,
+                                "pay_cost": true,
+                                "refuse_unaffordable": true
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "AsInstall": {
+                            "install": 0,
+                            "effect": "AddToHand"
+                          }
+                        }
+                      ],
+                      "texts": [
+                        "the Corp must rez that ice",
+                        "or add it to HQ"
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may trash False Echo. If you do, the Corp must rez that ice or add it to HQ",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you pass a piece of unrezzed ice, you may trash False Echo. If you do, the Corp must rez that ice or add it to HQ."
+    }
+  ],
+  "built_from": 4007,
+  "is_playable": true
+}

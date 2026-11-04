@@ -755,6 +755,11 @@ pub enum GameEvent {
         card: CardId,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         in_archives: bool,
+        /// The card was accessed in R&D itself, not its root — Maya's "when
+        /// you finish accessing a card **in R&D**" (`EventFilter::InRnD`),
+        /// on the event for `in_archives`' reason.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        in_rnd: bool,
     },
     PaidAbilityWindowOpened { side: Side },
     PriorityPassed { side: Side },

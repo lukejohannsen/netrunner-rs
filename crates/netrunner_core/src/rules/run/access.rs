@@ -770,6 +770,7 @@ fn present_card_for_access(
         access.pending_install = install;
         access.pending_install_rezzed = rezzed;
         access.left = false;
+        access.must_trash = false;
     }
     let mut events = vec![GameEvent::CardAccessed { card: card_id.clone(), server, install }];
     // "They must reveal it" (CR 1.21.7): the Corp is shown which of its
@@ -1010,7 +1011,7 @@ pub fn access_server(
         pending_install: None,
         pending_install_rezzed: false,
         outside_breach: None,
-        left: false, took: false,
+        left: false, took: false, must_trash: false,
         phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
     });
     events.extend(offer_next(state, registry, server)?);
@@ -1157,6 +1158,7 @@ fn choose_for_access(
         access.pending_install_rezzed = rezzed;
         access.currently_accessing = None;
         access.left = false;
+        access.must_trash = false;
         access.phase = AccessPhase::Imminent { candidate: candidate.clone(), card_id: card_id.clone(), forgone: false };
     }
     // Dispatched and not recorded, as `enter_pending_choice` dispatches
@@ -1258,6 +1260,7 @@ fn advance_or_finish(
     access.resolved_cards.push(resolved_card);
     access.pending_install = None;
     access.left = false;
+    access.must_trash = false;
     offer_next(state, registry, server)
 }
 
@@ -1814,8 +1817,9 @@ pub fn resolve_pass(
     // Heard as the pass is made, before the next card is offered: Maw's
     // trash from HQ comes before the breach goes on.
     let in_archives = pending.server == ServerId::Archives && pending.install.is_none();
+    let in_rnd = pending.server == ServerId::RnD && pending.install.is_none();
     let mut events = Vec::new();
-    dispatcher::emit(state, registry, &mut events, GameEvent::AccessPassed { card: card_id.clone(), in_archives })?;
+    dispatcher::emit(state, registry, &mut events, GameEvent::AccessPassed { card: card_id.clone(), in_archives, in_rnd })?;
     events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)
 }
@@ -2204,7 +2208,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: CardId("top".to_string()), in_archives: false },
+                GameEvent::AccessPassed { card: CardId("top".to_string()), in_archives: false, in_rnd: true },
                 GameEvent::CardAccessed { card: CardId("middle".to_string()), server: ServerId::RnD, install: None },
             ]
         );
@@ -2489,7 +2493,7 @@ mod tests {
         let events = resolve_pass(&mut state, &CardId("first".to_string()), &registry()).unwrap();
         assert_eq!(
             events,
-            vec![GameEvent::AccessPassed { card: CardId("first".to_string()), in_archives: false }, GameEvent::BreachEnded { server: ServerId::Remote(0), took: false }, GameEvent::RunCompleted { server: ServerId::Remote(0) }]
+            vec![GameEvent::AccessPassed { card: CardId("first".to_string()), in_archives: false, in_rnd: false }, GameEvent::BreachEnded { server: ServerId::Remote(0), took: false }, GameEvent::RunCompleted { server: ServerId::Remote(0) }]
         );
         assert_eq!(state.active_run, None);
     }
@@ -3011,7 +3015,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: card_id, in_archives: true },
+                GameEvent::AccessPassed { card: card_id, in_archives: true, in_rnd: false },
                 GameEvent::BreachEnded { server: ServerId::Archives, took: false }, GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
@@ -3089,7 +3093,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: card_id, in_archives: false },
+                GameEvent::AccessPassed { card: card_id, in_archives: false, in_rnd: false },
                 GameEvent::BreachEnded { server: ServerId::Hq, took: false }, GameEvent::RunCompleted { server: ServerId::Hq },
             ]
         );
@@ -3134,7 +3138,7 @@ mod tests {
         assert_eq!(
             second,
             vec![
-                GameEvent::AccessPassed { card: CardId("ice_wall".to_string()), in_archives: true },
+                GameEvent::AccessPassed { card: CardId("ice_wall".to_string()), in_archives: true, in_rnd: false },
                 GameEvent::CardAccessed {
                     card: CardId("hedge_fund".to_string()),
                     server: ServerId::Archives,
@@ -3149,7 +3153,7 @@ mod tests {
         assert_eq!(
             last,
             vec![
-                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()), in_archives: true },
+                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()), in_archives: true, in_rnd: false },
                 GameEvent::BreachEnded { server: ServerId::Archives, took: false }, GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
@@ -3195,7 +3199,7 @@ mod tests {
         assert_eq!(
             resolved,
             vec![
-                GameEvent::AccessPassed { card: CardId("ice_wall".to_string()), in_archives: true },
+                GameEvent::AccessPassed { card: CardId("ice_wall".to_string()), in_archives: true, in_rnd: false },
                 GameEvent::CardAccessed {
                     card: CardId("hedge_fund".to_string()),
                     server: ServerId::Archives,
@@ -3246,7 +3250,7 @@ mod tests {
         assert_eq!(
             resolved,
             vec![
-                GameEvent::AccessPassed { card: CardId("card_1".to_string()), in_archives: true },
+                GameEvent::AccessPassed { card: CardId("card_1".to_string()), in_archives: true, in_rnd: false },
                 GameEvent::CardAccessed {
                     card: CardId("card_2".to_string()),
                     server: ServerId::Archives,
@@ -3278,7 +3282,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()), in_archives: true },
+                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()), in_archives: true, in_rnd: false },
                 GameEvent::CardAccessed {
                     card: CardId("ice_wall".to_string()),
                     server: ServerId::Archives,
@@ -3493,7 +3497,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: card_id, in_archives: true },
+                GameEvent::AccessPassed { card: card_id, in_archives: true, in_rnd: false },
                 GameEvent::BreachEnded { server: ServerId::Archives, took: false }, GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
@@ -3574,7 +3578,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()), in_archives: true },
+                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()), in_archives: true, in_rnd: false },
                 GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives, install: None },
                 GameEvent::TriggerFired { card: CardId("snare".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
                 GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 5 } },
@@ -3666,7 +3670,7 @@ mod tests {
         assert_eq!(
             pass_events,
             vec![
-                GameEvent::AccessPassed { card: card_id, in_archives: true },
+                GameEvent::AccessPassed { card: card_id, in_archives: true, in_rnd: false },
                 GameEvent::BreachEnded { server: ServerId::Archives, took: false }, GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
@@ -4084,7 +4088,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()), in_archives: true },
+                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()), in_archives: true, in_rnd: false },
                 GameEvent::CardAccessed { card: CardId("fetal_ai".to_string()), server: ServerId::Archives, install: None },
             ]
         );

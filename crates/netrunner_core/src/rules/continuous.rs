@@ -1540,6 +1540,13 @@ pub fn cannot(state: &GameState, registry: &CardRegistry, what: Prohibition) -> 
     lingering::prohibits(state, what) || !standing_prohibitions(state, registry, what).is_empty()
 }
 
+/// Whether no card may leave the Runner's heap (`Prohibition::
+/// LeaveTheHeap`, Blacklist): the one question every way out of the heap
+/// puts, so none of them can forget it.
+pub(crate) fn heap_is_locked(state: &GameState, registry: &CardRegistry) -> bool {
+    cannot(state, registry, Prohibition::LeaveTheHeap)
+}
+
 /// The active cards whose standing `Cannot(what)` is on right now — Attini
 /// while its subroutines resolve at threat 3 — as a view carries them
 /// (`ClientView::standing_cannot`), so a client can say which card forbids

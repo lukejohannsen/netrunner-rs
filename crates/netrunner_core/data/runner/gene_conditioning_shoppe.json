@@ -1,0 +1,21 @@
+{
+  "id": "gene_conditioning_shoppe",
+  "title": "Gene Conditioning Shoppe",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": "AlsoTheSecondTime",
+      "applies_to": {
+        "Rig": {
+          "HasSubtype": "Genetics"
+        }
+      },
+      "text": "Genetics also trigger the second time each turn their trigger condition is met."
+    }
+  ],
+  "built_from": 8006,
+  "is_playable": true
+}

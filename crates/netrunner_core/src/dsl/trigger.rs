@@ -1234,6 +1234,15 @@ pub enum EventFilter {
     /// is about a moment that is about a server, a pass is about a card,
     /// and "HQ, R&D or any root" is no list of servers a card can write.
     NotInArchives,
+    /// The accessed card was in R&D itself, not in its root — Maya's "when
+    /// you finish accessing a card **in R&D**". Read off the moment
+    /// (`GameEvent::AccessPassed::in_rnd`). Only on `OnAccessPassed`: a
+    /// card stolen or trashed has left R&D, so "that card" can be added to
+    /// its bottom only after a pass. Not counted by the turn log (Maya is
+    /// "once per turn", a use limit). Composition didn't work:
+    /// `NotInArchives` admits HQ and every root, and `Server` is about a
+    /// moment about a server.
+    InRnD,
     /// The ability used prints [trash] in its cost — Tech Trader's
     /// "whenever you use a **[trash] ability**", about the card whose
     /// ability it was. Read off the moment (`listeners::Moment::ability`,

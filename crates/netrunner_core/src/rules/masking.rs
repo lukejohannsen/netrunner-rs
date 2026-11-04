@@ -492,6 +492,10 @@ pub struct PublicAccessState {
     /// or the trash.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub took: bool,
+    /// `AccessState::must_trash`, never masked: the card that set it
+    /// revealed the card it is about (Neutralize All Threats).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub must_trash: bool,
     pub phase: PublicAccessPhase,
 }
 
@@ -726,9 +730,11 @@ pub struct PublicGameState {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub revealed: Vec<crate::rules::RevealedCard>,
     /// `GameState::this_turn` and `last_turn`, whole and the same to every
-    /// viewer. They need no mask because `rules::turn_log` never counted
-    /// anything one player did not see: a moment about a concealed card is
-    /// a `Kind::Unseen`. Carried so a bot's sample agrees with the real
+    /// viewer but for one fold. They need no other mask because
+    /// `rules::turn_log` never counted anything one player did not see: a
+    /// moment about a concealed card is a `Kind::Unseen` — except a card
+    /// accessed with a trash cost, which the Runner saw and the Corp's and
+    /// a spectator's copy count unseen (`TurnLog::as_seen_by`). Carried so a bot's sample agrees with the real
     /// state about the turn — before they were, a sample's last turn was
     /// empty (Public Trail unplayable inside one), no operation had been
     /// played and no agenda scored (Neurospike dealt 0).
@@ -806,8 +812,8 @@ pub fn mask_state_for_player(state: &GameState, registry: &CardRegistry, viewer:
         lingering: state.lingering.iter().filter(|effect| effect.holds(state)).cloned().collect(),
         delayed: state.delayed.clone(),
         revealed: state.revealed.clone(),
-        this_turn: state.this_turn,
-        last_turn: state.last_turn,
+        this_turn: state.this_turn.as_seen_by(viewer.is(Side::Runner)),
+        last_turn: state.last_turn.as_seen_by(viewer.is(Side::Runner)),
     }
 }
 
@@ -1648,6 +1654,7 @@ fn mask_access_state(state: &GameState, access: &AccessState, card_visible: bool
         outside_breach: access.outside_breach.clone(),
         left: access.left,
         took: access.took,
+        must_trash: access.must_trash,
         phase: mask_access_phase(state, &access.phase, card_visible || revealed, viewer),
     }
 }
@@ -3104,7 +3111,7 @@ mod tests {
         assert_eq!(mask_event_for_player(&hq, &state, Side::Runner), Some(hq.clone()));
         assert_eq!(mask_event_for_player(&archives, &state, Side::Corp), Some(archives.clone()));
 
-        let passed = GameEvent::AccessPassed { card: id("hedge_fund"), in_archives: false };
+        let passed = GameEvent::AccessPassed { card: id("hedge_fund"), in_archives: false, in_rnd: false };
         assert_eq!(mask_event_for_player(&passed, &state, Side::Corp), None);
         assert_eq!(mask_event_for_player(&passed, &state, Side::Runner), Some(passed.clone()));
     }
@@ -3254,7 +3261,7 @@ mod tests {
     fn a_spectator_gets_every_event_the_more_restricted_seat_gets_and_no_other() {
         let state = game_state(corp_state_with_cards());
         let corp_secret = GameEvent::CardDiscarded { side: Side::Corp, card: id("hedge_fund") };
-        let runner_secret = GameEvent::AccessPassed { card: id("hedge_fund"), in_archives: false };
+        let runner_secret = GameEvent::AccessPassed { card: id("hedge_fund"), in_archives: false, in_rnd: false };
         let public = GameEvent::CardAccessed { card: id("cyberdex_trial"), server: ServerId::Archives, install: None };
         assert_eq!(mask_event_for_player(&corp_secret, &state, Viewer::Spectator), None);
         // An install is struck rather than dropped, for a spectator as for

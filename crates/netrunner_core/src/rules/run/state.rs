@@ -505,6 +505,16 @@ pub struct AccessState {
     /// that emit `CardTrashedFromAccess`). Public: both players saw it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub took: bool,
+    /// The card at its access decision must be trashed with the basic
+    /// trash ability if the Runner can pay for it (CR 7.1.5d, `Effect::
+    /// MustTrashAccessed`, Neutralize All Threats): the pass, and every
+    /// card's ability, are refused while the trash would be accepted
+    /// (`engine::pass_accessed_card`, `engine::activate_ability`). Set by
+    /// the card's `OnAccessed` trigger and cleared as each card is
+    /// presented. Public: the card that set it revealed the card it is
+    /// about.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub must_trash: bool,
     pub phase: AccessPhase,
 }
 
@@ -560,7 +570,7 @@ impl Default for AccessState {
             pending_install: None,
             pending_install_rezzed: false,
             outside_breach: None,
-            left: false, took: false,
+            left: false, took: false, must_trash: false,
             phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
         }
     }

@@ -141,6 +141,10 @@ pub(crate) struct Moment {
     /// the event (`GameEvent::AccessPassed::in_archives`), for
     /// `EventFilter::NotInArchives`. `None` for every other moment.
     pub in_archives: Option<bool>,
+    /// Whether a passed card was accessed in R&D itself, read off the event
+    /// (`GameEvent::AccessPassed::in_rnd`), for `EventFilter::InRnD`.
+    /// `None` for every other moment.
+    pub in_rnd: Option<bool>,
     /// Whether the server a run was initiated on was protected by 2 or
     /// more pieces of ice as it was, for a run's start
     /// (`Trigger::OnRunStart`) — Daredevil's "the first time you initiate
@@ -200,7 +204,7 @@ pub(crate) fn card_about(state: &GameState, event: &GameEvent, trigger: Trigger)
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, from_heap: None, from_grip: None, installed_in: None, trashed_from: None, damage: None, by: None, was_active: false, trashed_install: None, successful: None, unsuccessful: None, jacked_out: None, in_archives: None, guarded: None, ability: None };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, from_heap: None, from_grip: None, installed_in: None, trashed_from: None, damage: None, by: None, was_active: false, trashed_install: None, successful: None, unsuccessful: None, jacked_out: None, in_archives: None, in_rnd: None, guarded: None, ability: None };
     // A moment about the ice at `position` in the run's ice. Where the run
     // or the ice has gone by the time the moment is asked again — a
     // trigger fired after the run ended — it is about nothing, and keeps
@@ -211,7 +215,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             .as_ref()
             .and_then(|run| run.ice.get(position as usize))
             .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
-        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, from_heap: None, from_grip: None, installed_in: None, trashed_from: None, damage: None, was_active: false, by: None, trashed_install: None, successful: None, unsuccessful: None, jacked_out: None, in_archives: None, guarded: None, ability: None }
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, from_heap: None, from_grip: None, installed_in: None, trashed_from: None, damage: None, was_active: false, by: None, trashed_install: None, successful: None, unsuccessful: None, jacked_out: None, in_archives: None, in_rnd: None, guarded: None, ability: None }
     };
     match event {
         GameEvent::EventPlayed { side, card: played, .. } => {
@@ -270,8 +274,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             vec![Moment { installed_in, in_archives: Some(in_archives), ..moment(Trigger::OnAccessAboutToResolve, &about, Some(Side::Runner)) }]
         }
         // Neither stolen nor trashed. Only the Runner accesses.
-        GameEvent::AccessPassed { card: passed, in_archives } => {
-            vec![Moment { in_archives: Some(*in_archives), ..moment(Trigger::OnAccessPassed, &card(passed, None), Some(Side::Runner)) }]
+        GameEvent::AccessPassed { card: passed, in_archives, in_rnd } => {
+            vec![Moment { in_archives: Some(*in_archives), in_rnd: Some(*in_rnd), ..moment(Trigger::OnAccessPassed, &card(passed, None), Some(Side::Runner)) }]
         }
         GameEvent::CardTrashedFromAccess { card: trashed, install, .. } => {
             let about = About::Card { card: trashed.clone(), install: None, installed: install.is_some() };
@@ -663,7 +667,7 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
         let later_this_encounter = definition.triggers.iter().any(|triggered| triggered.first_each_encounter) && !is_first_this_encounter(state);
         for moment in &moments {
             let ability = definition.triggers.iter().find(|triggered| triggered.first_each_turn && triggered.trigger == moment.trigger).map(|triggered| &triggered.text);
-            let later = ability.is_some_and(|text| !is_first(state, definition, text, &listener, as_of)) || later_this_encounter;
+            let later = ability.is_some_and(|text| !is_first(state, registry, definition, text, &listener, as_of)) || later_this_encounter;
             let mut hearing = definition.triggers.iter().filter(|triggered| hears(state, registry, triggered, &listener, moment, later)).peekable();
             if hearing.peek().is_none() {
                 continue;
@@ -793,7 +797,15 @@ pub(crate) fn delayed_spent_by(state: &GameState, registry: &CardRegistry, delay
 /// itself ("**this program** fully breaks", `EventFilter::ByThis`) is judged
 /// on its copy, the rest on the turn; `validate` keeps a card to one or the
 /// other.
-fn is_first(state: &GameState, definition: &crate::dsl::CardDefinition, text: &Option<String>, listener: &Listener, as_of: &AsOf) -> bool {
+/// Whether a standing effect lets the rig copy `install` of `definition`
+/// trigger the second time each turn as well (`ContinuousKind::
+/// AlsoTheSecondTime`).
+fn also_the_second_time(state: &GameState, registry: &CardRegistry, definition: &crate::dsl::CardDefinition, install: Option<InstallId>) -> bool {
+    let Some(install) = install.filter(|install| state.find_rig_install(*install).is_some()) else { return false };
+    crate::rules::continuous::any(state, registry, crate::rules::continuous::Target::Rig { card: definition, install }, |kind| *kind == crate::dsl::ContinuousKind::AlsoTheSecondTime)
+}
+
+fn is_first(state: &GameState, registry: &CardRegistry, definition: &crate::dsl::CardDefinition, text: &Option<String>, listener: &Listener, as_of: &AsOf) -> bool {
     let first_time = definition.triggers.iter().filter(|triggered| triggered.first_each_turn && &triggered.text == text);
     // Installs into a root are counted on the copies in it, the listener
     // among them (`turn_log::record`), as of this install.
@@ -817,7 +829,11 @@ fn is_first(state: &GameState, definition: &crate::dsl::CardDefinition, text: &O
         let triggers: Vec<Trigger> = first_time.map(|triggered| triggered.trigger).collect();
         as_of.is_first_on(listener.install, state.turn, &triggers)
     } else {
-        as_of.is_first(&turn_log::first_time_on(definition, text, state))
+        let meant = turn_log::first_time_on(definition, text, state);
+        // Gene Conditioning Shoppe's "genetics also trigger the second
+        // time each turn": a rig card the scan reaches hears its second
+        // as its first.
+        as_of.is_first(&meant) || (as_of.is_second(&meant) && also_the_second_time(state, registry, definition, listener.install))
     }
 }
 
@@ -966,6 +982,9 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     }
     if let EventFilter::NotInArchives = filter {
         return moment.in_archives == Some(false);
+    }
+    if let EventFilter::InRnD = filter {
+        return moment.in_rnd == Some(true);
     }
     if let EventFilter::TrashAbility = filter {
         let About::Card { card, .. } = &moment.about else { return false };

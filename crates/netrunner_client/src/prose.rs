@@ -590,6 +590,10 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         // the words already read.
         Effect::AsThisCard(effect) => describe_effect(effect, registry),
         Effect::AsInstall { effect, .. } => describe_effect(effect, registry),
+        // Maya's "that card": the words of what is done to it already say
+        // "the accessed card" or "it".
+        Effect::AsCard { effect, .. } => describe_effect(effect, registry),
+        Effect::MustTrashAccessed => "you must trash that card by paying its trash cost, if able".to_string(),
         // Watch the World Burn's: until the game ends.
         Effect::LaterThisTurn { when, filter, effect, until_the_game_ends: true, .. } => {
             describe_later_this_turn(*when, filter.as_ref(), true, false, effect, registry).replace("for the rest of this turn", "until the game ends")
@@ -781,6 +785,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::BreakWithNonIcebreakers, _) => "the Runner cannot use non-icebreaker cards to break subroutines",
                 (Prohibition::RepeatAnAction, _) => "the next action must be one not taken this turn",
                 (Prohibition::JackOut, _) => "the Runner cannot jack out",
+                (Prohibition::LeaveTheHeap, _) => "cards cannot leave the Runner's heap",
                 (Prohibition::AccessMoreThanOneCard, _) => "the Runner cannot access more than 1 card",
                 (Prohibition::AccessRootOfHqOrRnD, _) => "the Runner cannot access cards in the root of HQ or R&D",
                 (Prohibition::AccessRootOfArchives, _) => "the Runner cannot access cards in the root of Archives",
@@ -958,6 +963,7 @@ fn describe_when(filter: &EventFilter) -> String {
         EventFilter::Anyone => "anyone's".to_string(),
         EventFilter::OwnedBy { owner, whose } => format!("the {whose:?}'s, of a {owner:?} card"),
         EventFilter::ByThis => "by this card".to_string(),
+        EventFilter::InRnD => "in R&D".to_string(),
         EventFilter::Host => "of host ice".to_string(),
         EventFilter::OntoThis => "onto this card".to_string(),
         EventFilter::InRoot => "by the Corp, in the root of a server".to_string(),
@@ -1205,6 +1211,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::DamageDone { kind, by } => format!("does {} {} damage whenever it would do some", signed(by), damage_word(kind)),
         ContinuousKind::Link(number) => format!("gets {} link", signed(number)),
         ContinuousKind::TraceLinkIsZero => "has their link treated as 0 in a trace".to_string(),
+        ContinuousKind::AlsoTheSecondTime => "also triggers the second time each turn its trigger condition is met".to_string(),
         ContinuousKind::TraceBase(number) => format!("gets {} base trace strength", signed(number)),
         ContinuousKind::DrawsEachTurnAtMost(most) => format!("the Runner cannot draw more than {} during each of their turns", plural(*most, "card", "cards")),
         ContinuousKind::BidAtMost(most) => format!("cannot spend more than {most} [credit] secretly in a psi game"),
@@ -1291,6 +1298,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::BreakWithNonIcebreakers => "cannot use non-icebreaker cards to break subroutines",
             Prohibition::RepeatAnAction => "cannot take an action already taken this turn",
             Prohibition::JackOut => "cannot jack out",
+            Prohibition::LeaveTheHeap => "cannot have cards leave their heap for any reason",
             Prohibition::AccessMoreThanOneCard => "cannot access more than 1 card",
             Prohibition::AccessRootOfHqOrRnD => "cannot access cards in the root of HQ or R&D",
             Prohibition::AccessRootOfArchives => "cannot access cards in the root of Archives",
