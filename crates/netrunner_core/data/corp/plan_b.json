@@ -1,0 +1,34 @@
+{
+  "id": "plan_b",
+  "title": "Plan B",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 1,
+  "advancement_requirement": 0,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "AdvancementRequirementAtMost": "HostedAdvancementTokens"
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": true,
+            "shuffle_after": false,
+            "then": "ScoreFromHq"
+          }
+        }
+      ],
+      "text": "If the Runner accesses Plan B, you may reveal and score an agenda from HQ with an advancement requirement equal to or less than the number of advancement tokens on Plan B."
+    }
+  ],
+  "built_from": 5023,
+  "is_playable": true
+}

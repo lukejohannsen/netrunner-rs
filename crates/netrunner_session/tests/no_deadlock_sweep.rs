@@ -489,9 +489,12 @@ fn assert_no_concealed_card_is_named(
 ///
 /// Two things choose cards: a parked selection (`PendingDecision::
 /// ChooseCards`), and a payment asking its payer which card a cost takes
-/// (`PaymentAsk::Card`) or an install asking which like card it trashes
-/// (`PaymentAsk::Install`), each answered first and each a question only
-/// the payer's view carries (`PublicPendingPayment::own`).
+/// (`PaymentAsk::Card`), an install asking which like card it trashes
+/// (`PaymentAsk::Install`), or damage asking the player a card says
+/// chooses which grip card it trashes (`PaymentAsk::Damage`, Titanium Ribs
+/// and Chronos Protocol, Stage 22 — left off this list until a re-rolled
+/// seed reached it), each answered first and each a question only the
+/// payer's view carries (`PublicPendingPayment::own`).
 fn assert_selection_is_the_choosers_alone(view: &netrunner_core::view::ClientView, seed: u64, matchup: &str, viewer: Viewer) {
     use netrunner_core::rules::{PaymentAsk, PendingDecision, PlayerAction};
     let listed: std::collections::BTreeSet<usize> = view.selection.iter().map(|c| c.position).collect();
@@ -503,7 +506,7 @@ fn assert_selection_is_the_choosers_alone(view: &netrunner_core::view::ClientVie
     };
     if let Some(payment) = &view.pending_payment {
         match &payment.own {
-            Some(own) if matches!(own.question, PaymentAsk::Card(_) | PaymentAsk::Install(_)) => {
+            Some(own) if matches!(own.question, PaymentAsk::Card(_) | PaymentAsk::Install(_) | PaymentAsk::Damage(_)) => {
                 for position in toggles() {
                     assert!(
                         listed.contains(&position),

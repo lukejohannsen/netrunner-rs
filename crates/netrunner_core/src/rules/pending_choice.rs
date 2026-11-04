@@ -1961,8 +1961,9 @@ pub(crate) fn resolve_confirm_card_selection(
         // The place in R&D or HQ a swap takes the card from (Nihongai
         // Grid), written before anything else moves.
         let effect = match (&source, positions.as_slice()) {
-            (CardZoneRef::OwnRAndD, [position]) if side == Side::Corp => Box::new(effect.with_swap_position(true, *position as u32)),
-            (CardZoneRef::OwnHq, [position]) if side == Side::Corp => Box::new(effect.with_swap_position(false, *position as u32)),
+            (CardZoneRef::OwnRAndD, [position]) if side == Side::Corp => Box::new(effect.with_swap_position(crate::dsl::SwapHalf::Deck { archives: false }, *position as u32)),
+            (CardZoneRef::OwnArchives, [position]) if side == Side::Corp => Box::new(effect.with_swap_position(crate::dsl::SwapHalf::Deck { archives: true }, *position as u32)),
+            (CardZoneRef::OwnHq, [position]) if side == Side::Corp => Box::new(effect.with_swap_position(crate::dsl::SwapHalf::Hq { revealed: reveal }, *position as u32)),
             _ => effect,
         };
         let acting = selected.first().or(source_card.as_ref());

@@ -2143,7 +2143,7 @@ pub(crate) fn play_operation_card(
         // there too, while it resolves, until it is hosted
         // (`Effect::HostThisAsCondition`, CR 8.6.6b: not trashed).
         let handle = next.allocate_install_id();
-        next.corp.play_area.push(crate::rules::PlayedOperation { card: card_id.clone(), handle });
+        next.corp.play_area.push(crate::rules::PlayedOperation { card: card_id.clone(), handle, counters: 0 });
     } else {
         crate::rules::turn_log::file_in_archives(next, ArchivedCard::faceup(card_id.clone()));
     }
@@ -3594,6 +3594,43 @@ pub(crate) fn score_install(next: &mut GameState, registry: &CardRegistry, targe
     // them (`ability::dispatch_cost_events`).
     events.extend(ability::dispatch_cost_events(next, registry, &cost_events)?);
 
+    Ok(events)
+}
+
+/// Scores `card`, an agenda in HQ, by a card's text (`Effect::ScoreFromHq`,
+/// Plan B). Scoring moves the card to the score area (CR 8.2.9); one that is
+/// not installed was never advanced, so it lands with no agenda counters
+/// from Dividends and its "when scored" trigger reads no advancement. A
+/// no-op when the card is no longer in HQ or is not an agenda, and refused,
+/// as every score is, while the Corp cannot score agendas. The rest is
+/// `score_install`'s landing, in the same order: the points, the event, its
+/// triggers, then the Runner's currents.
+pub(crate) fn score_from_hq(next: &mut GameState, registry: &CardRegistry, card: &CardId) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(position) = next.corp.hq.iter().position(|held| held == card) else { return Ok(Vec::new()) };
+    let card_def = registry.get(card).ok_or_else(|| RulesError::CardNotFoundInRegistry(card.clone()))?;
+    if card_def.card_type != CardType::Agenda {
+        return Ok(Vec::new());
+    }
+    if continuous::cannot(next, registry, Prohibition::ScoreAgendas) {
+        return Err(RulesError::CannotScoreAgendasThisTurn);
+    }
+    let agenda_points = continuous::agenda_points_in(next, registry, card_def, Side::Corp, None);
+    next.corp.hq.remove(position);
+    let install_id = next.allocate_install_id();
+    next.corp.scored_agendas.push(ScoredAgenda {
+        card: card.clone(),
+        install_id,
+        agenda_counters: 0,
+        scored_on_turn: next.turn,
+        installed_on_scoring_turn: false,
+        advanced_on_scoring_turn: false,
+        as_agenda: None,
+    });
+    next.corp.resources.agenda_points = next.corp.resources.agenda_points.gain(agenda_points as i32);
+    let scored_event = GameEvent::AgendaScored { card: card.clone(), agenda_points, server: ServerId::Hq, advancement_tokens: 0 };
+    let mut events = vec![scored_event.clone()];
+    events.extend(dispatcher::dispatch_event(next, registry, &scored_event)?);
+    crate::rules::current::agenda_moved(next, registry, &mut events, Side::Corp)?;
     Ok(events)
 }
 

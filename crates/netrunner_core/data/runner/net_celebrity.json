@@ -1,0 +1,15 @@
+{
+  "id": "net_celebrity",
+  "title": "Net Celebrity",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "counter_kind": "Credit",
+  "recurring_credits": 1,
+  "pays_for": [
+    "DuringRuns"
+  ],
+  "triggers": [],
+  "built_from": 6038,
+  "is_playable": true
+}

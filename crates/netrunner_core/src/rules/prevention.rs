@@ -62,7 +62,9 @@ use crate::rules::state::{DeferredTrigger, GameState, InstallId, InstallSlot, Pe
 /// Whether `word` — what a card says it prevents — is about `what`.
 pub(crate) fn matches(word: &Preventable, what: &WouldHappen, state: &GameState, registry: &CardRegistry) -> bool {
     match (word, what) {
-        (Preventable::Damage { kind, leaving, .. }, WouldHappen::Damage { kind: dealt, .. }) => kind.is_none_or(|kind| kind == *dealt) && what.amount() > *leaving,
+        (Preventable::Damage { kind, or, leaving, .. }, WouldHappen::Damage { kind: dealt, .. }) => {
+            (kind.is_none_or(|kind| kind == *dealt) || *or == Some(*dealt)) && what.amount() > *leaving
+        }
         (Preventable::Tags(_), WouldHappen::Tags { .. }) => true,
         (Preventable::Trash(filter), WouldHappen::Trash { owner, install, .. }) => {
             let card = match owner {
@@ -774,7 +776,7 @@ mod tests {
             Side::Runner,
             CardType::Program,
             Some(Cost::Credits(1)),
-            Effect::Prevent(Preventable::Damage { kind: Some(DamageType::Net), up_to: 1, leaving: 0, x: false }),
+            Effect::Prevent(Preventable::Damage { kind: Some(DamageType::Net), or: None, up_to: 1, leaving: 0, x: false }),
         );
         // The wrong kind of damage.
         let (state, registry) = table(Effect::DealDamage(DamageType::Meat, 1), paid.clone());
@@ -821,7 +823,7 @@ mod tests {
     #[test]
     fn the_window_it_opens_over_comes_back_when_it_closes() {
         let (mut state, registry) = table(Effect::DealDamage(DamageType::Net, 1), {
-            with_paid_ability("shield", Side::Runner, CardType::Program, Some(Cost::Credits(1)), Effect::Prevent(Preventable::Damage { kind: None, up_to: 1, leaving: 0, x: false }))
+            with_paid_ability("shield", Side::Runner, CardType::Program, Some(Cost::Credits(1)), Effect::Prevent(Preventable::Damage { kind: None, or: None, up_to: 1, leaving: 0, x: false }))
         });
         state.phase = GamePhase::Action(Side::Runner);
         state.active_run = Some(crate::rules::run::RunState { phase: crate::rules::run::RunPhase::Success, ..Default::default() });
@@ -911,7 +913,7 @@ mod tests {
             Side::Runner,
             CardType::Program,
             Some(Cost::Credits(1)),
-            Effect::Prevent(Preventable::Damage { kind: None, up_to: 1, leaving: 0, x: false }),
+            Effect::Prevent(Preventable::Damage { kind: None, or: None, up_to: 1, leaving: 0, x: false }),
         ));
         state.runner.resources.credits = Credits(1);
         let (state, _) = act(&state, &registry, use_ability(SOURCE));

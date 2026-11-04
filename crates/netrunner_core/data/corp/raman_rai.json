@@ -1,0 +1,62 @@
+{
+  "id": "raman_rai",
+  "title": "Raman Rai",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 3,
+  "free_influence_if": {
+    "NonAllianceOfItsFaction": 6
+  },
+  "triggers": [
+    {
+      "trigger": "OnCardDrawn",
+      "subject": "Any",
+      "requirement": "OncePerTurn",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "LoseClicks": 1
+            },
+            "if_paid": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnHq",
+                "filter": "ThatCard",
+                "min": 1,
+                "max": 1,
+                "reveal": true,
+                "shuffle_after": false,
+                "then": {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnArchives",
+                    "filter": "SameTypeAsThisCard",
+                    "min": 1,
+                    "max": 1,
+                    "reveal": true,
+                    "shuffle_after": false,
+                    "then": {
+                      "SwapDeckCardWithHq": {
+                        "archives": true
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may lose [click]. If you do, reveal that card and 1 card in Archives of the same type. Swap those cards."
+          }
+        }
+      ],
+      "text": "Once per turn → When you draw a card, you may lose [click]. If you do, reveal that card and 1 card in Archives of the same type. Swap those cards."
+    }
+  ],
+  "built_from": 10068,
+  "is_playable": true
+}

@@ -695,14 +695,14 @@ mod tests {
         use netrunner_core::rules::PlayedOperation;
         let pool = pool();
         let mut state = table();
-        state.corp.play_area = vec![PlayedOperation { card: CardId("argus_crackdown".to_string()), handle: InstallId(90) }];
+        state.corp.play_area = vec![PlayedOperation { card: CardId("argus_crackdown".to_string()), handle: InstallId(90), counters: 0 }];
         assert_eq!(run_success(&state, &pool, &run_on(ServerId::Hq)).damage, 0, "HQ has no ice");
         state.corp.installed.push(InstalledCard { card: CardId("ice_wall".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, ..Default::default() });
         assert_eq!(run_success(&state, &pool, &run_on(ServerId::Hq)).damage, 2);
         assert_eq!(run_success(&state, &pool, &run_on(ServerId::RnD)).damage, 0, "R&D has no ice");
         assert_eq!(lockdowns_on_the_next_run(&state, &pool).damage, 0, "the Runner's next run goes where it costs least");
 
-        state.corp.play_area = vec![PlayedOperation { card: CardId("sync_rerouting".to_string()), handle: InstallId(91) }];
+        state.corp.play_area = vec![PlayedOperation { card: CardId("sync_rerouting".to_string()), handle: InstallId(91), counters: 0 }];
         state.runner.resources.credits = netrunner_core::rules::Credits(6);
         assert_eq!(lockdowns_on_the_next_run(&state, &pool), Pays { runner_credits: -4, ..Pays::default() });
         state.runner.resources.credits = netrunner_core::rules::Credits(3);

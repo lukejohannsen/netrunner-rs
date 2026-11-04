@@ -634,7 +634,12 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 format!("in play until the Corp's next turn: {}", title(&played.card))
             }
         }))
-        .chain(view.runner.in_play.iter().map(|played| format!("current, until another is played or an agenda is scored: {}", title(&played.card))))
+        // A current that hosts credits (Net Celebrity's recurring credit)
+        // says how many it has, since nothing on the board stands for it.
+        .chain(view.runner.in_play.iter().map(|played| match played.counters {
+            0 => format!("current, until another is played or an agenda is scored: {}", title(&played.card)),
+            n => format!("current, until another is played or an agenda is scored: {}, {n} hosted credit{}", title(&played.card), if n == 1 { "" } else { "s" }),
+        }))
         // A condition counter (Eavesdrop, CR 1.13.6d): faceup and active on
         // its host, named by the host's card when the viewer can see it,
         // since nothing on the board stands for a counter with text.

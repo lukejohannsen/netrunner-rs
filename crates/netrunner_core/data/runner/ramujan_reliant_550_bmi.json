@@ -1,0 +1,71 @@
+{
+  "id": "ramujan_reliant_550_bmi",
+  "title": "Ramujan-reliant 550 BMI",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "ChooseNumber": {
+          "chooser": "Runner",
+          "min": {
+            "Increased": {
+              "amount": {
+                "RunnerInstalls": {
+                  "AmongCards": [
+                    "ramujan_reliant_550_bmi"
+                  ]
+                }
+              },
+              "by": {
+                "Fixed": 1
+              }
+            }
+          },
+          "max": {
+            "Increased": {
+              "amount": {
+                "RunnerInstalls": {
+                  "AmongCards": [
+                    "ramujan_reliant_550_bmi"
+                  ]
+                }
+              },
+              "by": {
+                "Fixed": 1
+              }
+            }
+          },
+          "text": "Prevent up to X core damage or net damage",
+          "then": {
+            "Sequence": [
+              {
+                "Prevent": {
+                  "Damage": {
+                    "kind": "Brain",
+                    "or": "Net",
+                    "up_to": 0,
+                    "x": true
+                  }
+                }
+              },
+              {
+                "Mill": {
+                  "deck": "Runner",
+                  "amount": "PreventedThisResolution"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "text": "[interrupt] → [trash]: Prevent up to X core damage or net damage. Trash cards from the top of your stack equal to the amount of damage prevented."
+    }
+  ],
+  "built_from": 10002,
+  "is_playable": true
+}
