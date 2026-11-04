@@ -858,7 +858,7 @@ pub(super) fn access_trash_cards(def: &CardDefinition) -> Option<u32> {
         let mut trashes = false;
         ability.effect.for_each_effect(&mut |effect| trashes |= matches!(effect, Effect::TrashCurrentlyAccessedCard));
         trashes.then_some(match &ability.cost {
-            Some(Cost::Trash { from: netrunner_core::dsl::CardZoneRef::OwnGrip, count, .. }) => *count,
+            Some(Cost::Trash { from: netrunner_core::dsl::CardZoneRef::OwnGrip, count: netrunner_core::dsl::Amount::Fixed(count), .. }) => *count,
             _ => 0,
         })
     })

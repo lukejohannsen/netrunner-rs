@@ -260,7 +260,7 @@ fn end_the_run_cost(
         None => Some(0.0),
         Some(Cost::Credits(n)) => Some(f64::from(*n) * w.own_credit_weight),
         Some(Cost::TrashSelf) => state.find_corp_install(install).map(value),
-        Some(Cost::Trash { from: from @ CardZoneRef::OwnInstalled, filter, count, .. }) => {
+        Some(Cost::Trash { from: from @ CardZoneRef::OwnInstalled, filter, count: netrunner_core::dsl::Amount::Fixed(count), .. }) => {
             let mut values: Vec<f64> = netrunner_core::rules::eligible_positions(state, registry, Side::Corp, from, filter, Some(install), Some(card))
                 .into_iter()
                 .filter_map(|position| state.corp.installed.get(position))

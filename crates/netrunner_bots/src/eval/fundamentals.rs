@@ -422,7 +422,7 @@ mod tests {
         let mut trasher = card("trasher", CardType::Resource);
         trasher.abilities = vec![AbilityDef {
             trigger: Trigger::Paid,
-            cost: Some(Cost::Trash { from: CardZoneRef::OwnGrip, filter: CardFilter::Any, count: 1, reveal: false }),
+            cost: Some(Cost::Trash { from: CardZoneRef::OwnGrip, filter: CardFilter::Any, count: netrunner_core::dsl::Amount::Fixed(1), reveal: false }),
             text: None,
             requirement: None,
             effect: Effect::GainCredits(Side::Runner, 5),

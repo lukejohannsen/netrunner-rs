@@ -1,0 +1,68 @@
+{
+  "id": "prey",
+  "title": "Prey",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "LaterThisTurn": {
+                "when": "OnIcePassed",
+                "every_time": true,
+                "this_run": true,
+                "effect": {
+                  "EffectIf": {
+                    "condition": "OncePerRun",
+                    "effect": {
+                      "OfferPaidChoice": {
+                        "side": "Runner",
+                        "cost": {
+                          "Trash": {
+                            "from": "OwnInstalled",
+                            "filter": "Any",
+                            "count": "PassedIceStrength"
+                          }
+                        },
+                        "if_paid": {
+                          "Sequence": [
+                            {
+                              "Used": "OncePerRun"
+                            },
+                            {
+                              "AsInstall": {
+                                "install": 0,
+                                "effect": {
+                                  "TrashCard": "ThisCard"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        "if_declined": {
+                          "Sequence": []
+                        },
+                        "text": "you may trash a number of your installed cards equal to the strength of that ice. If you do, trash that ice"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Make a run. Once during this run, when you pass a piece of ice, you may trash a number of your installed cards equal to the strength of that ice. If you do, trash that ice."
+    }
+  ],
+  "built_from": 9031,
+  "is_playable": true
+}

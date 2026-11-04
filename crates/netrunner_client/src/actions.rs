@@ -726,6 +726,8 @@ pub fn narrate_event(
         GameEvent::FinishedResolving { .. } |
         // The action's own line says it was taken; its end adds nothing.
         GameEvent::ActionFinished { .. } |
+        // Sundew's moment: the click just spent was the turn's first.
+        GameEvent::ClicksSpentOnAction { .. } |
         GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::CardDrawn { .. } | GameEvent::DrawFinished { .. } |
         GameEvent::IceApproached { .. } | GameEvent::IceEncountered { .. } | GameEvent::IceStrengthModified
         { .. } | GameEvent::IcePassed { .. } | GameEvent::IceBypassed { .. } | GameEvent::EncounterEnded { .. } | GameEvent::ServerApproached {

@@ -2261,13 +2261,15 @@ pub(crate) fn resolve_confirm_card_selection(
             // The agenda chosen, its text gained by the copy of the current
             // resolving (Media Blitz).
             (Effect::GainTextOf { .. }, [chosen, ..], _) => source_install.map(|this| Effect::GainTextOf { card: chosen.clone(), on: this }),
-            (Effect::InstallFromZoneIgnoringCost { origin_zone, slot, insert_after, .. }, [chosen, ..], _) => {
+            (Effect::InstallFromZoneIgnoringCost { origin_zone, slot, insert_after, rez, then, .. }, [chosen, ..], _) => {
                 host.map(|(host_install, into)| Effect::InstallFromZoneIgnoringCost {
                     card_id: chosen.clone(),
                     origin_zone,
                     into,
                     slot,
                     insert_after: insert_after.map(|_| host_install),
+                    rez,
+                    then,
                 })
             }
             (other, _, _) => Some(other),

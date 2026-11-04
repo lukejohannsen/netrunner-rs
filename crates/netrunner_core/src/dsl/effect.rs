@@ -834,6 +834,19 @@ pub enum Effect {
         /// the offer.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         ignore_additional_costs: bool,
+        /// Offer only the server this piece of ice protects — Rigged
+        /// Results' "choose a piece of ice protecting a server and **run
+        /// that server**". Authored as the placeholder `0` (`InstallId::
+        /// PLACEHOLDER`) inside the selection's `then` and written over as
+        /// the ice chosen (`Effect::with_chosen_installs`). Unlike the
+        /// fields above, a server that cannot be run makes no run and parks
+        /// nothing rather than failing: the selection that chose the ice is
+        /// what would be refused, and it is answered after the card's
+        /// secret spend was revealed, where a refusal leaves nothing legal.
+        /// A field for `chosen_server`'s reason: no card file can name a
+        /// server a selection chose.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        server_of: Option<crate::rules::InstallId>,
     },
     /// Rezzes an already-installed Corp card, paying the same way
     /// `PlayerAction::RezIce` does but without its "ice only while it is
@@ -1098,6 +1111,25 @@ pub enum Effect {
         /// copies of Brân 1.0 on two servers must each insert inward of
         /// themselves, and a first-match-by-title lookup picked the first.
         insert_after: Option<crate::rules::InstallId>,
+        /// "Install **and rez**, ignoring all costs" — Howler's: the card is
+        /// rezzed as it lands (`Effect::RezInstalled` with no cost paid),
+        /// so a run moving inward meets it rezzed. A field rather than a
+        /// `then`, for `PromptInstallCorpCard::rez`'s reason: the rez is of
+        /// the card that landed, which only this resolution knows.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        rez: bool,
+        /// Resolves once the card has landed, with `CardTarget::Install(0)`
+        /// written over as its new install (`Effect::with_each_install`) —
+        /// Howler's "When this run ends, if you installed a piece of ice
+        /// this way, trash this ice and derez **the ice you installed**", a
+        /// run-end rider (`SetRunEndedEffect`) under `AsThisCard`, so that
+        /// it resolves as the ice whose subroutine it is. The "if you
+        /// installed" is structural: nothing installed, nothing waits. A
+        /// field for `PromptInstallCorpCard::if_installed`'s reason: a
+        /// `Sequence` after the install resumes knowing nothing of the
+        /// handle it was given.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        then: Option<Box<Effect>>,
     },
     /// Parks the Corp's choice of *destination server* for installing the
     /// resolving card — `acting_card`, a card sitting in `origin_zone`
@@ -2846,6 +2878,17 @@ pub enum Effect {
     /// two make nothing but the choice, which another of the card's
     /// abilities reads.
     Remember { what: Remembered, until: EffectDuration },
+    /// The ability this resolves in has been used (CR 9.1.6), which spends
+    /// the use limit it names — Prey's "**Once during this run**, when you
+    /// pass a piece of ice, you may trash…": `OncePerRun` is asked at
+    /// every pass (`EffectIf`) and spent only when the nested cost is paid,
+    /// in its `if_paid`, so a pass the Runner declines leaves the ability
+    /// for a later one (CR 9.3.6g's Zahya Sadeghi example: an ability that
+    /// resolved and did nothing was not used). Composition didn't work: a
+    /// trigger's limit is spent as it fires (`consume_requirement`), which
+    /// is a declined "may" too, and a delayed ability has no requirement
+    /// of its own to spend.
+    Used(crate::dsl::EffectRequirement),
     /// `effect` resolved as the card whose text this is, inside a
     /// selection's `then`, where "this card" is the card chosen — Hangeki's
     /// "Choose 1 of your installed cards. The Runner may access that card.
@@ -3234,6 +3277,18 @@ pub enum Amount {
     /// next encounter's by the time the pass is heard, and the turn log
     /// counts resolutions by the turn, not by the encounter.
     PassedIceSubroutinesResolved,
+    /// The strength of the piece of ice the triggering pass was of, as it
+    /// is when this is read — Prey's "trash a number of your installed
+    /// cards equal to **the strength of that ice**", the count of a nested
+    /// cost (`Cost::Trash`). Read off `GameEvent::IcePassed`'s server and
+    /// position against the run's ice (`continuous::ice_strength`), and
+    /// written into a trigger's choice as it parks (`Effect::filled`,
+    /// `Cost::filled`), since the pass is gone once it is answered. A
+    /// facedown piece of ice keeps its printed strength (CR 1.8.4b). 0 for
+    /// any other event, or once the ice has left the run. Composition
+    /// didn't work: `EncounteredIceStrength` is the encounter's, which has
+    /// ended by the time the pass is heard.
+    PassedIceStrength,
     /// How many of the encountered ice's subroutines were unbroken when
     /// the triggering encounter ended — Chief Slee's "place 1 power counter
     /// on Chief Slee for each unbroken subroutine on the encountered piece
@@ -3398,6 +3453,17 @@ pub enum Amount {
     /// this server" is the sentence the next card prints. 0 for a card
     /// that is not a Corp install.
     IceProtectingThisServer,
+    /// How many runs have begun on the acting install's server this turn,
+    /// the run being heard included — Sundew's "**the first time** during
+    /// that action a run on this server begins", as `Not(AmountAtLeast(..,
+    /// 2))` beside "no action has finished this turn". Read off
+    /// `RunnerState::servers_run_this_turn`, which `run::start_run` writes
+    /// before the run's beginning is heard. Composition didn't work: the
+    /// turn log counts the remotes as one class (the Turn History Rule),
+    /// and `first_each_turn` on a run about this card counts only what a
+    /// Corp install's own copy is asked, which is being advanced. 0 for a
+    /// card that is not a Corp install.
+    RunsOnThisServerThisTurn,
     /// Remote servers that have a card in the root, and with `protected`
     /// only those protected by ice — Flood the Market's "place 1
     /// advancement counter on that card for each remote server that has a
@@ -4626,6 +4692,42 @@ impl Effect {
                 [chosen] => Effect::MoveRunPast(MovedTo::Install(*chosen)),
                 _ => Effect::MoveRunPast(MovedTo::ChosenThisWay),
             },
+            // Rigged Results' "run that server", and "the chosen ice" its
+            // run's rider waits to encounter.
+            Effect::PromptChooseServer {
+                chooser,
+                rez_cost_delta,
+                bonus_run_credits,
+                allowed_servers,
+                on_success,
+                on_start,
+                exclude_servers_run_this_turn,
+                only_protected_by_ice,
+                only_protected_by_unrezzed_ice,
+                only_in,
+                last_run_server,
+                chosen_server,
+                ignore_additional_costs,
+                server_of,
+            } => Effect::PromptChooseServer {
+                chooser,
+                rez_cost_delta,
+                bonus_run_credits,
+                allowed_servers,
+                on_success: on_success.map(|e| Box::new(e.with_chosen_installs(installs))),
+                on_start: on_start.map(|e| Box::new(e.with_chosen_installs(installs))),
+                exclude_servers_run_this_turn,
+                only_protected_by_ice,
+                only_protected_by_unrezzed_ice,
+                only_in,
+                last_run_server,
+                chosen_server,
+                ignore_additional_costs,
+                server_of: match (server_of, installs) {
+                    (Some(crate::rules::InstallId::PLACEHOLDER), [chosen]) => Some(*chosen),
+                    (other, _) => other,
+                },
+            },
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
@@ -4703,6 +4805,10 @@ impl Effect {
         match self {
             Effect::TrashCard(t) => Effect::TrashCard(target(t)),
             Effect::DerezCard(t) => Effect::DerezCard(target(t)),
+            // Howler's "derez the ice you installed", left waiting for the
+            // run's end as the ice whose subroutine it is.
+            Effect::SetRunEndedEffect(effect) => Effect::SetRunEndedEffect(boxed(effect)),
+            Effect::AsThisCard(effect) => Effect::AsThisCard(boxed(effect)),
             Effect::AsInstall { install: crate::rules::InstallId::PLACEHOLDER, effect } => Effect::AsInstall { install, effect },
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
@@ -5009,6 +5115,7 @@ impl Effect {
                 last_run_server,
                 chosen_server,
                 ignore_additional_costs,
+                server_of,
             } => Effect::PromptChooseServer {
                 chooser,
                 rez_cost_delta,
@@ -5023,6 +5130,7 @@ impl Effect {
                 last_run_server,
                 chosen_server,
                 ignore_additional_costs,
+                server_of,
             },
             Effect::ImposeAdditionalCost { on, cost: crate::dsl::Cost::CreditsAmount(a), until, this_install, approached_ice } => {
                 Effect::ImposeAdditionalCost { on, cost: crate::dsl::Cost::CreditsAmount(amount(a)), until, this_install, approached_ice }
@@ -5175,7 +5283,8 @@ impl Effect {
             | Effect::InstallRunnerCardFromZone { if_installed: Some(effect), .. }
             | Effect::Access { then: Some(effect), .. }
             | Effect::BreachStartingWith { then: Some(effect), .. }
-            | Effect::IncreaseAboutToResolve { then: Some(effect), .. } => effect.for_each_effect(f),
+            | Effect::IncreaseAboutToResolve { then: Some(effect), .. }
+            | Effect::InstallFromZoneIgnoringCost { then: Some(effect), .. } => effect.for_each_effect(f),
             Effect::Access { then: None, .. } | Effect::BreachStartingWith { then: None, .. } => {}
             Effect::PromptChooseServer { on_success, on_start, .. } => {
                 for effect in [on_success, on_start].into_iter().flatten() {
@@ -5233,7 +5342,7 @@ impl Effect {
             | Effect::SwapDeckCardWithHq { .. }
             | Effect::SwapAccessedWithHq { .. }
             | Effect::TakeAdditionalTurn
-            | Effect::InstallFromZoneIgnoringCost { .. }
+            | Effect::InstallFromZoneIgnoringCost { then: None, .. }
             | Effect::InstallRunnerCardFromGrip
             | Effect::InstallRunnerCardFromZone { if_installed: None, .. }
             | Effect::SetAsideFromTopUntil { .. }
@@ -5261,6 +5370,7 @@ impl Effect {
             | Effect::RevealHand(_)
             | Effect::Expose
             | Effect::Remember { .. }
+            | Effect::Used(_)
             | Effect::PlaceRunCredits { .. }
             | Effect::InstallProgramOnHost { .. }
             | Effect::AddToScoreAreaAsAgenda(_)

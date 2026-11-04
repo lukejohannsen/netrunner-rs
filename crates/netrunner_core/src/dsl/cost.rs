@@ -156,6 +156,12 @@ pub enum Cost {
     /// (Citadel Sanctuary): affordable however many there are, none
     /// included, and never asked, since every card goes.
     ///
+    /// `count` is an `Amount`, read as the cost is paid or as the choice
+    /// that offers it parks (`Cost::filled`) — Prey's "trash a number of
+    /// your installed cards **equal to the strength of that ice**", a
+    /// nested cost (CR 1.16.11a) whose size is the passed ice's
+    /// (`Amount::PassedIceStrength`). A number in a card file, as before.
+    ///
     /// The Corp forfeits `u32` agendas from its score area — Biawak's "you
     /// can forfeit 1 agenda as you rez this ice", Plutus's "as an
     /// additional cost to rez this asset, forfeit 1 agenda". Affordable
@@ -180,7 +186,8 @@ pub enum Cost {
     Trash {
         from: CardZoneRef,
         filter: CardFilter,
-        count: u32,
+        #[serde(deserialize_with = "super::effect::number_or_amount", serialize_with = "super::effect::write_number_or_amount")]
+        count: Amount,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         reveal: bool,
     },
@@ -415,6 +422,7 @@ impl Cost {
         match self {
             Cost::CreditsAmount(amount) => Cost::CreditsAmount(amount.filled(fill)),
             Cost::ClicksAmount(amount) => Cost::ClicksAmount(amount.filled(fill)),
+            Cost::Trash { from, filter, count, reveal } => Cost::Trash { from, filter, count: count.filled(fill), reveal },
             Cost::AnyOf(costs) => Cost::AnyOf(costs.into_iter().map(|cost| cost.filled(fill)).collect()),
             Cost::AllOf(costs) => Cost::AllOf(costs.into_iter().map(|cost| cost.filled(fill)).collect()),
             other => other,

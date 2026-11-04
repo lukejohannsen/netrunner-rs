@@ -1,0 +1,76 @@
+{
+  "id": "shi_kyu",
+  "title": "Shi.Kyū",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": {
+        "Not": {
+          "AccessingIn": "RnD"
+        }
+      },
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Corp",
+            "min": 0,
+            "max": {
+              "Credits": "Corp"
+            },
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "ChosenNumber",
+                    1
+                  ]
+                },
+                "effect": {
+                  "Sequence": [
+                    {
+                      "LoseCreditsAmount": [
+                        "Corp",
+                        "ChosenNumber"
+                      ]
+                    },
+                    {
+                      "PresentChoice": {
+                        "chooser": "Runner",
+                        "options": [
+                          {
+                            "DealDamageAmount": [
+                              "Net",
+                              "ChosenNumber"
+                            ]
+                          },
+                          {
+                            "AddToScoreAreaAsAgenda": {
+                              "points": -1
+                            }
+                          }
+                        ],
+                        "texts": [
+                          "The Runner suffers 1 net damage for each credit spent this way",
+                          "unless they add this asset to their score area as an agenda worth −1 agenda point"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "text": "spend any number of credits"
+          }
+        }
+      ],
+      "text": "When the Runner accesses this asset anywhere except in R&D, spend any number of credits. The Runner suffers 1 net damage for each credit spent this way unless they add this asset to their score area as an agenda worth −1 agenda point."
+    }
+  ],
+  "built_from": 5011,
+  "is_playable": true
+}
