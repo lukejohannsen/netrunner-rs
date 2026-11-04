@@ -75,6 +75,11 @@ pub struct ResolutionContext<'a> {
     /// accumulated, mirroring `damage_discarded`'s contract. Backs
     /// `Amount::CreditsLostThisResolution` (*Account Siphon*).
     pub credits_lost: u32,
+    /// What the most recent `Effect::Prevent` in this same resolution
+    /// prevented — overwritten per prevention, as `credits_lost` is. Backs
+    /// `Amount::PreventedThisResolution` (Ramujan-reliant 550 BMI's "trash
+    /// cards … equal to the amount of damage prevented").
+    pub prevented: u32,
     /// Virus counters the most recent `Effect::PurgeVirusCounters` in this
     /// same resolution removed — Reverse Infection's "trash 1 card from the
     /// top of the stack for every 3 virus counters removed", after its own
@@ -722,9 +727,11 @@ pub fn evaluate_effect(
         // action drew, if it is still in the hand it was drawn to — or,
         // heard as a draw, the one card it is (Find the Truth's "whenever
         // you draw a card, reveal that card").
-        Effect::Reveal(CardTarget::DrawnCard) => {
-            let (side, card) = match ctx.triggering_event {
-                Some(GameEvent::BasicDrawActionTaken { side, card: Some(card) }) | Some(GameEvent::DrewCard { side, card }) => (side, card),
+        Effect::Reveal(target @ (CardTarget::DrawnCard | CardTarget::Drawn { .. })) => {
+            let (side, card) = match (target, ctx.triggering_event) {
+                // Written in as a "may" parked (Bug's paid choice).
+                (CardTarget::Drawn { side, card }, _) => (side, card),
+                (_, Some(GameEvent::BasicDrawActionTaken { side, card: Some(card) }) | Some(GameEvent::DrewCard { side, card })) => (side, card),
                 _ => return Ok(Vec::new()),
             };
             let in_hand = match side {
@@ -872,7 +879,12 @@ pub fn evaluate_effect(
             }
         }
 
-        Effect::Prevent(word) => prevention::prevent(state, registry, word),
+        Effect::Prevent(word) => {
+            let before = state.pending_prevention.as_ref().map_or(0, |pending| pending.prevented);
+            let events = prevention::prevent(state, registry, word)?;
+            ctx.prevented = state.pending_prevention.as_ref().map_or(0, |pending| pending.prevented).saturating_sub(before);
+            Ok(events)
+        }
         Effect::IncreaseAboutToResolve { by, then } => {
             let by = resolve_amount(by, ctx, state, registry);
             prevention::increase_draw(state, by, then.as_deref(), ctx)
@@ -1226,7 +1238,26 @@ pub fn evaluate_effect(
         }
         // Both places are the selections' (`Effect::with_swap_position`);
         // with either unwritten nothing was chosen, and nothing moves.
-        Effect::SwapDeckCardWithHq { deck: Some(deck), hq: Some(hq) } => {
+        // Allele Repression's and Raman Rai's: the Archives card to HQ and
+        // the HQ card into Archives, faceup only if the Runner saw it (CR
+        // 8.8.4a) — revealed by the selection that chose it, or revealed
+        // in the hand (CR 1.21.6) by the card's text before.
+        Effect::SwapDeckCardWithHq { deck: Some(deck), hq: Some(hq), archives: true, hq_revealed } => {
+            let (deck, hq) = (*deck as usize, *hq as usize);
+            if deck >= state.corp.archives.len() {
+                return Err(RulesError::CardNotEligibleForSelection(deck));
+            }
+            if hq >= state.corp.hq.len() {
+                return Err(RulesError::CardNotEligibleForSelection(hq));
+            }
+            let from_archives = state.corp.archives.remove(deck);
+            let from_hq = std::mem::replace(&mut state.corp.hq[hq], from_archives.card);
+            let shown = take_revealed(state, Side::Corp, &from_hq) || *hq_revealed;
+            let filed = if shown { crate::rules::state::ArchivedCard::faceup(from_hq) } else { crate::rules::state::ArchivedCard::facedown(from_hq) };
+            crate::rules::turn_log::file_in_archives(state, filed);
+            Ok(Vec::new())
+        }
+        Effect::SwapDeckCardWithHq { deck: Some(deck), hq: Some(hq), .. } => {
             let (deck, hq) = (*deck as usize, *hq as usize);
             if deck >= state.corp.r_and_d.len() {
                 return Err(RulesError::CardNotEligibleForSelection(deck));
@@ -1360,6 +1391,11 @@ pub fn evaluate_effect(
         }
 
         Effect::StealAccessedCard => crate::rules::run::steal_accessed_ignoring_costs(state, registry),
+
+        Effect::ScoreFromHq => {
+            let Some(card) = acting_card else { return Err(RulesError::MissingActingCardContext) };
+            crate::rules::engine::score_from_hq(state, registry, card)
+        }
 
         Effect::Score | Effect::ScoreIgnoringAdvancementRequirement => {
             let Some(install) = ctx.acting_install else { return Err(RulesError::MissingActingCardContext) };
@@ -2882,11 +2918,18 @@ pub fn evaluate_effect(
                 }),
                 None => cost.clone(),
             };
+            // "That card" a draw is about, read now for the same reason
+            // (Bug's "you may pay 2[credit] to reveal that card"); the view
+            // takes it out again for whoever did not draw it.
+            let (if_paid, if_declined) = match ctx.triggering_event {
+                Some(GameEvent::DrewCard { side: drawer, card }) => ((**if_paid).clone().with_drawn_card(*drawer, card), (**if_declined).clone().with_drawn_card(*drawer, card)),
+                _ => ((**if_paid).clone(), (**if_declined).clone()),
+            };
             state.pending_paid_choice = Some(PendingPaidChoice {
                 side: *side,
                 cost,
-                if_paid: (**if_paid).clone(),
-                if_declined: (**if_declined).clone(),
+                if_paid,
+                if_declined,
                 text: text.clone(),
                 source_card: acting_card.cloned(),
                 prompting_card: ctx.attributed_card(),
@@ -3078,6 +3121,7 @@ pub fn evaluate_effect(
                 return Ok(Vec::new());
             }
             let paid = ctx.paid_with.first().and_then(|card| registry.get(card)).map(|definition| definition.card_type.clone());
+            let this_type = acting_card.and_then(|card| registry.get(card)).map(|definition| definition.card_type.clone());
             let filter = &filter
                 .clone()
                 .with_this_server(acting_server(state, ctx))
@@ -3085,7 +3129,7 @@ pub fn evaluate_effect(
                 // Showdown's "1 piece of ice protecting that server").
                 .with_chosen_server(acting_card.and_then(|card| crate::rules::lingering::chosen_server(state, card, ctx.acting_install)))
                 .with_chosen_card_type(ctx.acting_install.and_then(|this| crate::rules::lingering::chosen_card_type(state, this)))
-                .with_resolution(&|amount| resolve_amount(amount, ctx, state, registry), paid.as_ref());
+                .with_resolution(&|amount| resolve_amount(amount, ctx, state, registry), paid.as_ref(), this_type.as_ref());
             // A selection that trashes installed cards offers none its
             // chooser cannot trash (Jarogniew Mercs), whatever the card
             // file's filter says.
@@ -4303,7 +4347,12 @@ pub(crate) fn evaluate_sequence(
                     install: ctx.acting_install,
                     target_install: None,
                     event: ctx.triggering_event.cloned(),
-                    continuation: Some(Effect::Sequence(rest.to_vec())),
+                    // What this resolution prevented, read now: an
+                    // interrupt waits behind the window it is used in, and
+                    // the rest resolves with a context of its own
+                    // (Ramujan-reliant 550 BMI's "trash cards … equal to
+                    // the amount of damage prevented").
+                    continuation: Some(Effect::Sequence(rest.to_vec()).filled(&|amount| matches!(amount, Amount::PreventedThisResolution).then_some(ctx.prevented))),
                     heard: Default::default(),
                     not_the_first_this_turn: false,
                     fired: 0,
@@ -4377,7 +4426,7 @@ fn installed_target(state: &GameState, registry: &CardRegistry, target: &CardTar
             .or_else(|| state.runner.rig.iter().position(|installed| installed.install_id == *install).map(rig)),
         // Many cards, trashed one after another by `trash_card`: no Corp
         // card in the pool prevents a trash, so nobody would be asked.
-        CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHand(_) | CardTarget::AttackedServerRoot | CardTarget::SetAside | CardTarget::DrawnCard | CardTarget::AccessedCard | CardTarget::Accessed(_) => None,
+        CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHand(_) | CardTarget::AttackedServerRoot | CardTarget::SetAside | CardTarget::DrawnCard | CardTarget::Drawn { .. } | CardTarget::AccessedCard | CardTarget::Accessed(_) => None,
     }
 }
 
@@ -4471,7 +4520,7 @@ fn resolve_corp_installed_target(
         | CardTarget::RandomFromHand(_)
         | CardTarget::AttackedServerRoot
         | CardTarget::SetAside
-        | CardTarget::DrawnCard | CardTarget::AccessedCard | CardTarget::Accessed(_) => {
+        | CardTarget::DrawnCard | CardTarget::Drawn { .. } | CardTarget::AccessedCard | CardTarget::Accessed(_) => {
             Err(RulesError::UnresolvedCardTarget)
         }
         // A condition's host, when it is a piece of Corp ice (Eavesdrop's).
@@ -4612,6 +4661,9 @@ pub(crate) fn modify_counters(
     } else if let Some(condition) = ctx.acting_install.and_then(|install| state.corp.conditions.iter_mut().find(|condition| condition.handle == install)) {
         // A condition counter's own (Rover Algorithm's power counters).
         &mut condition.counters
+    } else if let Some(played) = ctx.acting_install.and_then(|install| played_mut(state, install)) {
+        // A current's own (Net Celebrity's recurring credit).
+        &mut played.counters
     } else {
         return Err(RulesError::CardNotEligibleForCounters(card_id));
     };
@@ -4679,7 +4731,7 @@ pub(crate) fn trash_card(
 
         // Handled by `evaluate_effect`'s `TrashCard` arm before it gets
         // here (it needs the registry to route each card home).
-        CardTarget::HostedOnThisCard | CardTarget::SetAside | CardTarget::DrawnCard | CardTarget::AccessedCard | CardTarget::Accessed(_) => Err(RulesError::UnresolvedCardTarget),
+        CardTarget::HostedOnThisCard | CardTarget::SetAside | CardTarget::DrawnCard | CardTarget::Drawn { .. } | CardTarget::AccessedCard | CardTarget::Accessed(_) => Err(RulesError::UnresolvedCardTarget),
 
         // Each by its handle, the root read once before the first goes, so
         // what a trash's own consequences install there is not taken too.
@@ -6599,7 +6651,18 @@ pub(crate) fn counters_of(state: &GameState, ctx: &ResolutionContext<'_>) -> Opt
         .or_else(|| state.active_run.as_ref().filter(|run| acting_is_run_event(run, ctx)).map(|run| run.event_counters))
         .or_else(|| ended_run_event_counters(state, ctx))
         .or_else(|| ctx.acting_install.and_then(|install| state.corp.conditions.iter().find(|condition| condition.handle == install)).map(|condition| condition.counters))
+        .or_else(|| ctx.acting_install.and_then(|install| played(state, install)).map(|played| played.counters))
         .or_else(|| remembered(state, ctx).map(|known| known.counters))
+}
+
+/// The copy in a play area with the handle `install` — a current or a
+/// lockdown, in either player's (`PlayedOperation`).
+pub(crate) fn played(state: &GameState, install: InstallId) -> Option<&crate::rules::state::PlayedOperation> {
+    state.corp.play_area.iter().chain(state.runner.in_play.iter()).find(|played| played.handle == install)
+}
+
+fn played_mut(state: &mut GameState, install: InstallId) -> Option<&mut crate::rules::state::PlayedOperation> {
+    state.corp.play_area.iter_mut().chain(state.runner.in_play.iter_mut()).find(|played| played.handle == install)
 }
 
 /// The counters the event that began the run just ended held, for its own
@@ -7053,6 +7116,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             types.len() as u32
         }
         Amount::CreditsLostThisResolution => ctx.credits_lost,
+        Amount::PreventedThisResolution => ctx.prevented,
         Amount::VirusCountersPurged => match ctx.triggering_event {
             Some(GameEvent::VirusCountersPurged { removed, .. }) => *removed,
             _ => ctx.virus_counters_purged,

@@ -680,9 +680,9 @@ pub struct PublicGameState {
     pub paid_ability_window: Option<PaidAbilityWindow>,
     pub active_trace: Option<TraceState>,
     pub pending_prevention: Option<PendingPrevention>,
-    /// Fully public — a pending paid choice/decision (who's offered it, its
-    /// cost/options) carries no hidden information, same treatment as
-    /// `active_trace`/`pending_prevention`.
+    /// Public in shape — who is offered it, its cost — as `active_trace` and
+    /// `pending_prevention` are, but a card a draw wrote into what it will
+    /// do is not (`mask_pending_paid_choice`).
     pub pending_paid_choice: Option<crate::rules::state::PendingPaidChoice>,
     pub pending_decision: Option<crate::rules::state::PendingDecision>,
     /// A payment whose payer is choosing where it comes from — see
@@ -781,7 +781,7 @@ pub fn mask_state_for_player(state: &GameState, registry: &CardRegistry, viewer:
         paid_ability_window: state.paid_ability_window.clone(),
         active_trace: state.active_trace.clone(),
         pending_prevention: state.pending_prevention.clone(),
-        pending_paid_choice: state.pending_paid_choice.clone(),
+        pending_paid_choice: state.pending_paid_choice.as_ref().map(|choice| mask_pending_paid_choice(choice, viewer)),
         pending_decision: state.pending_decision.as_ref().map(|decision| mask_pending_decision(decision, state, viewer)),
         pending_payment: state.pending_payment.as_ref().map(|payment| PublicPendingPayment {
             side: payment.side,
@@ -1379,6 +1379,27 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::PendingPaidChoiceAccepted { .. }
         | GameEvent::PendingPaidChoiceDeclined { .. } => visible(),
     }
+}
+
+/// A parked paid choice as `viewer` may see it. Who is offered it and its
+/// cost are public; the card in a hand that the moment was about is not.
+/// Raman Rai's "When you draw a card, you may lose [click]. If you do,
+/// reveal that card …" writes the drawn card into the selection behind its
+/// "may" (`ThatCard`), which only the Corp may read, as a parked
+/// `ChooseEffect`'s options are masked for whoever does not choose; and
+/// Bug's "Whenever the Corp draws a card, you may pay 2[credit] to reveal
+/// that card" writes in a card the *chooser* may not see
+/// (`CardTarget::Drawn`), so that is taken out for everybody but its
+/// drawer.
+fn mask_pending_paid_choice(choice: &crate::rules::state::PendingPaidChoice, viewer: Viewer) -> crate::rules::state::PendingPaidChoice {
+    let mut masked = choice.clone();
+    let conceal = |effect: crate::dsl::Effect| {
+        let effect = if viewer.is(choice.side) { effect } else { effect.naming_no_cards() };
+        effect.naming_no_draws_but(viewer.side())
+    };
+    masked.if_paid = conceal(std::mem::replace(&mut masked.if_paid, crate::dsl::Effect::Sequence(Vec::new())));
+    masked.if_declined = conceal(std::mem::replace(&mut masked.if_declined, crate::dsl::Effect::Sequence(Vec::new())));
+    masked
 }
 
 /// Whether the Runner may not currently be told that a Corp card named

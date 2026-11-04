@@ -586,6 +586,11 @@ fn accessing_an_install(state: &GameState) -> bool {
 /// The credits hosted on `install`: its `counters`, or for a card that
 /// keeps them beside another kind of counter (Pheromones), its `credits`.
 fn hosted_credits(state: &GameState, registry: &CardRegistry, side: Side, install: InstallId) -> u32 {
+    // A current in a play area keeps its credits on its copy (Net
+    // Celebrity's).
+    if let Some(played) = ability::played(state, install) {
+        return played.counters;
+    }
     match side {
         Side::Corp => state.corp.installed.iter().find(|c| c.install_id == install).map_or(0, |c| c.counters),
         Side::Runner => state.runner.rig.iter().find(|c| c.install_id == install).map_or(0, |c| {
@@ -594,8 +599,23 @@ fn hosted_credits(state: &GameState, registry: &CardRegistry, side: Side, instal
     }
 }
 
+/// The card on the table or in a play area with the handle `install`.
+fn hosting_card(state: &GameState, side: Side, install: InstallId) -> Option<&crate::dsl::CardId> {
+    match side {
+        Side::Corp => state.corp.installed.iter().find(|c| c.install_id == install).map(|c| &c.card),
+        Side::Runner => state.runner.rig.iter().find(|c| c.install_id == install).map(|c| &c.card),
+    }
+    .or_else(|| ability::played(state, install).map(|played| &played.card))
+}
+
 fn beside_counters(registry: &CardRegistry, card: &crate::dsl::CardId) -> bool {
     registry.get(card).is_some_and(crate::dsl::CardDefinition::hosts_credits_beside_counters)
+}
+
+/// Whether `card` is a copy in a play area that could hold credits — a
+/// current or a lockdown, by its handle (`PlayedOperation::counters`).
+fn hosts_in_play(state: &GameState, card: &active::ActiveCard<'_>) -> bool {
+    card.place == Place::PlayArea && card.install.is_some_and(|install| ability::played(state, install).is_some())
 }
 
 /// Whether a run on `server` is in progress — Pheromones' "during runs on
@@ -640,10 +660,12 @@ pub(crate) fn sources(
         }
     };
     // Active cards only: an unrezzed upgrade's text is not live, and a
-    // card's words about its hosted credits are text like any other.
+    // card's words about its hosted credits are text like any other. A
+    // current in the play area is one too (Net Celebrity's credit), by its
+    // copy's handle; the run's event, which has none, is not.
     let hosts: Vec<InstallId> = match side {
-        Side::Corp => active::corp(state, registry).filter(|card| card.place == Place::Installed).collect::<Vec<_>>(),
-        Side::Runner => active::runner(state, registry).filter(|card| card.place == Place::Installed).collect::<Vec<_>>(),
+        Side::Corp => active::corp(state, registry).filter(|card| card.place == Place::Installed || hosts_in_play(state, card)).collect::<Vec<_>>(),
+        Side::Runner => active::runner(state, registry).filter(|card| card.place == Place::Installed || hosts_in_play(state, card)).collect::<Vec<_>>(),
     }
     .into_iter()
     .filter_map(|card| {
@@ -932,10 +954,7 @@ pub(crate) fn class_of(state: &GameState, registry: &CardRegistry, side: Side, p
         }
     };
     match pool {
-        Pool::Hosted(install) => of_card(match side {
-            Side::Corp => state.corp.installed.iter().find(|c| c.install_id == install).map(|c| &c.card),
-            Side::Runner => state.runner.rig.iter().find(|c| c.install_id == install).map(|c| &c.card),
-        }),
+        Pool::Hosted(install) => of_card(hosting_card(state, side, install)),
         Pool::Identity => of_card(identity_of(state, side)),
         Pool::Run => Class {
             breadth: match state.active_run.as_ref().and_then(|run| run.run_credits_pay_for.clone()) {
@@ -1108,10 +1127,7 @@ pub(crate) fn pay_from(
         // Read before anything is spent: an emptied host may be trashed
         // (`spend_hosted`), and the moment is still about it.
         let first_host = planned.spend.iter().find_map(|(pool, _)| match pool {
-            Pool::Hosted(install) => match side {
-                Side::Corp => state.corp.installed.iter().find(|c| c.install_id == *install).map(|c| (c.card.clone(), *install)),
-                Side::Runner => state.runner.rig.iter().find(|c| c.install_id == *install).map(|c| (c.card.clone(), *install)),
-            },
+            Pool::Hosted(install) => hosting_card(state, side, *install).map(|card| (card.clone(), *install)),
             _ => None,
         });
         events.push(GameEvent::CreditsSpentFromOutsidePool { side, amount: elsewhere, run_against, from_installed, first_host });
@@ -1186,7 +1202,7 @@ pub(crate) fn refill(state: &mut GameState, registry: &CardRegistry, side: Side)
     .into_iter()
     // A scored agenda's counters are agenda counters, and no agenda prints
     // recurring credits in this pool.
-    .filter(|card| matches!(card.place, Place::Installed | Place::Identity))
+    .filter(|card| matches!(card.place, Place::Installed | Place::Identity) || hosts_in_play(state, card))
     // "N[recurring-credit]" is an ability, and a card that has lost its
     // abilities is not refilled (CR 9.1.9a).
     .filter(|card| card.install.is_none_or(|install| !active::lost_abilities(state, registry, install)))
@@ -1300,11 +1316,7 @@ fn spend_hosted(
     spend: u32,
     emptied: bool,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let card = match side {
-        Side::Corp => state.corp.installed.iter().find(|c| c.install_id == install).map(|c| c.card.clone()),
-        Side::Runner => state.runner.rig.iter().find(|c| c.install_id == install).map(|c| c.card.clone()),
-    }
-    .ok_or(RulesError::InstallNotFound(install))?;
+    let card = hosting_card(state, side, install).cloned().ok_or(RulesError::InstallNotFound(install))?;
     let ctx = ResolutionContext::for_parked(Some(install), Some(&card));
     let mut events = change_hosted(state, registry, &ctx, -i64::from(spend))?;
     if emptied && registry.get(&card).is_some_and(|definition| definition.trash_when_empty) {

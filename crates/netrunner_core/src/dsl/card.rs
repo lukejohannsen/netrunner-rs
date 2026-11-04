@@ -1728,9 +1728,11 @@ impl CardDefinition {
         }
         // `rules::payment` reads `pays_for` off active *installed* cards and
         // spends their `counters` as credits: a word on a card that hosts
-        // none, or is never installed, is a pool nothing can reach.
+        // none, or is never installed, is a pool nothing can reach. A
+        // current stays in the play area, active, and keeps credits on its
+        // copy there (Net Celebrity's, `PlayedOperation::counters`).
         let hosts_credits = (self.counter_kind == Some(CounterKind::Credit) || self.hosts_credits_beside_counters())
-            && !matches!(self.card_type, CardType::Event | CardType::Operation);
+            && (!matches!(self.card_type, CardType::Event | CardType::Operation) || crate::rules::current::is_current(self));
         if !self.pays_for.is_empty() && !hosts_credits {
             return Err(CardValidationError::PaysForWithoutHostedCredits(self.id.clone()));
         }

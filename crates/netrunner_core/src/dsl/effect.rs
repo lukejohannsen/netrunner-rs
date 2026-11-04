@@ -160,6 +160,23 @@ pub enum CardTarget {
     AccessedCard,
     /// `AccessedCard` written in — the card itself. Never authored.
     Accessed(CardId),
+    /// `DrawnCard` written in as a "may" parks — the card `side` drew, and
+    /// whose hand it is in. Bug's "Whenever the Corp draws a card, you may
+    /// pay 2[credit] to reveal **that card**": the paid choice keeps no
+    /// moment, so the card is written into it as Aeneas Informant's
+    /// `Accessed` is, and the view takes it out again for anybody who is
+    /// not `side` (`Effect::naming_no_cards`, `masking`), the chooser
+    /// included. Never authored.
+    Drawn { side: crate::rules::Side, card: CardId },
+}
+
+/// Which half of a `Effect::SwapDeckCardWithHq` a selection chose the
+/// place of: the deck's (R&D, or Archives when `archives`) or HQ's, and
+/// whether the HQ selection revealed what it chose (CR 8.8.4a).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SwapHalf {
+    Deck { archives: bool },
+    Hq { revealed: bool },
 }
 
 /// Which ability `Effect::ResolveItsAbility` resolves.
@@ -986,11 +1003,27 @@ pub enum Effect {
     /// same depth. Composition didn't work: a selection moves a card to
     /// the top or the bottom of R&D, never into a place between, and a
     /// swap is one move, not two.
+    ///
+    /// With **`archives`** the other card is in Archives, not R&D — Allele
+    /// Repression's "Swap 1 card in HQ with 1 card in Archives for each
+    /// advancement token" and Raman Rai's "reveal that card and 1 card in
+    /// Archives of the same type. Swap those cards" — and `deck` is the
+    /// place an Archives selection chose. The Archives card goes to HQ and
+    /// the HQ card into Archives, faceup only if the Runner saw it (CR
+    /// 8.8.4a): `hq_revealed`, written in by an HQ selection that revealed
+    /// what it chose (never authored). Through `turn_log::
+    /// file_in_archives`, the zone's one door. A word on this swap rather
+    /// than a second one, as `CardsInHand`'s side is: the sentences differ
+    /// only in which zone the other card is in.
     SwapDeckCardWithHq {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         deck: Option<u32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         hq: Option<u32>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        archives: bool,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        hq_revealed: bool,
     },
     /// Installs `card_id` (a placeholder substituted at `PendingDecision::
     /// ChooseCards` resolution time, same convention as `SwapInstalledIce`)
@@ -2044,6 +2077,18 @@ pub enum Effect {
     /// `engine::scorable` asks before every other, and a card had no way
     /// to waive it.
     ScoreIgnoringAdvancementRequirement,
+    /// Scores the acting card, an agenda in HQ — Plan B's "you may reveal
+    /// and score an agenda from HQ with an advancement requirement equal to
+    /// or less than the number of advancement tokens on Plan B", the `then`
+    /// of the Corp's selection out of HQ, which resolves as the agenda it
+    /// chose (`engine::score_from_hq`). It has no advancement counters and
+    /// is never installed; anything that forbids scoring refuses it, and a
+    /// card that taxes the score of an *install* (Word on the Street's
+    /// additional cost) has none to tax. Composition didn't work: `Score`
+    /// scores the acting install, which inside the selection's `then` is
+    /// the card that made it (Plan B itself), and `score_install` uninstalls
+    /// what it scores.
+    ScoreFromHq,
     /// `chooser` chooses a card name, among the playable cards `names`
     /// admits, and `then` resolves with the name written over
     /// `CardFilter::ChosenName` — Complete Image's "Choose a card name,
@@ -2959,6 +3004,14 @@ pub enum Amount {
     /// `GainCreditsAmount`s of this — composition instead of a multiplier
     /// field no second card needs.
     CreditsLostThisResolution,
+    /// What the most recent `Effect::Prevent` in this same resolution
+    /// prevented (`ResolutionContext::prevented`) — Ramujan-reliant 550
+    /// BMI's "Prevent up to X core damage or net damage. Trash cards from
+    /// the top of your stack equal to the amount of damage prevented", as
+    /// `CreditsLostThisResolution` is what a loss took. Composition didn't
+    /// work: "up to" prevents what is left, and the amount the effect
+    /// reached is the window's, read nowhere else.
+    PreventedThisResolution,
     /// Virus counters a purge removed: the purge a trigger heard (Acacia's
     /// "gain 1[credit] for each virus counter removed"), else the one this
     /// resolution made (Reverse Infection's "for every 3 virus counters
@@ -3623,8 +3676,16 @@ pub enum Preventable {
     /// `Effect::with_chosen_number` as every chosen number is, so `up_to`
     /// is ignored until it is. A flag rather than an `Amount`, because
     /// every other card prints a fixed number and `up_to` is written bare.
+    ///
+    /// `or` is the second kind of "prevent up to X core damage **or** net
+    /// damage" (Ramujan-reliant 550 BMI): damage of `kind` or of `or`,
+    /// whichever is about to be done — one kind is done at a time, so one
+    /// use prevents one of them. A word beside `kind`, not a list in its
+    /// place, because every other card names one kind or none.
     Damage {
         kind: Option<DamageType>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        or: Option<DamageType>,
         up_to: u32,
         #[serde(default, skip_serializing_if = "is_zero_u32")]
         leaving: u32,
@@ -4289,6 +4350,41 @@ impl Effect {
         }
     }
 
+    /// `CardTarget::DrawnCard` written over as the card `side` drew, in the
+    /// shapes a paid choice's outcome is written in (Bug's "reveal that
+    /// card", behind its "you may pay 2[credit]").
+    pub fn with_drawn_card(self, side: crate::rules::Side, card: &CardId) -> Effect {
+        let boxed = |effect: Box<Effect>| Box::new(effect.with_drawn_card(side, card));
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_drawn_card(side, card)).collect();
+        match self {
+            Effect::Reveal(CardTarget::DrawnCard) => Effect::Reveal(CardTarget::Drawn { side, card: card.clone() }),
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
+            other => other,
+        }
+    }
+
+    /// This effect with every card a draw wrote in (`CardTarget::Drawn`)
+    /// taken out again where `seat` did not draw it — for the player
+    /// offered a paid choice about a card in the other player's hand
+    /// (Bug's), whom `naming_no_cards`, a non-chooser's mask, does not
+    /// reach. Through the shapes `naming_no_cards` walks.
+    pub fn naming_no_draws_but(self, seat: Option<crate::rules::Side>) -> Effect {
+        let boxed = |effect: Box<Effect>| Box::new(effect.naming_no_draws_but(seat));
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.naming_no_draws_but(seat)).collect();
+        match self {
+            Effect::Reveal(CardTarget::Drawn { side, .. }) if seat != Some(side) => Effect::Reveal(CardTarget::DrawnCard),
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
+            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
+                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
+            }
+            other => other,
+        }
+    }
+
     /// `CardFilter::ChosenThisWay` written over as the installs a selection
     /// chose (its `then`), in the shapes `with_those_trashed` walks.
     /// `SwapDeckCardWithHq`'s half written as `position`: R&D's when
@@ -4296,11 +4392,15 @@ impl Effect {
     /// where the swap waits for the second card. Only a half not yet
     /// written is, so the R&D position chosen first survives the HQ
     /// selection's pass.
-    pub fn with_swap_position(self, from_deck: bool, position: u32) -> Effect {
-        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_swap_position(from_deck, position)).collect();
+    pub fn with_swap_position(self, half: SwapHalf, position: u32) -> Effect {
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_swap_position(half, position)).collect();
         match self {
-            Effect::SwapDeckCardWithHq { deck: None, hq } if from_deck => Effect::SwapDeckCardWithHq { deck: Some(position), hq },
-            Effect::SwapDeckCardWithHq { deck, hq: None } if !from_deck => Effect::SwapDeckCardWithHq { deck, hq: Some(position) },
+            Effect::SwapDeckCardWithHq { deck: None, hq, archives, hq_revealed } if half == SwapHalf::Deck { archives } => {
+                Effect::SwapDeckCardWithHq { deck: Some(position), hq, archives, hq_revealed }
+            }
+            Effect::SwapDeckCardWithHq { deck, hq: None, archives, .. } if matches!(half, SwapHalf::Hq { .. }) => {
+                Effect::SwapDeckCardWithHq { deck, hq: Some(position), archives, hq_revealed: half == SwapHalf::Hq { revealed: true } }
+            }
             Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => Effect::PromptChooseCards {
                 side,
                 source,
@@ -4310,15 +4410,15 @@ impl Effect {
                 reveal,
                 shuffle_after,
                 destination,
-                then: then.map(|then| Box::new(then.with_swap_position(from_deck, position))),
+                then: then.map(|then| Box::new(then.with_swap_position(half, position))),
                 count,
                 up_to,
             },
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf {
                 condition,
-                effect: Box::new(effect.with_swap_position(from_deck, position)),
-                otherwise: otherwise.map(|e| Box::new(e.with_swap_position(from_deck, position))),
+                effect: Box::new(effect.with_swap_position(half, position)),
+                otherwise: otherwise.map(|e| Box::new(e.with_swap_position(half, position))),
             },
             other => other,
         }
@@ -4615,9 +4715,9 @@ impl Effect {
         let boxed = |effect: Box<Effect>| Box::new(effect.filled(fill));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.filled(fill)).collect();
         match self {
-            Effect::Prevent(Preventable::Damage { kind, up_to, leaving, x: true }) => match fill(&Amount::ChosenNumber) {
-                Some(chosen) => Effect::Prevent(Preventable::Damage { kind, up_to: chosen, leaving, x: false }),
-                None => Effect::Prevent(Preventable::Damage { kind, up_to, leaving, x: true }),
+            Effect::Prevent(Preventable::Damage { kind, or, up_to, leaving, x: true }) => match fill(&Amount::ChosenNumber) {
+                Some(chosen) => Effect::Prevent(Preventable::Damage { kind, or, up_to: chosen, leaving, x: false }),
+                None => Effect::Prevent(Preventable::Damage { kind, or, up_to, leaving, x: true }),
             },
             Effect::GainCreditsAmount(side, a) => Effect::GainCreditsAmount(side, amount(a)),
             Effect::LoseCreditsAmount(side, a) => Effect::LoseCreditsAmount(side, amount(a)),
@@ -5001,6 +5101,7 @@ impl Effect {
             | Effect::TurnFaceup
             | Effect::Score
             | Effect::ScoreIgnoringAdvancementRequirement
+            | Effect::ScoreFromHq
             | Effect::StealAccessedCard
             | Effect::Breach(_)
             | Effect::DiscardAtRandom { .. }

@@ -490,6 +490,13 @@ pub struct PlayedOperation {
     /// "choose a server", which a second copy played a turn later must not
     /// inherit. Handles are never reused, so the two never meet.
     pub handle: InstallId,
+    /// Credits on this copy — Net Celebrity's "1[recurring-credit]. Use
+    /// this credit during a run", placed as the current becomes active and
+    /// refilled at its owner's turn (CR 1.10.5, `payment::place_recurring`,
+    /// `payment::refill`) and spent as any card's hosted credits are
+    /// (`payment::Pool::Hosted`, by this handle). Public, as the copy is.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub counters: u32,
 }
 
 /// One agenda in the Corp's score area — see `CorpState::scored_agendas`.

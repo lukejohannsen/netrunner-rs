@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzzzz",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Iain Stirling: Retired Spook, who gains 2[credit] each turn he trails on points. Advance Fee's list, its identity swapped. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 4.",
+  "description": "Not a published list: built so the sweeps reach Iain Stirling: Retired Spook, who gains 2[credit] each turn he trails on points. Advance Fee's list, its identity swapped. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG composable leftovers, Stage 4. Engine words Stage 28 (FFG): a Bug for its Shibboleth, which seven other decks keep.",
   "style": [
     "pressure"
   ],
@@ -12,10 +12,6 @@
     {
       "card": "tremolo",
       "count": 2
-    },
-    {
-      "card": "shibboleth",
-      "count": 1
     },
     {
       "card": "laser_pointer",
@@ -131,6 +127,10 @@
     },
     {
       "card": "high_stakes_job",
+      "count": 1
+    },
+    {
+      "card": "bug",
       "count": 1
     }
   ]

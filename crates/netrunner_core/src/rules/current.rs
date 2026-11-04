@@ -44,11 +44,13 @@ pub(crate) fn file(state: &mut GameState, registry: &CardRegistry, events: &mut 
     trash_currents(state, registry, events, Side::Corp)?;
     trash_currents(state, registry, events, Side::Runner)?;
     let handle = state.allocate_install_id();
-    let played = PlayedOperation { card, handle };
+    let played = PlayedOperation { card: card.clone(), handle, counters: 0 };
     match side {
         Side::Corp => state.corp.play_area.push(played),
         Side::Runner => state.runner.in_play.push(played),
     }
+    // Active now, so its recurring credits are placed (CR 1.10.5a).
+    events.extend(crate::rules::payment::place_recurring(state, registry, side, Some(handle), &card)?);
     Ok(())
 }
 

@@ -170,7 +170,6 @@ pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Kala Ghoda* (`kala_ghoda`): tranche F6 of the FFG plan.
 pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("ramujan_reliant_550_bmi", "Ramujan-reliant 550 BMI"),
     ("maya", "Maya"),
     ("panchatantra", "Panchatantra"),
 ];
@@ -189,7 +188,6 @@ pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("personality_profiles", "Personality Profiles"),
     ("jeeves_model_bioroids", "Jeeves Model Bioroids"),
-    ("raman_rai", "Raman Rai"),
 ];
 
 /// *The Liberated Mind* (`the_liberated_mind`): tranche F6 of the FFG plan.
@@ -235,7 +233,6 @@ pub(crate) const CC_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Underway* (`the_underway`): tranche F7 of the FFG plan.
 pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("allele_repression", "Allele Repression"),
 ];
 
 /// *Old Hollywood* (`old_hollywood`): tranche F7 of the FFG plan.
@@ -263,7 +260,6 @@ pub(crate) const UP_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Spaces Between* (`the_spaces_between`): tranche F8 of the FFG plan.
 pub(crate) const TSB_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("net_celebrity", "Net Celebrity"),
 ];
 
 /// *First Contact* (`first_contact`): tranche F8 of the FFG plan.
@@ -287,8 +283,6 @@ pub(crate) const TS_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Honor and Profit* (`honor_and_profit`): tranche F8 of the FFG plan.
 pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("shi_kyu", "Shi.Kyū"),
-    ("plan_b", "Plan B"),
-    ("bug", "Bug"),
 ];
 
 /// *Creation and Control* (`creation_and_control`): tranche F9 of the FFG plan.

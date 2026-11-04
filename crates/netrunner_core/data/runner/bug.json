@@ -1,0 +1,52 @@
+{
+  "id": "bug",
+  "title": "Bug",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 1,
+  "install_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesThisTurnWhen": {
+          "trigger": "OnSuccessfulRun",
+          "when": {
+            "Server": [
+              "Hq"
+            ]
+          }
+        }
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnCardDrawn",
+      "subject": "Any",
+      "when": {
+        "Whose": "Corp"
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Credits": 2
+            },
+            "if_paid": {
+              "Reveal": "DrawnCard"
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 2[credit] to reveal that card"
+          }
+        }
+      ],
+      "text": "Whenever the Corp draws a card, you may pay 2[credit] to reveal that card."
+    }
+  ],
+  "built_from": 5043,
+  "is_playable": true
+}

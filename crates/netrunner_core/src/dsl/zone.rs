@@ -570,6 +570,12 @@ pub enum CardFilter {
     /// same way. Composition didn't work: no filter read an agenda's
     /// advancement requirement.
     AdvancementRequirementExactly(Box<crate::dsl::Amount>),
+    /// An agenda whose printed advancement requirement is at most this —
+    /// Plan B's "an agenda from HQ with an advancement requirement equal to
+    /// or less than the number of advancement tokens on Plan B", read the
+    /// same way. Composition didn't work: "exactly" is one number, and
+    /// "at most" one `AnyOf` branch per number below it.
+    AdvancementRequirementAtMost(Box<crate::dsl::Amount>),
     /// A printed trash cost of exactly this many credits — Political
     /// Operative's "trash 1 rezzed card with trash cost equal to X", X its
     /// `Cost::CreditsX`. Read as the selection is offered, as
@@ -584,6 +590,14 @@ pub enum CardFilter {
     /// for 1 card **of the same type**", written in as the selection is
     /// offered (`with_resolution`). Matches nothing anywhere else.
     SameTypeAsPaidCard,
+    /// The same card type as the card resolving this — Raman Rai's "reveal
+    /// that card and 1 card in Archives **of the same type**", the filter of
+    /// an Archives selection in the `then` of the HQ selection that chose
+    /// the drawn card, which resolves as it. Written in as the selection is
+    /// offered (`with_resolution`), as `SameTypeAsPaidCard` is. Matches
+    /// nothing anywhere else. Composition didn't work: `SameTypeAsPaidCard`
+    /// is the type of a card a cost took, and this card was chosen.
+    SameTypeAsThisCard,
     /// No other card chosen in the same selection has this one's name —
     /// Asmund Pudlat's "search your stack for up to 2 virus or weapon cards
     /// **with different names**". Instance-level: it reads the selection
@@ -873,15 +887,17 @@ impl CardFilter {
     /// becomes the number it is now (`PrintedCostAtMost`), and "the same
     /// type" becomes the type of the card a nested cost trashed
     /// (`SameTypeAsPaidCard`). Unresolved, each matches nothing.
-    pub fn with_resolution(self, amount: &dyn Fn(&crate::dsl::Amount) -> u32, paid: Option<&CardType>) -> CardFilter {
+    pub fn with_resolution(self, amount: &dyn Fn(&crate::dsl::Amount) -> u32, paid: Option<&CardType>, this: Option<&CardType>) -> CardFilter {
         match self {
             CardFilter::PrintedCostAtMost(at_most) => CardFilter::PrintedCostAtMost(Box::new(crate::dsl::Amount::Fixed(amount(&at_most)))),
             CardFilter::PrintedCostExactly(exactly) => CardFilter::PrintedCostExactly(Box::new(crate::dsl::Amount::Fixed(amount(&exactly)))),
             CardFilter::AgendaPointsExactly(exactly) => CardFilter::AgendaPointsExactly(Box::new(crate::dsl::Amount::Fixed(amount(&exactly)))),
             CardFilter::AdvancementRequirementExactly(exactly) => CardFilter::AdvancementRequirementExactly(Box::new(crate::dsl::Amount::Fixed(amount(&exactly)))),
+            CardFilter::AdvancementRequirementAtMost(at_most) => CardFilter::AdvancementRequirementAtMost(Box::new(crate::dsl::Amount::Fixed(amount(&at_most)))),
             CardFilter::TrashCostExactly(exactly) => CardFilter::TrashCostExactly(Box::new(crate::dsl::Amount::Fixed(amount(&exactly)))),
             CardFilter::TopOf(count) => CardFilter::TopOfZone(amount(&count)),
             CardFilter::SameTypeAsPaidCard => paid.map_or(CardFilter::SameTypeAsPaidCard, |card_type| CardFilter::CardType(card_type.clone())),
+            CardFilter::SameTypeAsThisCard => this.map_or(CardFilter::SameTypeAsThisCard, |card_type| CardFilter::CardType(card_type.clone())),
             // A discount read off the resolution (Rejig's "paying X[credit]
             // less", X the printed cost of the card its cost returned) is
             // the number it is now: the selection is answered on a later
@@ -889,8 +905,8 @@ impl CardFilter {
             CardFilter::InstallableRunnerCardWithDiscount(crate::dsl::Discount::Amount(of)) => {
                 CardFilter::InstallableRunnerCardWithDiscount(crate::dsl::Discount::Credits(amount(&of)))
             }
-            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_resolution(amount, paid)).collect()),
-            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_resolution(amount, paid)).collect()),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_resolution(amount, paid, this)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_resolution(amount, paid, this)).collect()),
             other => other,
         }
     }
@@ -934,6 +950,7 @@ impl CardFilter {
             CardFilter::PrintedCostExactly(exactly) => CardFilter::PrintedCostExactly(amount(exactly)),
             CardFilter::AgendaPointsExactly(exactly) => CardFilter::AgendaPointsExactly(amount(exactly)),
             CardFilter::AdvancementRequirementExactly(exactly) => CardFilter::AdvancementRequirementExactly(amount(exactly)),
+            CardFilter::AdvancementRequirementAtMost(at_most) => CardFilter::AdvancementRequirementAtMost(amount(at_most)),
             CardFilter::TrashCostExactly(exactly) => CardFilter::TrashCostExactly(amount(exactly)),
             CardFilter::TopOf(count) => CardFilter::TopOf(amount(count)),
             CardFilter::NthFromTop(n) => CardFilter::NthFromTop(amount(n)),
@@ -1274,11 +1291,15 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
             crate::dsl::Amount::Fixed(n) => card.card_type == CardType::Agenda && card.advancement_requirement == Some(n),
             _ => false,
         },
+        CardFilter::AdvancementRequirementAtMost(at_most) => match **at_most {
+            crate::dsl::Amount::Fixed(n) => card.card_type == CardType::Agenda && card.advancement_requirement.is_some_and(|printed| printed <= n),
+            _ => false,
+        },
         CardFilter::TrashCostExactly(exactly) => match **exactly {
             crate::dsl::Amount::Fixed(n) => card.trash_cost == Some(n),
             _ => false,
         },
-        CardFilter::SameTypeAsPaidCard => false,
+        CardFilter::SameTypeAsPaidCard | CardFilter::SameTypeAsThisCard => false,
         // Instance-level: the selection in progress.
         CardFilter::DifferentNames => true,
     }

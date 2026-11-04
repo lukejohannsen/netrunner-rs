@@ -105,6 +105,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::CorpCardsAddedToArchivesThisTurn => "the Corp cards added to Archives this turn".to_string(),
         Amount::TimesThisActionThisTurn => "the times you have taken that action this turn".to_string(),
         Amount::CreditsLostThisResolution => "the credits just lost".to_string(),
+        Amount::PreventedThisResolution => "the amount just prevented".to_string(),
         Amount::VirusCountersPurged => "the virus counters the purge removed".to_string(),
         Amount::ClicksRemaining => "the clicks remaining".to_string(),
         Amount::PrintedCost => "its printed cost".to_string(),
@@ -292,6 +293,7 @@ fn describe_target(target: &CardTarget, registry: &CardRegistry) -> String {
         CardTarget::SetAside => "every card still set aside".to_string(),
         CardTarget::DrawnCard => "the card drawn".to_string(),
         CardTarget::AccessedCard | CardTarget::Accessed(_) => "the card accessed".to_string(),
+        CardTarget::Drawn { .. } => "the card drawn".to_string(),
     }
 }
 
@@ -445,6 +447,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::ModifyHandSize { side, by, .. } => format!("{} gets {}{} maximum hand size", who(*side), if *by < 0 { "−" } else { "+" }, by.unsigned_abs()),
         Effect::LowerEncounteredIceStrengthTo { to, .. } => format!("the strength of the ice you are encountering is lowered to {to}"),
         Effect::InitiateRun(server) => format!("run {}", describe_server(*server)),
+        Effect::Prevent(Preventable::Damage { kind: Some(kind), or: Some(or), x: true, .. }) => {
+            format!("prevent up to X {} damage or {} damage", format!("{kind:?}").to_lowercase(), format!("{or:?}").to_lowercase())
+        }
         Effect::Prevent(Preventable::Damage { kind, x: true, .. }) => match kind {
             Some(kind) => format!("prevent X {} damage", format!("{kind:?}").to_lowercase()),
             None => "prevent X damage".to_string(),
@@ -549,6 +554,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::SwapThisWithSelectedFromGrip => "swap this card with the chosen card from the grip".to_string(),
         Effect::SwapScoredAgenda { that_agenda: Some(_), .. } => "swap that agenda with an agenda in the Corp's score area".to_string(),
         Effect::SwapScoredAgenda { .. } => "swap an agenda in your score area with an agenda in the Runner's score area".to_string(),
+        Effect::SwapDeckCardWithHq { archives: true, .. } => "swap the card chosen in Archives with the card chosen in HQ".to_string(),
         Effect::SwapDeckCardWithHq { .. } => "swap the card chosen in R&D with the card chosen in HQ".to_string(),
         Effect::InstallFromZoneIgnoringCost { .. } => "install a card, ignoring its cost".to_string(),
         Effect::PromptInstallCorpCard { new_remote: true, .. } => "install a card in a new remote server".to_string(),
@@ -598,6 +604,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::TurnFaceup => "turn it faceup; an event is trashed".to_string(),
         Effect::Score => "score that card, if able".to_string(),
         Effect::ScoreIgnoringAdvancementRequirement => "score that card, whatever its advancement counters".to_string(),
+        Effect::ScoreFromHq => "score that agenda from HQ".to_string(),
         Effect::Breach(server) => format!("breach {}", describe_server(*server)),
         Effect::BreachStartingWith { server, then, .. } => {
             let breach = format!("breach {}, the chosen card first", describe_server(*server));
