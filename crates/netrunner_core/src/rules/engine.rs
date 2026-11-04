@@ -2989,7 +2989,9 @@ fn activate_ability(
         InstallId::RUN_EVENT => run::run_event(state, registry).cloned(),
         // A rig card's abilities, or those of the identity it gains the
         // text of (DJ Fenris's).
-        _ => state.rig_abilities_card(target).cloned(),
+        // …or a condition counter the Runner's event became (On the
+        // Lam's "[interrupt] → [trash]: Prevent up to 3 tags").
+        _ => state.rig_abilities_card(target).cloned().or_else(|| state.runner.conditions.iter().find(|condition| condition.handle == target).map(|condition| condition.card.clone())),
     };
     let runner_active = runner_card.is_some();
     // Neither an identity nor the run's event has an install of its own.

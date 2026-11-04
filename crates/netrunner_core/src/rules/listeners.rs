@@ -856,7 +856,7 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
         let About::Card { install: Some(about), .. } = moment.about else { return false };
         return install.is_some_and(|install| {
             state.runner.rig.iter().any(|card| card.install_id == install && (card.hosted_on_ice == Some(about) || card.hosted_on_rig_card == Some(about)))
-                || state.corp.conditions.iter().any(|condition| condition.handle == install && condition.host == about)
+                || state.conditions().any(|(_, condition)| condition.handle == install && condition.host == about)
         });
     }
     // "Damage from … a piece of cybernetic hardware" (Chrome Parlor): the
@@ -982,7 +982,9 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
                 }
                 None => filter,
             };
-            registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
+            // …and has the subtypes the table gives it (Rebranding Team's
+            // advertisement, Panchatantra's choice).
+            registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, &crate::rules::continuous::with_table_subtypes(state, registry, filter, definition, *install)))
                 && crate::rules::pending_choice::copy_matches(state, &placed(state, filter, listener_card, listening, here), *install)
                 && identity_faction(state, registry, filter, card) != Some(false)
         }

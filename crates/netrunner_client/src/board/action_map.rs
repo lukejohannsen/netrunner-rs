@@ -461,8 +461,9 @@ fn targets_of(action: &PlayerAction, view: &ClientView) -> Vec<Target> {
         // A condition counter has no place on the board: its ability is
         // granted to its host (MCA Informant's "Host resource gains …"), so
         // the host's click offers it.
-        PlayerAction::ActivateAbility { target, .. } if view.corp.conditions.iter().any(|condition| condition.handle == *target) => {
-            view.corp.conditions.iter().filter(|condition| condition.handle == *target).map(|condition| Target::Install(condition.host)).collect()
+        // A Runner's (On the Lam's interrupt) is offered on its resource.
+        PlayerAction::ActivateAbility { target, .. } if view.corp.conditions.iter().chain(view.runner.conditions.iter()).any(|condition| condition.handle == *target) => {
+            view.corp.conditions.iter().chain(view.runner.conditions.iter()).filter(|condition| condition.handle == *target).map(|condition| Target::Install(condition.host)).collect()
         }
         PlayerAction::RezIce { ice: target }
         | PlayerAction::ActivateAbility { target, .. }

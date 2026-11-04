@@ -876,6 +876,16 @@ pub struct RunnerState {
     /// as the host is in the rig. Faceup, and carried whole by the view.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hosted_identities: Vec<HostedIdentity>,
+    /// Condition counters the Runner's events became, each hosted on a
+    /// card (CR 1.13.6d, CR 3.7.1a: On the Lam "on an installed resource",
+    /// Political Graffiti "on an agenda in the Corp's score area").
+    /// `CorpState::conditions`' twin, a list of the Runner's own because a
+    /// counter is its owner's card (CR 10.1.4: trashed into the owner's
+    /// discard pile when it moves): active while its host is on the table
+    /// or in a score area (`rules::active`), and trashed with the host.
+    /// Faceup, so public, and carried whole by the view.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conditions: Vec<HostedCondition>,
     /// The Runner's events played and not yet fully resolved, because a
     /// choice their text parked is still open: "once those abilities are
     /// fully resolved the event is trashed" (CR 3.7.1). Déjà Vu's "from
@@ -2180,6 +2190,24 @@ impl GameState {
     /// lookup** for an `ActivateAbility` on a rig card, so a hosted
     /// Quetzal's break is offered, priced and used through the same
     /// action, index and `ActionSpace` slot as any rig card's.
+    /// Every condition counter on the table, the Corp's then the Runner's,
+    /// with its owner — the one walk for a question about "a condition
+    /// counter with this handle" or "one hosted on this card", so a scan
+    /// of `CorpState::conditions` alone does not miss On the Lam.
+    pub fn conditions(&self) -> impl Iterator<Item = (Side, &HostedCondition)> {
+        self.corp.conditions.iter().map(|condition| (Side::Corp, condition)).chain(self.runner.conditions.iter().map(|condition| (Side::Runner, condition)))
+    }
+
+    /// The condition counter with the handle `id`, either side's.
+    pub fn find_condition(&self, id: InstallId) -> Option<&HostedCondition> {
+        self.conditions().map(|(_, condition)| condition).find(|condition| condition.handle == id)
+    }
+
+    /// `find_condition`, to change it.
+    pub fn find_condition_mut(&mut self, id: InstallId) -> Option<&mut HostedCondition> {
+        self.corp.conditions.iter_mut().chain(self.runner.conditions.iter_mut()).find(|condition| condition.handle == id)
+    }
+
     pub fn rig_abilities_card(&self, id: InstallId) -> Option<&CardId> {
         self.runner
             .hosted_identities

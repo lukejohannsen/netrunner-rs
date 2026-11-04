@@ -354,7 +354,15 @@ pub fn installed_card_id(view: &ClientView, id: &InstallId) -> Option<CardId> {
 /// when it gains one's text (DJ Fenris's, `GameState::rig_abilities_card`),
 /// else its own card.
 pub fn abilities_card_id(view: &ClientView, id: &InstallId) -> Option<CardId> {
-    view.runner.hosted_identities.iter().find(|hosted| hosted.host == *id).map(|hosted| hosted.card.clone()).or_else(|| installed_card_id(view, id))
+    view.runner
+        .hosted_identities
+        .iter()
+        .find(|hosted| hosted.host == *id)
+        .map(|hosted| hosted.card.clone())
+        .or_else(|| installed_card_id(view, id))
+        // A condition counter's own (MCA Informant's, On the Lam's), by its
+        // handle: its ability is offered on its host's menu.
+        .or_else(|| view.corp.conditions.iter().chain(view.runner.conditions.iter()).find(|condition| condition.handle == *id).map(|condition| condition.card.clone()))
 }
 
 /// An agenda in either score area by the handle it kept there — a scored

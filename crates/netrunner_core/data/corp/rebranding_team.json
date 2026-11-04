@@ -1,0 +1,25 @@
+{
+  "id": "rebranding_team",
+  "title": "Rebranding Team",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "continuous": [
+    {
+      "kind": {
+        "HasSubtype": "Advertisement"
+      },
+      "applies_to": {
+        "EveryCard": {
+          "CardType": "Asset"
+        }
+      },
+      "text": "All assets gain advertisement."
+    }
+  ],
+  "triggers": [],
+  "built_from": 9006,
+  "is_playable": true
+}

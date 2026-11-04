@@ -1,0 +1,191 @@
+{
+  "id": "panchatantra",
+  "title": "Panchatantra",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "requirement": "OncePerTurn",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "EncounteredIceGains": {
+                  "subtype": "AP"
+                }
+              },
+              {
+                "EncounteredIceGains": {
+                  "subtype": "Destroyer"
+                }
+              },
+              {
+                "PresentChoice": {
+                  "chooser": "Runner",
+                  "options": [
+                    {
+                      "EncounteredIceGains": {
+                        "subtype": "Observer"
+                      }
+                    },
+                    {
+                      "EncounteredIceGains": {
+                        "subtype": "Tracer"
+                      }
+                    },
+                    {
+                      "EncounteredIceGains": {
+                        "subtype": "Bioroid"
+                      }
+                    },
+                    {
+                      "PresentChoice": {
+                        "chooser": "Runner",
+                        "options": [
+                          {
+                            "EncounteredIceGains": {
+                              "subtype": "Psi"
+                            }
+                          },
+                          {
+                            "EncounteredIceGains": {
+                              "subtype": "Trap"
+                            }
+                          },
+                          {
+                            "EncounteredIceGains": {
+                              "subtype": "Grail"
+                            }
+                          },
+                          {
+                            "PresentChoice": {
+                              "chooser": "Runner",
+                              "options": [
+                                {
+                                  "EncounteredIceGains": {
+                                    "subtype": "NEXT"
+                                  }
+                                },
+                                {
+                                  "EncounteredIceGains": {
+                                    "subtype": "Harmonic"
+                                  }
+                                },
+                                {
+                                  "EncounteredIceGains": {
+                                    "subtype": "Ambush"
+                                  }
+                                },
+                                {
+                                  "PresentChoice": {
+                                    "chooser": "Runner",
+                                    "options": [
+                                      {
+                                        "EncounteredIceGains": {
+                                          "subtype": "Morph"
+                                        }
+                                      },
+                                      {
+                                        "EncounteredIceGains": {
+                                          "subtype": "Mythic"
+                                        }
+                                      },
+                                      {
+                                        "EncounteredIceGains": {
+                                          "subtype": "Advertisement"
+                                        }
+                                      },
+                                      {
+                                        "PresentChoice": {
+                                          "chooser": "Runner",
+                                          "options": [
+                                            {
+                                              "EncounteredIceGains": {
+                                                "subtype": "Deep Net"
+                                              }
+                                            },
+                                            {
+                                              "EncounteredIceGains": {
+                                                "subtype": "Deflector"
+                                              }
+                                            },
+                                            {
+                                              "EncounteredIceGains": {
+                                                "subtype": "Expendable"
+                                              }
+                                            },
+                                            {
+                                              "EncounteredIceGains": {
+                                                "subtype": "Liability"
+                                              }
+                                            }
+                                          ],
+                                          "texts": [
+                                            "choose 1 subtype — Deep Net",
+                                            "choose 1 subtype — Deflector",
+                                            "choose 1 subtype — Expendable",
+                                            "choose 1 subtype — Liability"
+                                          ]
+                                        }
+                                      }
+                                    ],
+                                    "texts": [
+                                      "choose 1 subtype — Morph",
+                                      "choose 1 subtype — Mythic",
+                                      "choose 1 subtype — Advertisement",
+                                      "choose 1 subtype — another"
+                                    ]
+                                  }
+                                }
+                              ],
+                              "texts": [
+                                "choose 1 subtype — NEXT",
+                                "choose 1 subtype — Harmonic",
+                                "choose 1 subtype — Ambush",
+                                "choose 1 subtype — another"
+                              ]
+                            }
+                          }
+                        ],
+                        "texts": [
+                          "choose 1 subtype — Psi",
+                          "choose 1 subtype — Trap",
+                          "choose 1 subtype — Grail",
+                          "choose 1 subtype — another"
+                        ]
+                      }
+                    }
+                  ],
+                  "texts": [
+                    "choose 1 subtype — Observer",
+                    "choose 1 subtype — Tracer",
+                    "choose 1 subtype — Bioroid",
+                    "choose 1 subtype — another"
+                  ]
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "choose 1 subtype — AP",
+              "choose 1 subtype — Destroyer",
+              "choose 1 subtype — another",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Once per turn → When you encounter a piece of ice, you may choose 1 subtype that is not barrier, code gate, or sentry. That ice gains the chosen subtype for the remainder of this run."
+    }
+  ],
+  "built_from": 10008,
+  "is_playable": true
+}

@@ -320,6 +320,14 @@ pub enum ContinuousKind {
     AdvancementRequirement(Number),
     /// The ice gains a subtype it does not print — Chromatophores.
     GainSubtype(IceType),
+    /// Each card the scope reaches has a subtype it does not print (CR
+    /// 2.16.5) — Rebranding Team's "All assets gain **advertisement**",
+    /// read by `CardFilter::HasSubtype` wherever a reader knows the card
+    /// (`continuous::has_subtype`: a trigger's `when`, a selection, the
+    /// turn log's column). Composition didn't work: `GainSubtype` is the
+    /// breaker axis's three ice types (`IceType`), and `HasSubtype` read
+    /// the printed subtypes alone. Held by `validate` to `Scope::EveryCard`.
+    HasSubtype(CardSubtype),
     /// The ice loses a subtype it prints — Changeling's "while Changeling
     /// has an odd number of advancement tokens on it, it gains **sentry**
     /// and loses **barrier**" (with a `GainSubtype` beside it, under the
@@ -830,6 +838,15 @@ pub enum Scope {
     /// 10.1.3), which is an agenda while it is there. `ScoreArea` is the
     /// agenda's own text and could not reach another card's.
     EachAgendaIn(Side),
+    /// Each card matching the filter, wherever it is — Rebranding Team's
+    /// "**All** assets gain advertisement", in HQ, R&D and Archives as
+    /// much as on the table (a subtype is had "at all times, even while
+    /// inactive", CR 2.16.4). Asked about the card itself
+    /// (`continuous::Target::Card`). Composition didn't work: every other
+    /// scope that reaches a Corp card reaches an install, an access or a
+    /// price, and Ad Blitz chooses an advertisement out of HQ. Only
+    /// `HasSubtype` is about it.
+    EveryCard(CardFilter),
     /// A player, named by side — Attini's "**The Runner** cannot spend
     /// credits". Not a card, so it is reached only by a question about a
     /// player that walks both sides' cards (`continuous::Target::Bound`):

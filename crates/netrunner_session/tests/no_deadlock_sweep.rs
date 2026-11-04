@@ -404,6 +404,9 @@ fn assert_cards_are_conserved(state: &GameState, registry: &netrunner_core::card
             .chain(&runner.play_area)
             // A current, in the play area until it is trashed.
             .chain(runner.in_play.iter().map(|played| &played.card))
+            // A condition counter the Runner's event became (On the Lam),
+            // in no other zone.
+            .chain(runner.conditions.iter().map(|condition| &condition.card))
             .chain(runner.rig.iter().map(|c| &c.card))
             // Hosted uninstalled on a rig card (Madani) — in no other zone.
             .chain(runner.rig.iter().flat_map(|c| c.hosted_cards.iter()).filter(|id| !corp_ids.contains_key(&id.0)))
@@ -414,6 +417,14 @@ fn assert_cards_are_conserved(state: &GameState, registry: &netrunner_core::card
             .chain(state.corp.scored_agendas.iter().map(|s| &s.card).filter(|id| !corp_ids.contains_key(&id.0))),
     );
     assert_eq!(runner_cards, deck_tally(runner_deck), "seed {seed} ({matchup}): Runner cards are not conserved");
+    // …and only while its host is where it can host one: on the table or
+    // in the Corp's score area (Political Graffiti).
+    for condition in &runner.conditions {
+        let hosted = corp.installed.iter().any(|card| card.install_id == condition.host)
+            || runner.rig.iter().any(|card| card.install_id == condition.host)
+            || corp.scored_agendas.iter().any(|scored| scored.install_id == condition.host);
+        assert!(hosted, "seed {seed} ({matchup}): {} is a condition on a host no longer in play", condition.card.0);
+    }
 }
 
 /// Asserts the invariant for one view.
@@ -804,6 +815,7 @@ fn visible_card_ids(view: &netrunner_core::view::ClientView) -> std::collections
     visible.extend(view.runner.play_area.iter().map(|c| c.0.as_str()));
     // A current, faceup in the play area until it is trashed.
     visible.extend(view.runner.in_play.iter().map(|played| played.card.0.as_str()));
+    visible.extend(view.runner.conditions.iter().map(|condition| condition.card.0.as_str()));
     visible.extend(view.runner.rig.iter().map(|c| c.card.0.as_str()));
     // Hosted faceup on a rig card (Madani's programs, Detente's HQ cards):
     // as public as the rig, whichever side's card it is.

@@ -477,7 +477,7 @@ fn acting_rig_card<'s>(state: &'s GameState, ctx: &ResolutionContext<'_>) -> Opt
 /// The install the acting condition counter is hosted on, and whose it is
 /// (`CardTarget::ConditionHost`).
 fn condition_host(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<(Side, InstallId)> {
-    let condition = ctx.acting_install.and_then(|handle| state.corp.conditions.iter().find(|condition| condition.handle == handle))?;
+    let condition = ctx.acting_install.and_then(|handle| state.find_condition(handle))?;
     if state.find_corp_install(condition.host).is_some() {
         Some((Side::Corp, condition.host))
     } else {
@@ -987,8 +987,11 @@ pub fn evaluate_effect(
             let Some(runner) = state.runner.scored_agendas.iter().rposition(|scored| stolen.contains(&scored.card) && scored.as_agenda.is_none()) else {
                 return Ok(Vec::new());
             };
+            // A condition counter on the Corp's agenda moves with it to
+            // another zone, and is trashed (CR 10.1.4): Political Graffiti.
+            let left = state.corp.scored_agendas[corp].install_id;
             std::mem::swap(&mut state.corp.scored_agendas[corp], &mut state.runner.scored_agendas[runner]);
-            Ok(Vec::new())
+            Ok(trash_conditions_on(state, left))
         }
 
         Effect::SwapScoredAgenda { yours: None, that_agenda: None } => {
@@ -1014,7 +1017,7 @@ pub fn evaluate_effect(
             let corp = state.corp.scored_agendas.iter().position(|scored| scored.install_id == *yours).ok_or(RulesError::MissingActingCardContext)?;
             let runner = state.runner.scored_agendas.iter().position(|scored| scored.card == theirs).ok_or(RulesError::MissingActingCardContext)?;
             std::mem::swap(&mut state.corp.scored_agendas[corp], &mut state.runner.scored_agendas[runner]);
-            Ok(Vec::new())
+            Ok(trash_conditions_on(state, *yours))
         }
 
         Effect::SwapInstalledIce(a, b) => {
@@ -1989,6 +1992,16 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
         Effect::GainIceSubtype { ice: crate::dsl::StrengthOf::EachIce | crate::dsl::StrengthOf::ProtectingThisServer | crate::dsl::StrengthOf::EachIcebreaker, .. } => Err(RulesError::UnresolvedCardTarget),
+        // "That ice gains the chosen subtype for the remainder of this run"
+        // (Panchatantra): a subtype outside the three, until the run ends.
+        Effect::EncounteredIceGains { subtype } => {
+            let run = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).ok_or(RulesError::NotInEncounter)?;
+            let install = run.ice.get(run.position).map(|ice| ice.install_id).ok_or(RulesError::NotInEncounter)?;
+            let source = acting_card.cloned().ok_or(RulesError::MissingActingCardContext)?;
+            let until = lingering::until(state, crate::dsl::EffectDuration::Run, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
+            state.lingering.push(LingeringEffect { what: Lingering::HasSubtype(*subtype), on: On::Install(install), until, source });
+            Ok(Vec::new())
+        }
         // "That ice gains … until the end of the turn" (Tinkering): the ice
         // chosen, faceup or not, credited to the card whose text it is.
         Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, for_the_turn, for_the_next_run, .. } if *for_the_turn || *for_the_next_run => {
@@ -2394,7 +2407,40 @@ pub fn evaluate_effect(
         // hosted on the install chosen. Nothing happens when the host has
         // left the table while the choice was parked: the operation stays
         // in the play area until the Corp's next turn, as a lockdown would.
-        Effect::HostThisAsCondition { condition, host } => {
+        // A Runner's event (On the Lam, Political Graffiti): out of the
+        // play area it waits in while its play is parked, or out of the
+        // heap the engine filed it in as its play resolved (a run event
+        // hosted when its run succeeds), into `RunnerState::conditions`
+        // with a handle of its own. On a rig card, a Corp install, or an
+        // agenda in the Corp's score area.
+        Effect::HostThisAsCondition { host, event: Some(event), .. } => {
+            if registry.get(event).is_none_or(|definition| definition.side != Side::Runner) {
+                return Ok(Vec::new());
+            }
+            let Some(host_card) = state
+                .find_corp_install(*host)
+                .map(|c| c.card.clone())
+                .or_else(|| state.find_rig_install(*host).map(|c| c.card.clone()))
+                .or_else(|| state.corp.find_scored(*host).map(|scored| scored.card.clone()))
+            else {
+                return Ok(Vec::new());
+            };
+            let card = if let Some(position) = state.runner.play_area.iter().rposition(|held| held == event) {
+                state.runner.play_area.remove(position)
+            } else if let Some(position) = state.runner.heap.iter().rposition(|held| held == event) {
+                state.runner.heap.remove(position)
+            } else {
+                return Ok(Vec::new());
+            };
+            if crate::rules::continuous::cannot_host(state, registry, *host) {
+                state.runner.heap.push(card);
+                return Ok(Vec::new());
+            }
+            let handle = state.allocate_install_id();
+            state.runner.conditions.push(crate::rules::state::HostedCondition { card: card.clone(), handle, host: *host, counters: 0 });
+            Ok(vec![GameEvent::CardHosted { card, host: Some(host_card) }])
+        }
+        Effect::HostThisAsCondition { condition, host, .. } => {
             // On a Corp install (Eavesdrop's ice) or a Runner's (MCA
             // Informant's connection resource).
             let Some(host_card) = state.find_corp_install(*host).map(|c| c.card.clone()).or_else(|| state.find_rig_install(*host).map(|c| c.card.clone())) else {
@@ -4658,7 +4704,7 @@ pub(crate) fn modify_counters(
         &mut state.runner.identity_counters
     } else if let Some(run) = state.active_run.as_mut().filter(|run| acting_is_run_event(run, ctx)) {
         &mut run.event_counters
-    } else if let Some(condition) = ctx.acting_install.and_then(|install| state.corp.conditions.iter_mut().find(|condition| condition.handle == install)) {
+    } else if let Some(condition) = ctx.acting_install.and_then(|install| state.find_condition_mut(install)) {
         // A condition counter's own (Rover Algorithm's power counters).
         &mut condition.counters
     } else if let Some(played) = ctx.acting_install.and_then(|install| played_mut(state, install)) {
@@ -4876,12 +4922,8 @@ pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, registry: 
     let mut events = Vec::new();
     // A condition counter goes with its host (CR 1.13.6d), as it does from
     // a Corp install (`cascade_trash_hosted_programs`): MCA Informant's
-    // connection resource.
-    while let Some(position) = state.corp.conditions.iter().position(|condition| condition.host == host) {
-        let removed = state.corp.conditions.remove(position);
-        crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(removed.card.clone()));
-        events.push(GameEvent::CardTrashed { side: Side::Corp, card: removed.card, from: crate::dsl::TrashedFrom::Installed, by: None, install: None, damage: None });
-    }
+    // connection resource, On the Lam's.
+    events.extend(trash_conditions_on(state, host));
     // Cards hosted *uninstalled* on the host (Madani's programs, Detente's
     // Corp cards) are trashed with it too — they were in no other zone,
     // and they left the rig inside `removed`, which is why this takes the
@@ -4908,12 +4950,22 @@ pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, registry: 
 /// Trojan with them but did leave Transparency Initiative in play on an
 /// agenda no longer installed (seed 134 of the 256-seed view sweep, Hostile
 /// Bid against Street Gallery).
+///
+/// Either side's: a Runner's condition (On the Lam, Political Graffiti)
+/// goes to the heap, its owner's discard pile (CR 10.1.4). A scored
+/// agenda leaving the Corp's score area — forfeited, or swapped into the
+/// Runner's — takes Political Graffiti with it the same way.
 pub(crate) fn trash_conditions_on(state: &mut GameState, host: InstallId) -> Vec<GameEvent> {
     let mut events = Vec::new();
     while let Some(position) = state.corp.conditions.iter().position(|condition| condition.host == host) {
         let removed = state.corp.conditions.remove(position);
         crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(removed.card.clone()));
         events.push(GameEvent::CardTrashed { side: Side::Corp, card: removed.card, from: crate::dsl::TrashedFrom::Installed, by: None, install: None, damage: None });
+    }
+    while let Some(position) = state.runner.conditions.iter().position(|condition| condition.host == host) {
+        let removed = state.runner.conditions.remove(position);
+        state.runner.heap.push(removed.card.clone());
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card: removed.card, from: crate::dsl::TrashedFrom::Installed, by: None, install: None, damage: None });
     }
     events
 }
@@ -5064,7 +5116,10 @@ fn forfeit_at(state: &mut GameState, registry: &CardRegistry, side: Side, positi
     // A stolen agenda is still the Corp's card, so it joins the Corp's
     // removed cards whoever forfeited it.
     state.corp.removed_from_game.push(forfeited.card.clone());
-    vec![GameEvent::AgendaForfeited { side, card: forfeited.card.clone() }, GameEvent::CardRemovedFromGame { side: Side::Corp, card: forfeited.card }]
+    let mut events = vec![GameEvent::AgendaForfeited { side, card: forfeited.card.clone() }, GameEvent::CardRemovedFromGame { side: Side::Corp, card: forfeited.card }];
+    // What it hosted goes with it (CR 10.1.4): Political Graffiti.
+    events.extend(trash_conditions_on(state, forfeited.install_id));
+    events
 }
 
 /// Takes a Corp operation that is resolving out of Archives, where
@@ -5164,6 +5219,13 @@ pub(crate) fn trash_this_card(state: &mut GameState, registry: &CardRegistry, ct
         let removed = state.corp.conditions.remove(position);
         crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(removed.card.clone()));
         return Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card: removed.card, from: crate::dsl::TrashedFrom::Installed, by, install: None, damage: None }]);
+    }
+    // …or a Runner's (On the Lam's "[trash]:", Political Graffiti's "trash
+    // this counter"), into the heap.
+    if let Some(position) = ctx.acting_install.and_then(|handle| state.runner.conditions.iter().position(|condition| condition.handle == handle)) {
+        let removed = state.runner.conditions.remove(position);
+        state.runner.heap.push(removed.card.clone());
+        return Ok(vec![GameEvent::CardTrashed { side: Side::Runner, card: removed.card, from: crate::dsl::TrashedFrom::Installed, by, install: None, damage: None }]);
     }
     if ctx.acting_install.is_some() && acting_rig_position(state, ctx).is_none() {
         // See the matching guard below the rig arm.
@@ -6491,7 +6553,10 @@ pub fn check_requirement(
         }
         EffectRequirement::EncounteredIce(filter) => {
             let encountered = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position));
-            let admitted = encountered.and_then(|ice| registry.get(&ice.card_id)).is_some_and(|definition| card_matches_filter(definition, filter));
+            // The subtypes it has by the table, too: Panchatantra's named one.
+            let admitted = encountered.is_some_and(|ice| {
+                registry.get(&ice.card_id).is_some_and(|definition| card_matches_filter(definition, &crate::rules::continuous::with_table_subtypes(state, registry, filter, definition, Some(ice.install_id))))
+            });
             if admitted { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::WasFirstAdvancementThisCard => {
@@ -6650,7 +6715,7 @@ pub(crate) fn counters_of(state: &GameState, ctx: &ResolutionContext<'_>) -> Opt
         .or_else(|| acting_is_runner_identity(state, ctx).then_some(state.runner.identity_counters))
         .or_else(|| state.active_run.as_ref().filter(|run| acting_is_run_event(run, ctx)).map(|run| run.event_counters))
         .or_else(|| ended_run_event_counters(state, ctx))
-        .or_else(|| ctx.acting_install.and_then(|install| state.corp.conditions.iter().find(|condition| condition.handle == install)).map(|condition| condition.counters))
+        .or_else(|| ctx.acting_install.and_then(|install| state.find_condition(install)).map(|condition| condition.counters))
         .or_else(|| ctx.acting_install.and_then(|install| played(state, install)).map(|played| played.counters))
         .or_else(|| remembered(state, ctx).map(|known| known.counters))
 }

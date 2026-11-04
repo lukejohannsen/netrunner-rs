@@ -131,6 +131,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         identity_counters: _,   // drawn: hud::identity_facts / identity_chip (Ele "Smoke" Scovak's recurring credit)
         once_per_turn_used: _,  // engine's: as the Corp's
         identity: _,            // drawn: the avatar and its sheet, the terminal's identity line
+        conditions: _,          // drawn: hud::in_effect ("hosted on …: …"), both clients, and its ability on its host's menu (action_map, actions::abilities_card_id): the Runner's condition counters (On the Lam, Political Graffiti)
     } = runner;
 
     for ServerView {

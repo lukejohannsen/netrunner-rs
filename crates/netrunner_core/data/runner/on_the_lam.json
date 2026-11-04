@@ -1,0 +1,71 @@
+{
+  "id": "on_the_lam",
+  "title": "On the Lam",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "play_requirement": {
+    "ZoneHasAtLeast": {
+      "zone": "OwnInstalled",
+      "count": 1,
+      "filter": {
+        "CardType": "Resource"
+      }
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnInstalled",
+            "filter": {
+              "CardType": "Resource"
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "HostThisAsCondition": {
+                "condition": 0,
+                "host": 0
+              }
+            }
+          }
+        }
+      ],
+      "text": "Host this event on an installed resource as a condition counter"
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → [trash]: Prevent up to 3 tags or up to 3 damage. — tags",
+      "cost": "TrashSelf",
+      "effect": {
+        "Prevent": {
+          "Tags": 3
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → [trash]: Prevent up to 3 tags or up to 3 damage. — damage",
+      "cost": "TrashSelf",
+      "effect": {
+        "Prevent": {
+          "Damage": {
+            "kind": null,
+            "up_to": 3
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 11082,
+  "is_playable": true
+}

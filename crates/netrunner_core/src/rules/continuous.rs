@@ -258,7 +258,7 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
             let Some(install) = source.install else { return false };
             // A condition counter's host (Rover Algorithm's "Host ice has
             // +1 strength"), or a rig card's.
-            state.corp.conditions.iter().any(|condition| condition.handle == install && condition.host == host)
+            state.conditions().any(|(_, condition)| condition.handle == install && condition.host == host)
                 || state
                     .runner
                     .rig
@@ -335,8 +335,39 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
         (Scope::Runs(kind), Target::Run { server, .. }) => kind.admits(*server),
         (Scope::RunsByTheBasicAction, Target::Run { basic, .. }) => *basic,
         (Scope::Player(side), Target::Bound(bound)) => side == bound,
+        (Scope::EveryCard(filter), target) => target.card().is_some_and(|card| card_matches_filter(card, filter)),
         _ => false,
     }
+}
+
+/// **The one question of a subtype a card has by the table** (CR 2.16.5):
+/// whether `card` — the copy `install`, where it is one — has `subtype`
+/// although it does not print it: the table gives it one
+/// (`ContinuousKind::HasSubtype`, Rebranding Team's "all assets gain
+/// **advertisement**"), or a choice still holding gave the install one
+/// (`lingering::Lingering::HasSubtype`, Panchatantra's). A reader that
+/// knows the card writes the answer into its filter
+/// (`CardFilter::with_subtypes`) before the definition is asked: a
+/// trigger's `when`, a selection, an encountered ice's requirement and the
+/// turn log's columns.
+pub fn has_subtype(state: &GameState, registry: &CardRegistry, card: &CardDefinition, install: Option<InstallId>, subtype: crate::dsl::CardSubtype) -> bool {
+    if card.subtypes.contains(&subtype) {
+        return true;
+    }
+    if install.is_some_and(|install| crate::rules::lingering::has_named_subtype(state, install, subtype)) {
+        return true;
+    }
+    any(state, registry, Target::Card(card), |kind| *kind == ContinuousKind::HasSubtype(subtype))
+}
+
+/// `filter` as the table has it of `card` (the copy `install`): every
+/// `HasSubtype` the card has by the table written over (`has_subtype`).
+/// The filter itself, unchanged and uncloned, where it names no subtype.
+pub fn with_table_subtypes<'f>(state: &GameState, registry: &CardRegistry, filter: &'f crate::dsl::CardFilter, card: &CardDefinition, install: Option<InstallId>) -> std::borrow::Cow<'f, crate::dsl::CardFilter> {
+    if !filter.mentions_subtype() {
+        return std::borrow::Cow::Borrowed(filter);
+    }
+    std::borrow::Cow::Owned(filter.clone().with_subtypes(&|subtype| has_subtype(state, registry, card, install, subtype)))
 }
 
 /// The sum of every applying effect `pick` reads a number off.

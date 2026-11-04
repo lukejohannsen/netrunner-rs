@@ -450,7 +450,7 @@ impl ActionSpace {
                 if let Some(slot) = corp_ability_slot(state, *target) {
                     Some(ACTIVATE_ABILITY_CORP_START + slot * MAX_ABILITIES_PER_CARD + ability_index)
                 } else {
-                    let slot = bounded_position_rig(&state.runner.rig, *target, RUN_EVENT_ABILITY_SLOT)?;
+                    let slot = runner_ability_slot(state, *target)?;
                     Some(ACTIVATE_ABILITY_RUNNER_START + slot * MAX_ABILITIES_PER_CARD + ability_index)
                 }
             }
@@ -621,7 +621,7 @@ impl ActionSpace {
             } else if slot == RUN_EVENT_ABILITY_SLOT {
                 state.active_run.as_ref().and_then(|run| run.initiated_by.as_ref()).map(|_| InstallId::RUN_EVENT)?
             } else {
-                state.runner.rig.get(slot)?.install_id
+                runner_ability_target(state, slot)?
             };
             return Some(PlayerAction::ActivateAbility { target, ability_index });
         }
@@ -922,6 +922,20 @@ fn bounded_position_installed(
 
 /// The rig-side mirror of `bounded_position_installed`, and the same fix:
 /// two copies of one Resource are now two distinct `TrashResource` slots.
+/// The Runner's ability-addressable cards, in slot order: the rig, then
+/// the condition counters the Runner's events became (On the Lam) — after
+/// the rig, so no rig card's slot moved when they joined. The run's event
+/// and the identity keep the last two slots.
+fn runner_ability_slot(state: &GameState, id: InstallId) -> Option<usize> {
+    let position = state.runner.rig.iter().map(|c| c.install_id).chain(state.runner.conditions.iter().map(|condition| condition.handle)).position(|candidate| candidate == id)?;
+    (position < RUN_EVENT_ABILITY_SLOT).then_some(position)
+}
+
+/// `runner_ability_slot`'s inverse.
+fn runner_ability_target(state: &GameState, slot: usize) -> Option<InstallId> {
+    state.runner.rig.iter().map(|c| c.install_id).chain(state.runner.conditions.iter().map(|condition| condition.handle)).nth(slot)
+}
+
 fn bounded_position_rig(
     rig: &[crate::rules::state::InstalledRunnerCard],
     id: InstallId,

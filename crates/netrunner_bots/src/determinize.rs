@@ -345,6 +345,7 @@ pub(crate) fn visible_cards(view: &ClientView) -> Vec<CardId> {
         ids.extend(cards.iter().cloned());
     }
     ids.extend(view.runner.play_area.iter().cloned());
+    ids.extend(view.runner.conditions.iter().map(|condition| condition.card.clone()));
     ids.extend(view.runner.scored_agendas.iter().map(|scored| scored.card.clone()));
     for rig_card in &view.runner.rig {
         ids.push(rig_card.card.clone());
@@ -416,6 +417,7 @@ fn cards_in_game(view: &ClientView, side: Side, registry: &CardRegistry) -> usiz
                 + view.runner.host_set_aside_count
                 + view.runner.installed_facedown_count
                 + view.runner.play_area.len()
+                + view.runner.conditions.len()
                 + view.runner.rig.iter().map(|card| 1 + card.hosted_cards.len() + card.hosted_unseen).sum::<usize>()
                 + in_corp_score_area
         }
@@ -1148,6 +1150,8 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         hosted_identities: view.runner.hosted_identities.clone(),
         play_area: view.runner.play_area.clone(),
         in_play: view.runner.in_play.clone(),
+        // Faceup on their hosts, and copied whole.
+        conditions: view.runner.conditions.clone(),
         once_per_turn_used: view.runner.once_per_turn_used.iter().cloned().collect(),
         servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
         servers_run_successfully: view.runner.servers_run_successfully.clone(),
@@ -1588,6 +1592,7 @@ mod tests {
                 hosted_identities: Vec::new(),
                 play_area: Vec::new(),
                 in_play: Vec::new(),
+                conditions: Vec::new(),
                 heap: Vec::new(),
                 once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), servers_run_successfully: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false, identity_counters: 0,
             },

@@ -232,6 +232,15 @@ pub enum Lingering {
     /// all see it. Lingering rather than continuous: the subtype was
     /// *chosen*, once, and a declared effect has nowhere to keep a choice.
     GainSubtype(crate::dsl::IceType),
+    /// A piece of ice has a subtype outside the breaker axis's three on top
+    /// of what it prints — Panchatantra's "choose 1 subtype that is not
+    /// barrier, code gate, or sentry. That ice gains the chosen subtype
+    /// for the remainder of this run" (`Effect::EncounteredIceGains`),
+    /// read by `CardFilter::HasSubtype` through `continuous::has_subtype`,
+    /// so Sharpshooter's "destroyer subroutines" sees it. Beside
+    /// `GainSubtype` because that one is an `IceType`, which `ice_is`
+    /// reads and this is not.
+    HasSubtype(crate::dsl::CardSubtype),
     /// The Runner's mark (CR 10.11): a server designated by "identify your
     /// mark" (`Effect::IdentifyMark`), "treated as a lingering effect that
     /// expires at the end of the turn" (10.11.4), so it is one — about the
@@ -476,7 +485,7 @@ pub fn strength(state: &GameState, on: InstallId) -> i32 {
         .filter(|effect| effect.on == On::Install(on) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::Prevent(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::Memory(_) | Lingering::AdditionalCost { .. } => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::Prevent(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::HasSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::Memory(_) | Lingering::AdditionalCost { .. } => 0,
         })
         .sum()
 }
@@ -545,7 +554,7 @@ pub fn ice_strength_terms(state: &GameState, on: InstallId) -> impl Iterator<Ite
         .filter(move |effect| (effect.on == On::Install(on) || effect.on == On::EachIce || server.is_some_and(|server| effect.on == On::Server(server))) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::Prevent(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::Memory(_) | Lingering::AdditionalCost { .. } => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::Prevent(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::HasSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::Memory(_) | Lingering::AdditionalCost { .. } => 0,
         })
 }
 
@@ -558,7 +567,7 @@ pub fn ice_rez_cost(state: &GameState) -> i32 {
         .filter(|effect| effect.on == On::EachIce && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::RezCost(delta) => delta,
-            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::Prevent(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::Memory(_) | Lingering::AdditionalCost { .. } => 0,
+            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::Prevent(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::HasSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::Memory(_) | Lingering::AdditionalCost { .. } => 0,
         })
         .sum()
 }
@@ -568,6 +577,12 @@ pub fn ice_rez_cost(state: &GameState) -> i32 {
 /// table.
 pub fn gains_subtype(state: &GameState, on: InstallId, subtype: crate::dsl::IceType) -> bool {
     gained(&state.lingering, on, subtype, |effect| effect.holds(state))
+}
+
+/// Whether a lingering effect that still holds gives the ice `on` the
+/// subtype `subtype` (`Lingering::HasSubtype`, Panchatantra's).
+pub fn has_named_subtype(state: &GameState, on: InstallId, subtype: crate::dsl::CardSubtype) -> bool {
+    state.lingering.iter().any(|effect| effect.what == Lingering::HasSubtype(subtype) && effect.on == On::Install(on) && effect.holds(state))
 }
 
 /// [`gains_subtype`] over a list already filtered to what holds — the one a

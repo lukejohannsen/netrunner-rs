@@ -325,7 +325,11 @@ pub fn eligible_positions(
                 }
                 None => filter,
             };
-            registry.get(id).is_some_and(|card| card_matches_filter(card, filter)) && instance_matches_filter(state, registry, chooser, zone, *position, filter, source)
+            // …and has the subtypes the table gives it: Ad Blitz's
+            // advertisement in HQ under Rebranding Team.
+            let install = zone_install_ids(state, chooser, zone).and_then(|installs| installs.get(*position).copied());
+            registry.get(id).is_some_and(|card| card_matches_filter(card, &crate::rules::continuous::with_table_subtypes(state, registry, filter, card, install)))
+                && instance_matches_filter(state, registry, chooser, zone, *position, filter, source)
         })
         .map(|(position, _)| position)
         .collect()
@@ -2046,14 +2050,16 @@ pub(crate) fn resolve_confirm_card_selection(
             }),
             // The condition being played is the parking card's handle in
             // the play area; its host is the install chosen.
-            (Effect::HostThisAsCondition { .. }, _, [chosen, ..]) => source_install.map(|this| Effect::HostThisAsCondition { condition: this, host: *chosen }),
+            // A Runner's event has no handle: its card is written in
+            // instead (`Effect::HostThisAsCondition::event`).
+            (Effect::HostThisAsCondition { .. }, _, [chosen, ..]) => hosting_this(source_install, source_card.as_ref(), *chosen),
             // …wherever it stands in the sentence: Transparency
             // Initiative's "Turn an agenda faceup and install Transparency
             // Initiative on that agenda" hosts after it turns.
             (Effect::Sequence(mut effects), _, [chosen, ..]) if effects.iter().any(|effect| matches!(effect, Effect::HostThisAsCondition { .. })) => source_install.map(|this| {
                 for effect in &mut effects {
                     match effect {
-                        Effect::HostThisAsCondition { .. } => *effect = Effect::HostThisAsCondition { condition: this, host: *chosen },
+                        Effect::HostThisAsCondition { .. } => *effect = Effect::HostThisAsCondition { condition: this, host: *chosen, event: None },
                         // Oversight AI's "Rez a piece of ice, ignoring all
                         // costs, and install Oversight AI on that ice": the
                         // rez is of the same install.
@@ -2134,6 +2140,29 @@ pub(crate) fn resolve_confirm_card_selection(
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
     }
     Ok(events)
+}
+
+/// `HostThisAsCondition` in an install's `if_installed` rider, written as
+/// the parking operation (`source_install`, its handle in the play area)
+/// hosted on the card that landed, through a `Sequence`.
+fn hosting_on_landed(rider: Effect, source_install: Option<InstallId>, landed: InstallId) -> Effect {
+    match rider {
+        Effect::HostThisAsCondition { .. } => match source_install {
+            Some(this) => Effect::HostThisAsCondition { condition: this, host: landed, event: None },
+            None => Effect::Sequence(Vec::new()),
+        },
+        Effect::Sequence(effects) => Effect::Sequence(effects.into_iter().map(|effect| hosting_on_landed(effect, source_install, landed)).collect()),
+        other => other,
+    }
+}
+
+/// The condition being played, hosted on `host`: by its handle in the
+/// Corp's play area, or — a Runner's event, which has none — by its card.
+fn hosting_this(source_install: Option<InstallId>, source_card: Option<&CardId>, host: InstallId) -> Option<Effect> {
+    match source_install {
+        Some(this) => Some(Effect::HostThisAsCondition { condition: this, host, event: None }),
+        None => source_card.map(|card| Effect::HostThisAsCondition { condition: InstallId::PLACEHOLDER, host, event: Some(card.clone()) }),
+    }
 }
 
 /// Resolves `PlayerAction::ChooseServerForPendingDecision`.
@@ -2298,7 +2327,11 @@ fn install_parked(
     if let (Some(rider), Some(install)) = (&pending_install.if_installed, landed) {
         let mut ctx = ability::ResolutionContext::for_parked(Some(install), Some(&card_id));
         ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
-        events.extend(ability::evaluate_effect(state, rider, &mut ctx, registry)?);
+        // Casting Call's "install 1 agenda from HQ faceup and host this
+        // operation on that agenda": the operation is the parking card,
+        // the host the card that landed — only this site knows both.
+        let rider = hosting_on_landed((**rider).clone(), source_install, install);
+        events.extend(ability::evaluate_effect(state, &rider, &mut ctx, registry)?);
     }
     // "Install and rez" (Reanimation Protocol): the rest of the total
     // off the rez, and the rider as the card rezzed if it was.

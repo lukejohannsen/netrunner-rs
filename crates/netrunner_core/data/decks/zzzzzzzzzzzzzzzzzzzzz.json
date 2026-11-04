@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzzzzzzzzz",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Andromeda: Dispossessed Ristie, who draws a starting hand of nine. Zyrian's list, its identity swapped. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words, Stage 5. One Fisk Investment Seminar became a Kraken, which has the Corp trash ice after a steal. Engine words Stage 27 (FFG): an Independent Thinking for its Fisk Investment Seminar, which four other decks keep.",
+  "description": "Not a published list: built so the sweeps reach Andromeda: Dispossessed Ristie, who draws a starting hand of nine. Zyrian's list, its identity swapped. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words, Stage 5. One Fisk Investment Seminar became a Kraken, which has the Corp trash ice after a steal. Engine words Stage 27 (FFG): an Independent Thinking for its Fisk Investment Seminar, which four other decks keep. Engine words Stage 29 (FFG): an On the Lam for one of its two Drive By, which three other decks keep.",
   "style": [
     "pressure"
   ],
@@ -63,7 +63,7 @@
     },
     {
       "card": "drive_by",
-      "count": 2
+      "count": 1
     },
     {
       "card": "forger",
@@ -151,6 +151,10 @@
     },
     {
       "card": "independent_thinking",
+      "count": 1
+    },
+    {
+      "card": "on_the_lam",
       "count": 1
     }
   ]

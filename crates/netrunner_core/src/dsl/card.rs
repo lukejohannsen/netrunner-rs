@@ -2355,6 +2355,11 @@ impl CardDefinition {
                 }
                 (ContinuousKind::GainSubtype(_), Scope::This | Scope::Host | Scope::Ice(_)) => {}
                 (ContinuousKind::GainSubtype(_), _) => return misfit("GainSubtype", "an ice subtype is gained by ice: this card, its host, or each piece"),
+                // Rebranding Team's "All assets gain advertisement": each
+                // card the filter admits, wherever it is.
+                (ContinuousKind::HasSubtype(_), Scope::EveryCard(_)) => {}
+                (ContinuousKind::HasSubtype(_), _) => return misfit("HasSubtype", "a subtype the table gives is given to each card a filter admits, wherever it is"),
+                (_, Scope::EveryCard(_)) => return misfit("EveryCard", "only a subtype is given to every card wherever it is"),
                 (ContinuousKind::LoseSubtype(IceType::Other), _) => {
                     return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a card losing it"));
                 }
@@ -2413,6 +2418,10 @@ impl CardDefinition {
                 // counter, it is worth 1 more": in either score area (`This`).
                 (ContinuousKind::AgendaPoints(_), Scope::ScoreArea(_) | Scope::This) if self.card_type == CardType::Agenda => {}
                 (ContinuousKind::AgendaPoints(_), Scope::EachAgendaIn(_)) => {}
+                // A condition counter's word about the agenda it is hosted
+                // on (Political Graffiti's "Host agenda is worth 1 less
+                // agenda point"), in the Corp's score area.
+                (ContinuousKind::AgendaPoints(_), Scope::Host) if self.becomes_a_condition() => {}
                 (ContinuousKind::AgendaPoints(_), _) => {
                     return misfit("AgendaPoints", "an agenda's points change in a score area, said by the agenda of itself (`ScoreArea`, or `This` for either)");
                 }

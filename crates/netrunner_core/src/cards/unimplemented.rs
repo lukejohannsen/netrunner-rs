@@ -150,7 +150,6 @@ pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Martial Law* (`martial_law`): tranche F5 of the FFG plan.
 pub(crate) const ML_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("on_the_lam", "On the Lam"),
     ("baba_yaga", "Baba Yaga"),
 ];
 
@@ -171,7 +170,6 @@ pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Kala Ghoda* (`kala_ghoda`): tranche F6 of the FFG plan.
 pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("maya", "Maya"),
-    ("panchatantra", "Panchatantra"),
 ];
 
 /// *Business First* (`business_first`): tranche F6 of the FFG plan.
@@ -181,7 +179,6 @@ pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Democracy and Dogma* (`democracy_and_dogma`): tranche F6 of the FFG plan.
 pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("political_graffiti", "Political Graffiti"),
 ];
 
 /// *Salsette Island* (`salsette_island`): tranche F6 of the FFG plan.
@@ -205,7 +202,6 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.
 pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("rebranding_team", "Rebranding Team"),
     ("media_blitz", "Media Blitz"),
     ("surveillance_sweep", "Surveillance Sweep"),
     ("apex_invasive_predator", "Apex: Invasive Predator"),
@@ -239,7 +235,6 @@ pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const OH_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("film_critic", "Film Critic"),
     ("an_offer_you_cant_refuse", "An Offer You Can’t Refuse"),
-    ("casting_call", "Casting Call"),
 ];
 
 /// *The Universe of Tomorrow* (`the_universe_of_tomorrow`): tranche F7 of the FFG plan.

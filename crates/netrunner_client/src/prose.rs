@@ -732,6 +732,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             netrunner_core::dsl::StrengthOf::ProtectingThisServer => format!("each piece of ice protecting this server gains {}", crate::board::facts::ice_type_words(&[*subtype])),
             netrunner_core::dsl::StrengthOf::EachIcebreaker => format!("each icebreaker gains {}", crate::board::facts::ice_type_words(&[*subtype])),
         },
+        Effect::EncounteredIceGains { subtype } => {
+            format!("the ice you are encountering gains {} for the remainder of this run", subtype.printed().to_lowercase())
+        }
         Effect::LookAtTopOfDeck { deck, count } => {
             format!("look at the top {} of {}", plural(*count, "card", "cards"), if *deck == Side::Corp { "R&D" } else { "the stack" })
         }
@@ -1172,6 +1175,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         }),
         Scope::Trashing(filter) => format!("a resource the Corp trashes with the basic action ({})", lower(format!("{filter:?}"))),
         Scope::Player(side) => format!("the {side:?}"),
+        Scope::EveryCard(filter) => format!("every card, wherever it is ({})", lower(format!("{filter:?}"))),
     };
     let signed = |number: &Number| {
         let each = if number.per < 0 { format!("−{}", number.per.unsigned_abs()) } else { format!("+{}", number.per) };
@@ -1221,6 +1225,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::AgendaPoints(number) => format!("is worth {} agenda points", signed(number)),
         ContinuousKind::AdvancementRequirement(number) => format!("gets {} advancement requirement", signed(number)),
         ContinuousKind::GainSubtype(subtype) => format!("gains {}", lower(format!("{subtype:?}"))),
+        ContinuousKind::HasSubtype(subtype) => format!("gains {}", subtype.printed().to_lowercase()),
         ContinuousKind::LoseSubtype(subtype) => format!("loses {}", lower(format!("{subtype:?}"))),
         ContinuousKind::BoostsLast(crate_duration) => format!("keeps its strength boosts for the rest of the {}", if matches!(crate_duration, netrunner_core::dsl::EffectDuration::Turn) { "turn" } else { "run" }),
         ContinuousKind::RevealedWhileAccessed => "is revealed while it is accessed".to_string(),

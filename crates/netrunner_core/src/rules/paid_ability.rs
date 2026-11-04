@@ -366,6 +366,9 @@ pub(crate) fn active_cards_of(state: &GameState, side: Side) -> Vec<(InstallId, 
             .iter()
             .map(|c| (c.install_id, state.rig_abilities_card(c.install_id).unwrap_or(&c.card).clone()))
             .chain(state.runner.identity.iter().map(|identity| (InstallId::RUNNER_IDENTITY, identity.clone())))
+            // A condition counter the Runner's event became, by its handle
+            // (On the Lam's interrupt).
+            .chain(state.runner.conditions.iter().map(|condition| (condition.handle, condition.card.clone())))
             .collect(),
     }
 }
