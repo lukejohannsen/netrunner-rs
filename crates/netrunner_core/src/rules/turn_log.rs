@@ -513,7 +513,7 @@ fn as_seen(trigger: Trigger, kind: Kind) -> Option<Kind> {
     }
 }
 
-fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
+fn class_of(state: &GameState, registry: &CardRegistry, moment: &Moment) -> Class {
     // An approach states whether the ice was rezzed, and is counted by its
     // server all the same: a pass and a break are about the ice, and an
     // approach about the server (`IceFacts::rezzed`).
@@ -536,8 +536,21 @@ fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
                 (None, None) => Class::Server(server),
             }
         }
-        About::Card { card, installed, .. } => {
-            let kind = registry.get(card).map_or(Kind::Unseen, Kind::of_card);
+        About::Card { card, installed, install } => {
+            // An advertisement by the table counts as one (Rebranding
+            // Team's "all assets gain **advertisement**", CR 2.16.5), so
+            // Spark Agency's first rez of an advertisement each turn is
+            // counted where its `when` hears it.
+            let kind = registry.get(card).map_or(Kind::Unseen, |definition| {
+                let kind = Kind::of_card(definition);
+                let advertisement = || crate::rules::continuous::has_subtype(state, registry, definition, *install, CardSubtype::Advertisement);
+                match kind {
+                    Kind::Asset if advertisement() => Kind::AdvertisementAsset,
+                    Kind::Upgrade if advertisement() => Kind::AdvertisementUpgrade,
+                    Kind::Ice if advertisement() => Kind::AdvertisementIce,
+                    kind => kind,
+                }
+            });
             let kind = if concealed(moment.trigger, moment.of) { as_seen(moment.trigger, kind).unwrap_or(Kind::Unseen) } else { kind };
             Class::Card { kind, installed: *installed }
         }
@@ -1439,7 +1452,7 @@ impl From<Sparse> for TurnLog {
 pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &GameEvent) -> AsOf {
     let mut copy = None;
     for moment in listeners::moments(state, event) {
-        let class = class_of(registry, &moment);
+        let class = class_of(state, registry, &moment);
         state.this_turn.bump(moment.trigger, moment.of, class);
         // And on the Corp install the moment is about, if it is one.
         if let About::Card { install: Some(install), installed: true, .. } = moment.about

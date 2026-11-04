@@ -58826,3 +58826,244 @@ mod engine_words_stage_28 {
         assert_eq!(spent.runner.in_play[0].counters, 1, "refilled as the turn begins");
     }
 }
+
+mod engine_words_stage_29 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn installed(card: &str, install: u32, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn parked(state: &GameState) -> bool {
+        state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.active_trace.is_some() || state.pending_prevention.is_some()
+    }
+
+    /// Passes every open window until something is parked, or none is open.
+    fn until_parked(mut state: GameState, registry: &CardRegistry) -> GameState {
+        loop {
+            match &state.paid_ability_window {
+                Some(window) if !parked(&state) => state = act(&state, registry, PlayerAction::PassPriority { side: window.active_priority }),
+                _ => return state,
+            }
+        }
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<PlayerAction> {
+        crate::rules::legal_actions_for(state, registry, side).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect()
+    }
+
+    fn select_first(state: GameState, registry: &CardRegistry, side: Side) -> GameState {
+        let toggle = toggles(&state, registry, side).into_iter().next().expect("a card to choose");
+        let chosen = act(&state, registry, toggle);
+        act(&chosen, registry, PlayerAction::ConfirmCardSelection)
+    }
+
+    /// On the Lam played on a Runner's turn with one resource installed,
+    /// and hosted on it.
+    fn on_the_lam_hosted(registry: &CardRegistry) -> GameState {
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("daily_casts", 20)];
+        state.runner.grip = vec![id("on_the_lam")];
+        let played = until_parked(act(&state, registry, PlayerAction::PlayEvent { card_id: id("on_the_lam") }), registry);
+        until_parked(select_first(played, registry, Side::Runner), registry)
+    }
+
+    /// "Host this event on an installed resource as a condition counter":
+    /// it is neither in the heap nor in the play area, but on the
+    /// resource, the Runner's card, faceup to both players.
+    #[test]
+    fn on_the_lam_is_hosted_on_a_resource_as_a_condition_counter() {
+        let registry = registry();
+        let hosted = on_the_lam_hosted(&registry);
+        assert_eq!(hosted.runner.conditions.len(), 1, "a condition counter");
+        assert_eq!((hosted.runner.conditions[0].card.clone(), hosted.runner.conditions[0].host), (id("on_the_lam"), InstallId(20)));
+        assert!(!hosted.runner.heap.contains(&id("on_the_lam")), "not trashed (CR 8.6.6b)");
+        assert!(hosted.runner.play_area.is_empty());
+        assert_eq!(hosted.runner.resources.credits, Credits(7), "3[credit]");
+        let corp = crate::view::build_client_view(&hosted, &registry, Side::Corp);
+        assert_eq!(corp.runner.conditions, hosted.runner.conditions, "public");
+        // Trashed with its host (CR 10.1.4), into the heap.
+        let mut corp = hosted.clone();
+        corp.phase = GamePhase::Action(Side::Corp);
+        corp.runner.tags = 1;
+        let gone = close_all_windows(act(&corp, &registry, PlayerAction::TrashResource { target: InstallId(20) }), &registry).0;
+        assert!(gone.runner.conditions.is_empty());
+        assert!(gone.runner.heap.contains(&id("on_the_lam")) && gone.runner.heap.contains(&id("daily_casts")));
+    }
+
+    /// "Play" needs a resource to host it on.
+    #[test]
+    fn on_the_lam_is_not_played_without_a_resource() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("on_the_lam")];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("on_the_lam") }).is_err());
+    }
+
+    /// "Install 1 agenda from HQ faceup and host this operation on that
+    /// agenda as a condition counter with 'Whenever the Runner accesses
+    /// host agenda, they take 2 tags.'" — and On the Lam's "[trash]:
+    /// Prevent up to 3 tags" answers it.
+    #[test]
+    fn casting_call_installs_an_agenda_faceup_whose_access_gives_two_tags_that_on_the_lam_prevents() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("casting_call"), id("hostile_takeover")];
+        let played = until_parked(act(&state, &registry, PlayerAction::PlayOperation { card_id: id("casting_call") }), &registry);
+        let chosen = until_parked(select_first(played, &registry, Side::Corp), &registry);
+        let landed = until_parked(act(&chosen, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }), &registry);
+        let agenda = landed.corp.installed.iter().find(|card| card.card == id("hostile_takeover")).expect("installed");
+        assert!(agenda.rezzed, "faceup");
+        assert_eq!(landed.corp.conditions.len(), 1);
+        assert_eq!((landed.corp.conditions[0].card.clone(), landed.corp.conditions[0].host), (id("casting_call"), agenda.install_id));
+        assert!(landed.corp.play_area.is_empty() && !landed.corp.archives.iter().any(|card| card.card == id("casting_call")));
+        let runner = crate::view::build_client_view(&landed, &registry, Side::Runner);
+        let shown = runner.corp.servers.iter().flat_map(|server| server.root.iter()).find(|card| card.install_id == agenda.install_id).expect("on the table");
+        assert_eq!(shown.card, Some(id("hostile_takeover")), "the Runner sees it");
+
+        // The Runner accesses it: 2 tags.
+        let mut theirs = landed.clone();
+        theirs.phase = GamePhase::Action(Side::Runner);
+        theirs.paid_ability_window = None;
+        let (accessed, _) = run_to_completion(theirs.clone(), &registry, ServerId::Remote(0));
+        let accessed = close_all_windows(accessed, &registry).0;
+        assert_eq!(accessed.runner.tags, 2, "they take 2 tags");
+
+        // With On the Lam hosted on a resource, the tags are about to be
+        // taken and the Runner may trash it to prevent them.
+        let lam = on_the_lam_hosted(&registry);
+        theirs.runner.rig = lam.runner.rig.clone();
+        // A handle of its own in this game: the two were dealt apart.
+        theirs.runner.conditions = vec![crate::rules::HostedCondition { handle: InstallId(99), ..lam.runner.conditions[0].clone() }];
+        let handle = InstallId(99);
+        let (approached, _) = apply_action(&theirs, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        let (at_server, _) = crate::rules::test_support::through_movement(&approached, &registry).expect("continue");
+        let asked = until_parked(act(&at_server, &registry, PlayerAction::CompleteRun), &registry);
+        assert_eq!(asked.pending_prevention.as_ref().map(|parked| parked.what.clone()), Some(crate::rules::WouldHappen::Tags { amount: 2 }));
+        let offered = crate::rules::legal_actions_for(&asked, &registry, Side::Runner);
+        assert!(offered.contains(&PlayerAction::ActivateAbility { target: handle, ability_index: 0 }), "{offered:?}");
+        assert!(!offered.contains(&PlayerAction::ActivateAbility { target: handle, ability_index: 1 }), "no damage is about to happen");
+        let prevented = act(&asked, &registry, PlayerAction::ActivateAbility { target: handle, ability_index: 0 });
+        assert_eq!(prevented.runner.tags, 0, "prevented");
+        assert!(prevented.runner.conditions.is_empty());
+        assert!(prevented.runner.heap.contains(&id("on_the_lam")), "trashed to pay");
+    }
+
+    /// "Run Archives. If successful, instead of breaching Archives, host
+    /// this event on an agenda in the Corp's score area as a condition
+    /// counter with 'Host agenda is worth 1 less agenda point. When the
+    /// Corp purges virus counters, trash this counter.'"
+    #[test]
+    fn political_graffiti_hosted_in_the_score_area_costs_the_agenda_a_point_until_a_purge() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda { install_id: InstallId(70), ..crate::rules::ScoredAgenda::plain(id("hostile_takeover")) }];
+        state.corp.resources.agenda_points = AgendaPoints(1);
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("hedge_fund"))];
+        state.runner.grip = vec![id("political_graffiti")];
+        let played = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("political_graffiti") });
+        let (at_server, _) = crate::rules::test_support::through_movement(&played, &registry).expect("continue");
+        let asked = until_parked(act(&at_server, &registry, PlayerAction::CompleteRun), &registry);
+        let hosted = until_parked(select_first(asked, &registry, Side::Runner), &registry);
+        let hosted = close_all_windows(hosted, &registry).0;
+        assert_eq!(hosted.runner.conditions.len(), 1, "hosted");
+        assert_eq!(hosted.runner.conditions[0].host, InstallId(70));
+        assert!(!hosted.runner.heap.contains(&id("political_graffiti")));
+        assert!(hosted.active_run.is_none(), "and nothing in Archives was accessed");
+        assert_eq!(crate::rules::win::score(&hosted, &registry, Side::Corp), 0, "worth 1 less");
+        assert_eq!(hosted.corp.resources.agenda_points, AgendaPoints(0), "and the score says so");
+
+        // "When the Corp purges virus counters, trash this counter."
+        let mut corp = hosted.clone();
+        corp.phase = GamePhase::Action(Side::Corp);
+        corp.corp.resources.clicks = Clicks(3);
+        let purged = close_all_windows(act(&corp, &registry, PlayerAction::PurgeVirusCounters), &registry).0;
+        assert!(purged.runner.conditions.is_empty(), "trashed");
+        assert!(purged.runner.heap.contains(&id("political_graffiti")));
+        assert_eq!(crate::rules::win::score(&purged, &registry, Side::Corp), 1);
+    }
+
+    /// "All assets gain advertisement." Spark Agency's "the first time
+    /// each turn you rez an advertisement" then hears a PAD Campaign's rez
+    /// only while Rebranding Team is scored, and a choice of "an
+    /// advertisement" in HQ offers an asset there (CR 2.16.4: a card has
+    /// its subtypes in every zone).
+    #[test]
+    fn rebranding_team_makes_every_asset_an_advertisement() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("spark_agency_worldswide_reach"));
+        state.corp.installed = vec![installed("melange_mining_corp", 30, ServerId::Remote(0), InstallSlot::Root, false), installed("ice_wall", 31, ServerId::Hq, InstallSlot::Ice, false)];
+        state.corp.hq = vec![id("melange_mining_corp")];
+        let advertisement = crate::dsl::CardFilter::HasSubtype(crate::dsl::CardSubtype::Advertisement);
+        let in_hq = |state: &GameState| crate::rules::pending_choice::eligible_positions(state, &registry, Side::Corp, &crate::dsl::CardZoneRef::OwnHq, &advertisement, None, None);
+
+        // Without it: Melange Mining Corp. is no advertisement.
+        let rezzed = pass_until_settled(act(&state, &registry, PlayerAction::RezIce { ice: InstallId(30) }), &registry).0;
+        assert_eq!(rezzed.runner.resources.credits, Credits(10), "not an advertisement");
+        assert!(in_hq(&state).is_empty());
+
+        // With it scored, every asset is, and the ice is not.
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda { install_id: InstallId(70), ..crate::rules::ScoredAgenda::plain(id("rebranding_team")) }];
+        let melange = registry.get(&id("melange_mining_corp")).expect("a card");
+        assert!(crate::rules::continuous::has_subtype(&state, &registry, melange, Some(InstallId(30)), crate::dsl::CardSubtype::Advertisement));
+        assert!(!crate::rules::continuous::has_subtype(&state, &registry, registry.get(&id("ice_wall")).expect("a card"), Some(InstallId(31)), crate::dsl::CardSubtype::Advertisement));
+        assert_eq!(in_hq(&state).len(), 1, "an asset in HQ too");
+        let rezzed = pass_until_settled(act(&state, &registry, PlayerAction::RezIce { ice: InstallId(30) }), &registry).0;
+        assert_eq!(rezzed.runner.resources.credits, Credits(9), "an advertisement now");
+    }
+
+    /// "Whenever you encounter a piece of ice, you may choose 1 ice
+    /// subtype. For the remainder of the run, that ice gains the chosen
+    /// subtype." — Ice Wall becomes a destroyer for the run, and
+    /// Sharpshooter's "break any number of destroyer subroutines" can be
+    /// used on it.
+    #[test]
+    fn panchatantra_gives_the_encountered_ice_a_named_subtype_for_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("panchatantra", 20), rig("sharpshooter", 21)];
+        state.corp.installed = vec![installed("ice_wall", 31, ServerId::Hq, InstallSlot::Ice, true)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
+        let state = act(&state, &registry, PlayerAction::PassPriority { side: Side::Runner });
+        let asked = until_parked(act(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }), &registry);
+        assert!(asked.pending_decision.is_some(), "the Runner may choose");
+        let sharpshooter = PlayerAction::ActivateAbility { target: InstallId(21), ability_index: 0 };
+        let pump = PlayerAction::ActivateAbility { target: InstallId(21), ability_index: 1 };
+        // Declined, Ice Wall stays a barrier and Sharpshooter cannot touch it.
+        let declined = act(&act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 3 }), &registry, pump.clone());
+        let declined = act(&declined, &registry, PlayerAction::PassPriority { side: Side::Corp });
+        assert!(!crate::rules::legal_actions_for(&declined, &registry, Side::Runner).contains(&sharpshooter), "not a destroyer");
+        let chosen = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 });
+        let wall = registry.get(&id("ice_wall")).expect("a card");
+        assert!(crate::rules::continuous::has_subtype(&chosen, &registry, wall, Some(InstallId(31)), crate::dsl::CardSubtype::Destroyer));
+        assert_eq!(chosen.active_run.as_ref().map(|run| run.phase), Some(crate::rules::RunPhase::EncounterIce));
+        let pumped = act(&act(&chosen, &registry, pump), &registry, PlayerAction::PassPriority { side: Side::Corp });
+        assert!(crate::rules::legal_actions_for(&pumped, &registry, Side::Runner).contains(&sharpshooter), "a destroyer now");
+
+        // The run ends and so does the subtype.
+        let mut over = chosen.clone();
+        over.active_run = None;
+        over.paid_ability_window = None;
+        assert!(!crate::rules::continuous::has_subtype(&over, &registry, wall, Some(InstallId(31)), crate::dsl::CardSubtype::Destroyer));
+    }
+}

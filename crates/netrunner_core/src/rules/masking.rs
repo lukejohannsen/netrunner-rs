@@ -329,6 +329,10 @@ pub struct PublicRunnerState {
     /// (`RunnerState::in_play`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub in_play: Vec<crate::rules::PlayedOperation>,
+    /// Never masked: a condition counter is faceup on its host
+    /// (`RunnerState::conditions`, On the Lam).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conditions: Vec<crate::rules::HostedCondition>,
     /// Never masked — stolen Agendas sit in a fully public score area.
     pub scored_agendas: Vec<ScoredAgenda>,
     /// Never masked — static link strength, like `tags`, is plain public
@@ -1543,6 +1547,7 @@ fn grip_card_concealed_from(state: &GameState, card: &CardId, viewer: Viewer) ->
         && !runner.play_area.contains(card)
         && !runner.rig.iter().any(|installed| installed.card == *card)
         && !runner.in_play.iter().any(|played| played.card == *card)
+        && !runner.conditions.iter().any(|condition| condition.card == *card)
 }
 
 fn corp_card_concealed_from(state: &GameState, card: &CardId, viewer: Viewer) -> bool {
@@ -1874,6 +1879,7 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         hosted_identities: runner.hosted_identities.clone(),
         play_area: runner.play_area.clone(),
         in_play: runner.in_play.clone(),
+        conditions: runner.conditions.clone(),
         scored_agendas: runner.scored_agendas.clone(),
         // Asked, like a strength: the identity's printed link and what the
         // rig adds. It was a stored field that only the identity ever wrote.

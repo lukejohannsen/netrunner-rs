@@ -344,7 +344,7 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
                     .or_else(|| state.corp.find_scored(*target).map(|s| s.card.clone()))
                     .or_else(|| state.rig_abilities_card(*target).cloned())
                     .or_else(|| state.runner.find_stolen(*target).map(|s| s.card.clone()))
-                    .or_else(|| state.corp.conditions.iter().find(|condition| condition.handle == *target).map(|condition| condition.card.clone()))
+                    .or_else(|| state.find_condition(*target).map(|condition| condition.card.clone()))
             };
             if let Some(used_by) = card
                 .as_ref()
@@ -363,7 +363,10 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
                 || state.corp.conditions.iter().any(|condition| condition.handle == *target)
             {
                 Side::Corp
-            } else if matches!(*target, InstallId::RUNNER_IDENTITY | InstallId::RUN_EVENT) || state.find_rig_install(*target).is_some() {
+            } else if matches!(*target, InstallId::RUNNER_IDENTITY | InstallId::RUN_EVENT)
+                || state.find_rig_install(*target).is_some()
+                || state.runner.conditions.iter().any(|condition| condition.handle == *target)
+            {
                 Side::Runner
             } else {
                 unreachable!("ActivateAbility({target:?}) passed legal_actions but owns no matching installed/rig card")
@@ -837,7 +840,7 @@ fn activate_ability_candidates(state: &GameState, registry: &CardRegistry) -> Ve
         candidates.extend(paid_ability_candidates(&scored.card, scored.install_id, registry));
     }
     // A condition counter's, by its handle (MCA Informant).
-    for condition in &state.corp.conditions {
+    for (_, condition) in state.conditions() {
         candidates.extend(paid_ability_candidates(&condition.card, condition.handle, registry));
     }
     for rig_card in &state.runner.rig {

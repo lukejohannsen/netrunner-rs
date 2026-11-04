@@ -408,6 +408,14 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 }
                 // One line per piece of ice for every type it gained, below.
                 (Lingering::GainSubtype(_), _) => return None,
+                // Panchatantra's named subtype, on the ice it chose.
+                (Lingering::HasSubtype(subtype), on) => {
+                    let ice = match on {
+                        On::Install(install) => super::facts::card_of(view, *install).map_or_else(|| "that ice".to_string(), |card| title(&card)),
+                        _ => "that ice".to_string(),
+                    };
+                    format!("{ice} has the subtype {}", subtype.printed().to_lowercase())
+                }
                 // Armored Servers: one line per step it is a cost to.
                 (Lingering::AdditionalCost { to, cost }, _) => {
                     let step = match to {
@@ -650,6 +658,14 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 1 => format!("hosted on {on}: {}, 1 counter", title(&condition.card)),
                 n => format!("hosted on {on}: {}, {n} counters", title(&condition.card)),
             }
+        }))
+        // The Runner's (On the Lam on a resource, Political Graffiti on an
+        // agenda in the Corp's score area), named by the host's card.
+        .chain(view.runner.conditions.iter().map(|condition| {
+            let on = super::facts::card_of(view, condition.host)
+                .or_else(|| view.corp.scored_agendas.iter().find(|scored| scored.install_id == condition.host).map(|scored| scored.card.clone()))
+                .map_or_else(|| "a card".to_string(), |card| title(&card));
+            format!("hosted on {on}: {}", title(&condition.card))
         }))
         // An identity a rig card hosts and has the text of (DJ Fenris's):
         // faceup, and nothing on the board stands for it.

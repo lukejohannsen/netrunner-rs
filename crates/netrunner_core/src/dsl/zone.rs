@@ -1161,6 +1161,34 @@ impl CardFilter {
         }
     }
 
+    /// Whether the filter names a subtype anywhere (`HasSubtype`), so a
+    /// reader that knows the card's copy asks the table about it.
+    pub fn mentions_subtype(&self) -> bool {
+        match self {
+            CardFilter::HasSubtype(_) => true,
+            CardFilter::All(filters) | CardFilter::AnyOf(filters) => filters.iter().any(CardFilter::mentions_subtype),
+            CardFilter::Not(filter) => filter.mentions_subtype(),
+            _ => false,
+        }
+    }
+
+    /// `HasSubtype` written over as `Any` where the card has the subtype
+    /// by the table rather than by its print (`has`,
+    /// `continuous::has_subtype`: Rebranding Team's "all assets gain
+    /// **advertisement**", the ice Panchatantra named a subtype for), through
+    /// `All`, `AnyOf` and `Not` — so "non-**advertisement**" refuses it too
+    /// (CR 2.16.3). A subtype it prints is left for the definition to
+    /// answer, which it does.
+    pub fn with_subtypes(self, has: &dyn Fn(crate::dsl::CardSubtype) -> bool) -> CardFilter {
+        match self {
+            CardFilter::HasSubtype(subtype) if has(subtype) => CardFilter::Any,
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_subtypes(has)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_subtypes(has)).collect()),
+            CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_subtypes(has))),
+            other => other,
+        }
+    }
+
     /// `TrashedThisWay` written over as the cards a mill trashed, through
     /// `All`, `AnyOf` and `Not`.
     pub fn with_those_trashed(self, cards: &[crate::dsl::CardId]) -> CardFilter {

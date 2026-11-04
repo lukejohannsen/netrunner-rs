@@ -1858,6 +1858,17 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         for_the_next_run: bool,
     },
+    /// The ice being encountered gains `subtype`, one outside the breaker
+    /// axis's three, for the remainder of this run — Panchatantra's
+    /// "choose 1 subtype that is not **barrier**, **code gate**, or
+    /// **sentry**. That ice gains the chosen subtype for the remainder of
+    /// this run", one option of a `PresentChoice` per subtype. A
+    /// `rules::lingering::Lingering::HasSubtype`, read by
+    /// `CardFilter::HasSubtype` (`continuous::has_subtype`). Composition
+    /// didn't work: `GainIceSubtype` gains an `IceType`, which is the three
+    /// a breaker is restricted by and `continuous::ice_is` answers, and
+    /// "destroyer" is none of them.
+    EncounteredIceGains { subtype: crate::dsl::CardSubtype },
     /// The controller looks at the top `count` cards of `deck`'s owner's
     /// deck and nobody else sees them (`GameEvent::CardsLookedAt`, masked
     /// for the other player) — Hiram "0mission" Svensson's "look at the
@@ -1893,7 +1904,21 @@ pub enum Effect {
     /// selected install. Composition didn't work: no effect moves a card
     /// out of the play area, and a counter is not an install, so no install
     /// effect may put it on the table (CR 1.13.6d).
-    HostThisAsCondition { condition: crate::rules::InstallId, host: crate::rules::InstallId },
+    ///
+    /// A Runner's event (On the Lam, Political Graffiti) has no handle as
+    /// it is played — the engine files a played event in the heap, or
+    /// holds it in `RunnerState::play_area` behind what it parked — so the
+    /// substitution writes the event's card into `event` instead, never
+    /// authored, and the counter is given a handle as it is hosted
+    /// (`RunnerState::conditions`), taken from the play area or, for a run
+    /// event whose run hosts it, the heap (`run::run_event`'s reading of
+    /// where the rules' play area is).
+    HostThisAsCondition {
+        condition: crate::rules::InstallId,
+        host: crate::rules::InstallId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        event: Option<CardId>,
+    },
     /// The identity `identity`, chosen from the pile the Runner brought
     /// (`CardZoneRef::OtherIdentities`, CR 1.5.4), is hosted on the rig
     /// install `host`, which gains its text — DJ Fenris's "Host a g-mod
@@ -5056,6 +5081,7 @@ impl Effect {
             | Effect::CopiedByPromptingIce { .. }
             | Effect::ResolveItsAbility(_)
             | Effect::GainIceSubtype { .. }
+            | Effect::EncounteredIceGains { .. }
             | Effect::LookAtTopOfDeck { .. }
             | Effect::HostRigCardOnInstall { .. }
             | Effect::HostThisAsCondition { .. }

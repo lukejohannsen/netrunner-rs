@@ -1,0 +1,60 @@
+{
+  "id": "casting_call",
+  "title": "Casting Call",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "CardType": "Agenda"
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnHq",
+                "if_installed": {
+                  "Sequence": [
+                    "TurnFaceup",
+                    {
+                      "HostThisAsCondition": {
+                        "condition": 0,
+                        "host": 0
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Install 1 agenda from HQ faceup and host this operation on that agenda as a condition counter"
+    },
+    {
+      "trigger": "OnAccessed",
+      "subject": "Any",
+      "when": "Host",
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 2
+          }
+        }
+      ],
+      "text": "Whenever the Runner accesses host agenda, they take 2 tags."
+    }
+  ],
+  "built_from": 8096,
+  "is_playable": true
+}

@@ -1,0 +1,66 @@
+{
+  "id": "political_graffiti",
+  "title": "Political Graffiti",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "continuous": [
+    {
+      "kind": {
+        "AgendaPoints": {
+          "per": -1
+        }
+      },
+      "applies_to": "Host",
+      "text": "Host agenda is worth 1 less agenda point."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Archives"
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "Archives",
+            "optional": false,
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OpponentScoreArea",
+                "filter": {
+                  "CardType": "Agenda"
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "HostThisAsCondition": {
+                    "condition": 0,
+                    "host": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run Archives. If successful, instead of breaching Archives, host this event on an agenda in the Corp's score area as a condition counter"
+    },
+    {
+      "trigger": "OnVirusCountersPurged",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "When the Corp purges virus counters, trash this counter."
+    }
+  ],
+  "built_from": 10039,
+  "is_playable": true
+}

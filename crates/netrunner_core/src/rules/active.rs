@@ -154,7 +154,22 @@ pub(crate) fn runner<'a>(state: &'a GameState, registry: &'a CardRegistry) -> im
         server: None,
         place: Place::PlayArea,
     });
-    identity.chain(rig).chain(hosted_identities).chain(run_event).chain(in_play)
+    // A condition counter the Runner's event became (CR 1.9.5j), active
+    // while it is hosted: on a rig card (On the Lam), on a Corp install
+    // in its server, or on an agenda in the Corp's score area (Political
+    // Graffiti).
+    let conditions = state.runner.conditions.iter().filter_map(|condition| {
+        let server = match state.find_corp_install(condition.host) {
+            Some(host) => Some(host.server),
+            None => {
+                let hosted = state.find_rig_install(condition.host).is_some() || state.corp.find_scored(condition.host).is_some();
+                hosted.then_some(())?;
+                None
+            }
+        };
+        Some(ActiveCard { side: Side::Runner, card: &condition.card, install: Some(condition.handle), server, place: Place::Installed })
+    });
+    identity.chain(rig).chain(hosted_identities).chain(run_event).chain(in_play).chain(conditions)
 }
 
 /// Whether the install `install` has lost all its abilities (CR 9.1.9a):

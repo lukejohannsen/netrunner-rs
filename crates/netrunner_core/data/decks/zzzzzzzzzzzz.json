@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzz",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Whizzard: Master Gamer, Genesis's Anarch identity, whose recurring credits pay trash costs. Zymotic's list, its identity swapped. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG F11. Genesis swaps in Joshua B., Public Sympathy and Plascrete Carapace. Wanton Destruction came in for two Finality in Engine words Stage 14, to reach a breach of HQ replaced by clicks spent on random trashes. Engine words Stage 18 brought a Cyber Threat in for the Chain Reaction, so the Corp is asked to rez a piece of ice or be run with no rez. Engine words Stage 26 (FFG): a Queen's Gambit for one of its two Take a Dive; a Bazaar for one of its two Friend of a Friend, so a second Patchwork may follow the first out of the grip.",
+  "description": "Not a published list: built so the sweeps reach Whizzard: Master Gamer, Genesis's Anarch identity, whose recurring credits pay trash costs. Zymotic's list, its identity swapped. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only. FFG F11. Genesis swaps in Joshua B., Public Sympathy and Plascrete Carapace. Wanton Destruction came in for two Finality in Engine words Stage 14, to reach a breach of HQ replaced by clicks spent on random trashes. Engine words Stage 18 brought a Cyber Threat in for the Chain Reaction, so the Corp is asked to rez a piece of ice or be run with no rez. Engine words Stage 26 (FFG): a Queen's Gambit for one of its two Take a Dive; a Bazaar for one of its two Friend of a Friend, so a second Patchwork may follow the first out of the grip. Engine words Stage 29 (FFG): a Political Graffiti for one of its two En Passant, which four other decks keep.",
   "style": [
     "rig",
     "dismantle"
@@ -76,7 +76,7 @@
     },
     {
       "card": "en_passant",
-      "count": 2
+      "count": 1
     },
     {
       "card": "patchwork",
@@ -144,6 +144,10 @@
     },
     {
       "card": "bazaar",
+      "count": 1
+    },
+    {
+      "card": "political_graffiti",
       "count": 1
     }
   ]
