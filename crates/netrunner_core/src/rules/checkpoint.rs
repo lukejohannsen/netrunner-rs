@@ -169,7 +169,7 @@ fn enforce_consoles(state: &mut GameState, registry: &CardRegistry) -> Vec<GameE
     for install in consoles.into_iter().filter(|install| *install != newest) {
         let Some(position) = state.runner.rig.iter().position(|installed| installed.install_id == install) else { continue };
         let trashed = state.runner.rig.remove(position);
-        state.runner.heap.push(trashed.card.clone());
+        ability::file_trashed_rig_card(state, registry, trashed.card.clone());
         events.push(GameEvent::CardTrashed { side: Side::Runner, card: trashed.card.clone(), from: crate::dsl::TrashedFrom::Installed, by: None, install: None, damage: None });
         events.extend(ability::cascade_trash_hosted_on_rig_card(state, registry, &trashed));
     }
@@ -238,7 +238,7 @@ fn enforce_unique(state: &mut GameState, registry: &CardRegistry, event: Option<
     for install in older_copies(&active, None) {
         let Some(position) = state.runner.rig.iter().position(|installed| installed.install_id == install) else { continue };
         let trashed = state.runner.rig.remove(position);
-        state.runner.heap.push(trashed.card.clone());
+        ability::file_trashed_rig_card(state, registry, trashed.card.clone());
         events.push(GameEvent::CardTrashed { side: Side::Runner, card: trashed.card.clone(), from: crate::dsl::TrashedFrom::Installed, by: None, install: None, damage: None });
         events.extend(ability::cascade_trash_hosted_on_rig_card(state, registry, &trashed));
     }

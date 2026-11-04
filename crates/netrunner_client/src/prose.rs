@@ -594,6 +594,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         // "the accessed card" or "it".
         Effect::AsCard { effect, .. } => describe_effect(effect, registry),
         Effect::MustTrashAccessed => "you must trash that card by paying its trash cost, if able".to_string(),
+        Effect::CountDownHosted { amount, place: true } => format!("place counters equal to {} on it; with none, install it, ignoring all costs", describe_amount(amount)),
+        Effect::CountDownHosted { amount, place: false } => format!("remove {} counters from it; with none left, install it, ignoring all costs", describe_amount(amount)),
         // Watch the World Burn's: until the game ends.
         Effect::LaterThisTurn { when, filter, effect, until_the_game_ends: true, .. } => {
             describe_later_this_turn(*when, filter.as_ref(), true, false, effect, registry).replace("for the rest of this turn", "until the game ends")
@@ -1211,6 +1213,9 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::DamageDone { kind, by } => format!("does {} {} damage whenever it would do some", signed(by), damage_word(kind)),
         ContinuousKind::Link(number) => format!("gets {} link", signed(number)),
         ContinuousKind::TraceLinkIsZero => "has their link treated as 0 in a trace".to_string(),
+        ContinuousKind::GripRevealed => "plays with the grip revealed".to_string(),
+        ContinuousKind::TrashedFacedown => "is turned facedown instead of going to the heap when trashed, still trashed".to_string(),
+        ContinuousKind::LendsVirusCounters => "has its virus counters considered hosted on them too, and spent as if on them".to_string(),
         ContinuousKind::AlsoTheSecondTime => "also triggers the second time each turn its trigger condition is met".to_string(),
         ContinuousKind::TraceBase(number) => format!("gets {} base trace strength", signed(number)),
         ContinuousKind::DrawsEachTurnAtMost(most) => format!("the Runner cannot draw more than {} during each of their turns", plural(*most, "card", "cards")),

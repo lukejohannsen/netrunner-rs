@@ -490,6 +490,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // CR 8.7: Personality Profiles' "whenever the Runner searches the
         // stack", the searcher's.
         GameEvent::DeckSearched { side } => vec![moment(Trigger::OnDeckSearched, &About::Nothing, Some(*side))],
+        // CR 5.2.5a: Jeeves Model Bioroids' third [click] on one action,
+        // the spender's.
+        GameEvent::ThirdClickOnOneAction { side, .. } => vec![moment(Trigger::OnThirdClickOnOneAction, &About::Nothing, Some(*side))],
         // A selection that reveals what it chose (Hyoubu Institute's own
         // "reveal the top card of the stack") is its chooser revealing
         // each card.

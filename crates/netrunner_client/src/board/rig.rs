@@ -232,6 +232,7 @@ mod tests {
             hosted_on_ice: None,
             hosted_on_rig_card: None,
             hosted_cards: Vec::new(),
+            hosted_counters: Vec::new(),
             hosted_facedown: false,
             hosted_unseen: 0,
             turned_facedown: 0,

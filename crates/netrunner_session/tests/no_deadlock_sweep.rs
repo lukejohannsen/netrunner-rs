@@ -272,9 +272,18 @@ fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
                     assert_no_concealed_card_is_named(&view, session.state(), seed, &matchup, side.into());
                     assert_actions_name_only_what_the_view_shows(&view, &universe, seed, &matchup, side.into());
                     let spectator = session.view_for(Viewer::Spectator);
-                    assert!(spectator.corp.hq_cards.is_none() && spectator.runner.grip_cards.is_none() && spectator.legal_actions.is_empty());
-                    assert_no_concealed_card_is_named(&spectator, session.state(), seed, &matchup, Viewer::Spectator);
                     let other = session.view_for(side.other());
+                    // A spectator sees the intersection of what the two
+                    // players see: HQ never, and the grip only while it is
+                    // revealed to the Corp (Harishchandra Ent.), and then
+                    // exactly the cards the Corp is shown.
+                    let corp_view = if side == Side::Corp { &*view } else { &other };
+                    assert!(
+                        spectator.corp.hq_cards.is_none()
+                            && (spectator.runner.grip_cards.is_none() || spectator.runner.grip_cards == corp_view.runner.grip_cards)
+                            && spectator.legal_actions.is_empty()
+                    );
+                    assert_no_concealed_card_is_named(&spectator, session.state(), seed, &matchup, Viewer::Spectator);
                     assert_no_concealed_card_is_named(&other, session.state(), seed, &matchup, side.other().into());
                     assert_actions_name_only_what_the_view_shows(&other, &universe, seed, &matchup, side.other().into());
                     for (seat_view, viewer) in [(&*view, Viewer::from(side)), (&other, Viewer::from(side.other())), (&spectator, Viewer::Spectator)] {
@@ -407,6 +416,10 @@ fn assert_cards_are_conserved(state: &GameState, registry: &netrunner_core::card
             // Ayla's six, set aside facedown before her starting hand.
             .chain(&runner.set_aside_facedown)
             .chain(&runner.installed_facedown)
+            // What a host's cost set aside while its effect is parked
+            // (Street Peddler's choice, CR 9.5.5), trashed as the action
+            // ends (`RunnerState::set_aside_by_host`).
+            .chain(runner.set_aside_by_host.iter().flat_map(|aside| aside.cards.iter()))
             // An event whose own choice is still open (CR 3.7.1: trashed
             // once it has fully resolved).
             .chain(&runner.play_area)

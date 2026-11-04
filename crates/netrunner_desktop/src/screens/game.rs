@@ -5173,6 +5173,11 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
         Target::Pile(Pile::Stack) => (format!("{} cards, in an order nobody is shown", view.runner.stack_count), (0..view.runner.stack_count.min(5)).map(|_| Shown::Back(Side::Runner)).collect()),
         Target::Pile(Pile::Heap) => (format!("{} cards, all face up", view.runner.heap.len()), view.runner.heap.iter().cloned().map(Shown::Card).collect()),
         Target::Pile(Pile::Agendas(_)) => unreachable!("the score area returned above"),
+        // Harishchandra Ent.'s revealed grip, from the Corp's chair.
+        Target::Pile(Pile::Grip) => match &view.runner.grip_cards {
+            Some(grip) => (format!("{} cards, revealed", grip.len()), grip.iter().cloned().map(Shown::Card).collect()),
+            None => (format!("{} cards, hidden", view.runner.grip_count), Vec::new()),
+        },
         Target::HandCard(_) | Target::Install(_) | Target::Identity(_) | Target::Position(_) | Target::Rig | Target::Table => (String::new(), Vec::new()),
     };
     // What left the game from this side, under the pile a person looks

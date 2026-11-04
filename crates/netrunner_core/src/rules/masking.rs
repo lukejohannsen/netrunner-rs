@@ -240,6 +240,12 @@ pub struct PublicInstalledRunnerCard {
     /// facedown only for its owner. Hosted faceup means hosted faceup.
     #[serde(default)]
     pub hosted_cards: Vec<CardId>,
+    /// The counters on each of `hosted_cards`, by position — Personal
+    /// Workshop's power counters (`state::InstalledRunnerCard::
+    /// hosted_counters`). Public, as the rig is; empty where the cards are
+    /// not shown.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosted_counters: Vec<u32>,
     /// Whether this card hosts its cards facedown (Read-Write Share) —
     /// printed on it, so public.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -1362,6 +1368,8 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // search, announced (what it found is `CardsSelected`'s to mask).
         | GameEvent::AgendaCounterSpent { .. }
         | GameEvent::DeckSearched { .. }
+        // Every [click] spent, and on what, is public.
+        | GameEvent::ThirdClickOnOneAction { .. }
         | GameEvent::TraceAvoided { .. }
         | GameEvent::TraceSuccessful { .. }
         | GameEvent::TagRemoved { .. }
@@ -1441,6 +1449,24 @@ fn mask_pending_paid_choice(choice: &crate::rules::state::PendingPaidChoice, vie
 /// just discarded facedown (the `then` convention), and naming it told
 /// the Runner what the Corp had thrown away. Found by the session sweep's
 /// masking invariant at *Elevation* Stage 5, seed 20.
+/// An option with each `AsCard` about an accessed card spelled as "the
+/// accessed card" (`CardTarget::AccessedCard`), through the shapes an
+/// option is written in: what the chooser is shown of a card they have
+/// finished accessing (`mask_pending_decision`).
+fn naming_no_finished_access(effect: crate::dsl::Effect) -> crate::dsl::Effect {
+    use crate::dsl::{CardTarget, Effect};
+    match effect {
+        Effect::AsCard { card: CardTarget::Accessed(_), effect } => Effect::AsCard { card: CardTarget::AccessedCard, effect },
+        Effect::Sequence(effects) => Effect::Sequence(effects.into_iter().map(naming_no_finished_access).collect()),
+        Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf {
+            condition,
+            effect: Box::new(naming_no_finished_access(*effect)),
+            otherwise: otherwise.map(|e| Box::new(naming_no_finished_access(*e))),
+        },
+        other => other,
+    }
+}
+
 fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: Viewer) -> PendingDecision {
     let conceal = |card: &Option<CardId>| match card {
         Some(id) if corp_card_concealed_from(state, id, viewer) || grip_card_concealed_from(state, id, viewer) => None,
@@ -1465,6 +1491,17 @@ fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: 
         && !viewer.is(*chooser)
     {
         *options = std::mem::take(options).into_iter().map(crate::dsl::Effect::naming_no_cards).collect();
+    }
+    // Maya's "that card" names a card the chooser accessed and has
+    // finished accessing: it is back in R&D, so the chooser's own view no
+    // longer shows it, and naming it beside an unrezzed copy of that card
+    // on the table would name what the board masks — found by the session
+    // sweep's masking invariant at Engine words Stage 33, seed 186. The
+    // option's printed clause still says "that card".
+    if let PendingDecision::ChooseEffect { chooser, options, .. } = &mut masked
+        && viewer.is(*chooser)
+    {
+        *options = std::mem::take(options).into_iter().map(naming_no_finished_access).collect();
     }
     // And the selection the option parks (seed 158).
     if let PendingDecision::ChooseCards { side, filter, .. } = &mut masked
@@ -1895,6 +1932,7 @@ fn mask_installed_runner_card(state: &GameState, registry: &CardRegistry, card: 
         hosted_on_ice: card.hosted_on_ice,
         hosted_on_rig_card: card.hosted_on_rig_card,
         hosted_cards: if hidden { Vec::new() } else { card.hosted_cards.clone() },
+        hosted_counters: if hidden { Vec::new() } else { card.hosted_counters.clone() },
         hosted_facedown,
         hosted_unseen: if hidden { card.hosted_cards.len() } else { 0 },
         turned_facedown: card.turned_facedown,
@@ -1914,7 +1952,9 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         memory_units: runner.memory_units,
         brain_damage: runner.brain_damage,
         tags: runner.tags,
-        grip: mask_zone(&runner.grip, owner_view),
+        // Revealed to every seat while a card says so (Harishchandra Ent.,
+        // CR 1.21.6): the cards are shown, as a reveal shows them.
+        grip: mask_zone(&runner.grip, owner_view || continuous::grip_revealed(state, registry)),
         stack: mask_zone(&runner.stack, owner_view),
         rig: runner.rig.iter().map(|card| mask_installed_runner_card(state, registry, card, owner_view)).collect(),
         heap: runner.heap.clone(),
@@ -2550,6 +2590,7 @@ mod tests {
             hosted_on_ice: None,
             hosted_on_rig_card: None,
             hosted_cards: Vec::new(),
+            hosted_counters: Vec::new(),
             hosted_facedown: false,
             hosted_unseen: 0,
             turned_facedown: 0,

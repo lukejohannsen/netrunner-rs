@@ -92,6 +92,12 @@ pub enum Pile {
     /// targets it: a scored agenda's ability is on `Target::Install`,
     /// by the handle the agenda kept.
     Agendas(Side),
+    /// The Runner's grip, seen by a viewer who is not the Runner while it
+    /// is revealed (Harishchandra Ent.'s "they play with the grip
+    /// revealed", `continuous::grip_revealed`), opened from the HUD's Grip
+    /// readout. Nothing in the action map targets it: the Corp has no
+    /// action on a card in the grip.
+    Grip,
 }
 
 impl Pile {
@@ -101,6 +107,7 @@ impl Pile {
             Pile::Heap => "Heap",
             Pile::Agendas(Side::Corp) => "Agendas scored",
             Pile::Agendas(Side::Runner) => "Agendas stolen",
+            Pile::Grip => "Grip (revealed)",
         }
     }
 }

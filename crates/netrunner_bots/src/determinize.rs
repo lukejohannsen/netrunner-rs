@@ -1121,6 +1121,8 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
             // Cards hosted facedown are only counted for this viewer, and
             // drawn like the grip they came from (Read-Write Share).
             hosted_cards: card.hosted_cards.iter().cloned().chain(pools.draw_n(Slot::RunnerAny, card.hosted_unseen)).collect(),
+            // Public, by position: Personal Workshop's countdown.
+            hosted_counters: card.hosted_counters.clone(),
             // Public: Matryoshka's copies spent on a break this turn.
             turned_facedown: card.turned_facedown,
             hosted_cards_playable: card.hosted_cards_playable,

@@ -171,6 +171,15 @@ pub enum ContinuousKind {
     /// way. Composition didn't work: `Link` adds a number, and treating a
     /// value as 0 is not a sum.
     TraceLinkIsZero,
+    /// The Runner plays with the grip revealed — Harishchandra Ent.'s
+    /// "While the Runner is tagged, they play with the grip revealed",
+    /// said of the Runner (`Scope::Player`), "while tagged" its `while`. A
+    /// revealed card is shown to every player (CR 1.21.6), so the grip is
+    /// shown in every seat's view (`masking`), asked through
+    /// `continuous::grip_revealed`. Composition didn't work: what a view
+    /// shows was the masking layer's rule alone, and no card could change
+    /// it.
+    GripRevealed,
     /// A card the scope reaches that prints "the first time each turn"
     /// also triggers the second time its condition is met — Gene
     /// Conditioning Shoppe's "**Genetics** also trigger the second time
@@ -381,6 +390,18 @@ pub enum ContinuousKind {
     /// who cannot pay, or may not trash, passes. Composition didn't work:
     /// an access offers a trash and a pass, and nothing took the pass away.
     TrashedWhenAccessed,
+    /// When this card would be trashed out of the rig it is turned
+    /// facedown there instead of going to the heap, and is still trashed —
+    /// Harbinger's "[interrupt] → When this program would be trashed, turn
+    /// it facedown instead of adding it to your heap. (It is still
+    /// considered trashed.)" Said of itself (`This`) and asked by the one
+    /// door a trashed rig card is filed through (`ability::
+    /// file_trashed_rig_card`), into `RunnerState::installed_facedown`
+    /// (CR 8.1.4). A standing effect rather than an interrupt
+    /// (`dsl::Preventable`): nothing is prevented — the trash happens and
+    /// is heard — and nobody chooses, so it has no window. Composition
+    /// didn't work: every trash put a rig card in the heap.
+    TrashedFacedown,
     /// "You can rez this ice any time you could rez non-ice cards" —
     /// Rime's, `while` a run is against its server
     /// (`RunAgainstThisServer`): the windows marked (R) (CR 9.2.7c) and the
@@ -427,6 +448,20 @@ pub enum ContinuousKind {
     /// card's own. Composition didn't work: nothing a card declared was
     /// asked by a purge.
     KeptThroughPurge(Number),
+    /// This card's virus counters are considered to be hosted on each other
+    /// rig card the scope reaches, and can be spent as if on it — Hivemind's
+    /// "Virus counters on Hivemind are considered to be hosted on all other
+    /// **virus** programs for the purposes of card effects (and can be
+    /// spent as if on them)", over `Rig(virus programs)`. Read by the one
+    /// question for the counters a card effect finds on a rig card
+    /// (`pending_choice::counters_on`) and spent through the one door
+    /// (`pending_choice::spend_counters_on`), which asks the Runner whose
+    /// to spend where that changes what they are left with. Not by the
+    /// purge or by a count of the counters on every installed card, which
+    /// would count Hivemind's once for each program: those read what each
+    /// card holds. Composition didn't work: a card's counters were its own
+    /// field, read in a dozen places.
+    LendsVirusCounters,
     /// A run it applies to cannot be declared successful — Flagship's
     /// "Runs against this server cannot be declared successful. (This effect
     /// does not cause runs to become unsuccessful.)" The Success Phase is

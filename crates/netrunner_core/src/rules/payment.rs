@@ -748,6 +748,19 @@ pub(crate) fn could_ask(state: &GameState, registry: &CardRegistry, action: &cra
         || crate::rules::lingering::additional_costs_could_ask(state)
         || crate::rules::continuous::any_damage_chooser(state, registry)
         || a_run_cost_could_ask(state, registry)
+        || a_lent_counter_could_ask(state, registry)
+}
+
+/// A counter spent "on" a virus program may be its own or one Hivemind
+/// lends it, and the Runner is asked whose (`pending_choice::
+/// spend_counters_on`) — by a cost or by the card's own text, in any
+/// action while a lender holds a counter. A necessary condition, as the
+/// others are: it costs the copy only while Hivemind has counters.
+fn a_lent_counter_could_ask(state: &GameState, registry: &CardRegistry) -> bool {
+    state.runner.rig.iter().any(|installed| {
+        crate::rules::pending_choice::virus_on(installed, registry) > 0
+            && registry.get(&installed.card).is_some_and(|definition| definition.continuous.iter().any(|effect| effect.kind == crate::dsl::ContinuousKind::LendsVirusCounters))
+    })
 }
 
 /// An additional cost to run that takes cards asks which (Hired Help's

@@ -1,0 +1,29 @@
+{
+  "id": "jeeves_model_bioroids",
+  "title": "Jeeves Model Bioroids",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 5,
+  "unique": true,
+  "free_influence_if": {
+    "NonAllianceOfItsFaction": 6
+  },
+  "triggers": [
+    {
+      "trigger": "OnThirdClickOnOneAction",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainClicks": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "The first time you spend 3[click] on the same action each turn, gain [click]."
+    }
+  ],
+  "built_from": 10067,
+  "is_playable": true
+}

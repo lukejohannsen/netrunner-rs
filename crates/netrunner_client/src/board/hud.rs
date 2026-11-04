@@ -104,7 +104,9 @@ pub fn readouts(view: &ClientView, side: Side) -> Vec<Readout> {
                 quiet("Credits", credits),
                 quiet("Clicks", runner.clicks.to_string()),
                 points(Side::Runner, runner.agenda_points),
-                quiet("Grip", runner.grip_count.to_string()),
+                // A grip revealed to a viewer not its owner (Harishchandra
+                // Ent.) is a door to its cards; the owner's is the hand.
+                Readout { opens: (view.viewer.side() != Some(Side::Runner) && runner.grip_cards.is_some()).then_some(Pile::Grip), ..quiet("Grip", runner.grip_count.to_string()) },
                 threat("Tags", runner.tags),
                 threat("Core damage", u32::try_from(runner.brain_damage).unwrap_or(u32::MAX)),
             ]

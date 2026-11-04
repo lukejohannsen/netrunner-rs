@@ -979,6 +979,12 @@ pub enum GameEvent {
     /// searches the stack". Public: the search is announced, and what it
     /// found is told apart (`CardsSelected`).
     DeckSearched { side: Side },
+    /// `side` has now spent 3 or more [click] on `action` this turn, and
+    /// this action is the one that got there (CR 5.2.5a, `turn_log::
+    /// record_clicks_spent`) — Jeeves Model Bioroids'. Recorded as the
+    /// action's handler returns, ahead of `ActionFinished`. Public: every
+    /// [click] spent, and on what, is.
+    ThirdClickOnOneAction { side: Side, action: crate::rules::turn_log::SameAction },
     /// Fired only by `engine::draw_card_click` — the *basic* click-to-draw
     /// action specifically, not `Effect::DrawCards` (e.g. Sure Gamble
     /// still only emits `CardDrawn`). Feeds `Trigger::OnBasicDrawAction`.
@@ -1135,7 +1141,7 @@ impl GameEvent {
             | GameEvent::AccessReplaced { .. } | GameEvent::CreditsLost { .. } | GameEvent::ClicksLost { .. }
             | GameEvent::ClicksGained { .. }
             | GameEvent::AgendaScored { .. } | GameEvent::AboutToResolve { .. } | GameEvent::AboutToBeUninstalled { .. }
-            | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. } | GameEvent::AgendaCounterSpent { .. } | GameEvent::DeckSearched { .. }
+            | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. } | GameEvent::AgendaCounterSpent { .. } | GameEvent::DeckSearched { .. } | GameEvent::ThirdClickOnOneAction { .. }
             | GameEvent::BasicDrawActionTaken { .. } | GameEvent::BasicCreditActionTaken { .. } | GameEvent::MandatoryDrawMade { .. }
             | GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. }
             | GameEvent::NumberChoiceOffered { .. } | GameEvent::NumberChosen { .. } | GameEvent::CardNameChosen { .. }
