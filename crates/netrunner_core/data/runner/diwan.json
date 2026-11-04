@@ -1,0 +1,42 @@
+{
+  "id": "diwan",
+  "title": "Diwan",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "InstallCost": {
+          "per": 1
+        }
+      },
+      "applies_to": "InstallingInChosenServer",
+      "text": "As an additional cost to install a card in the root of or protecting that server, the Corp must pay 1[credit]."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseServer": {}
+        }
+      ],
+      "text": "When you install this program, choose a server."
+    },
+    {
+      "trigger": "OnVirusCountersPurged",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "When the Corp purges virus counters, trash this program."
+    }
+  ],
+  "built_from": 10021,
+  "is_playable": true
+}

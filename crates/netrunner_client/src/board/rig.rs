@@ -178,6 +178,7 @@ fn identical(view: &ClientView, actions: Option<&ActionMap>, a: &PublicInstalled
         && a.counters == b.counters
         && a.credits == b.credits
         && a.virus_counters == b.virus_counters
+        && a.virus_placed_on_turn == b.virus_placed_on_turn
         && alone(a)
         && alone(b)
         && used(a) == used(b)
@@ -238,6 +239,7 @@ mod tests {
             counters: 0,
             credits: 0,
             virus_counters: 0,
+            virus_placed_on_turn: None,
         }
     }
 

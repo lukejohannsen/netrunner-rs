@@ -679,6 +679,18 @@ pub struct InstalledRunnerCard {
     /// is.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub virus_counters: u32,
+    /// The turn a virus counter was last placed on this copy, if one was —
+    /// Surge's "Play only if you placed at least 1 virus counter on a
+    /// program this turn. Place 2 virus counters on **that program**",
+    /// read by `CardFilter::VirusCounterPlacedThisTurn`. Dated, never
+    /// reset, as `CopyTurn` is, so no turn start has a line for it; set by
+    /// the one door a virus counter is placed through on a rig card
+    /// (`ability::note_virus_placed`). Not a count of the turn's
+    /// occurrences, which the turn log keeps by class: the card is which
+    /// copy, as `installed_this_turn` is. Public, as the rig is, and
+    /// carried in the view so a bot's sample keeps it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub virus_placed_on_turn: Option<u32>,
     /// The Corp installed ICE this card is hosted on, if it was installed
     /// via `PlayerAction::InstallProgramOnIce` (a Trojan Program, `dsl::
     /// CardDefinition::installs_on_ice`) — e.g. Botulus, Tranquilizer.
@@ -763,6 +775,7 @@ impl Default for InstalledRunnerCard {
             counters: 0,
             credits: 0,
             virus_counters: 0,
+            virus_placed_on_turn: None,
             hosted_on_ice: None,
             hosted_on_rig_card: None,
             hosted_cards: Vec::new(),

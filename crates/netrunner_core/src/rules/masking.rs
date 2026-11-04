@@ -277,6 +277,12 @@ pub struct PublicInstalledRunnerCard {
     /// the rig is.
     #[serde(default)]
     pub virus_counters: u32,
+    /// `InstalledRunnerCard::virus_placed_on_turn` verbatim — the turn a
+    /// virus counter was last placed on this copy (Surge's "that
+    /// program"). Public, as the rig is; carried so a bot's sample can
+    /// play Surge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub virus_placed_on_turn: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1346,6 +1352,10 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::StrengthBoosted { .. }
         | GameEvent::TraceCorpBidSubmitted { .. }
         | GameEvent::TraceRunnerBidSubmitted { .. }
+        // A scored agenda's counter, public in the score area, and a
+        // search, announced (what it found is `CardsSelected`'s to mask).
+        | GameEvent::AgendaCounterSpent { .. }
+        | GameEvent::DeckSearched { .. }
         | GameEvent::TraceAvoided { .. }
         | GameEvent::TraceSuccessful { .. }
         | GameEvent::TagRemoved { .. }
@@ -1885,6 +1895,7 @@ fn mask_installed_runner_card(state: &GameState, registry: &CardRegistry, card: 
         counters: card.counters,
         credits: card.credits,
         virus_counters: card.virus_counters,
+        virus_placed_on_turn: card.virus_placed_on_turn,
     }
 }
 
@@ -2539,6 +2550,7 @@ mod tests {
             counters: 0,
             credits: 0,
             virus_counters: 0,
+            virus_placed_on_turn: None,
         }];
         assert_eq!(masked_for_corp.runner.rig, expected);
         assert_eq!(masked_for_runner.runner.rig, expected);

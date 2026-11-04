@@ -2070,6 +2070,14 @@ pub enum Effect {
         /// resolution carries.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         while_in_play: bool,
+        /// For the rest of the game, not the turn — Watch the World Burn's
+        /// "**Until the game ends**, whenever you access a copy of that
+        /// card, remove it from the game": heard on every turn, every time
+        /// (`DelayedAbility::for_the_game`), and never spent. A word beside
+        /// `while_in_play` because the event that makes it is gone from
+        /// the play area before its first hearing.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        until_the_game_ends: bool,
     },
     /// "After you resolve this operation, your action phase ends" — a
     /// terminal card's line (Active Policing, Bring Them Home): the rest of
@@ -4503,7 +4511,7 @@ impl Effect {
             // delayed ability made as a facedown piece of ice would name it
             // in every view), about the install chosen.
             Effect::AsThisCard(effect) => Effect::AsThisCard(Box::new(effect.with_chosen_installs(installs))),
-            Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn, while_in_play } => Effect::LaterThisTurn {
+            Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn, while_in_play, until_the_game_ends } => Effect::LaterThisTurn {
                 when,
                 filter: filter.map(|filter| filter.with_chosen_installs(installs)),
                 every_time,
@@ -4511,6 +4519,7 @@ impl Effect {
                 this_run,
                 next_turn,
                 while_in_play,
+                until_the_game_ends,
             },
             other => other,
         }
@@ -4525,6 +4534,7 @@ impl Effect {
             match effect {
                 Effect::PromptChooseCards { filter, .. } => named |= filter.names_that_card(),
                 Effect::SwapScoredAgenda { that_agenda: Some(filter), .. } => named |= filter.names_that_card(),
+                Effect::LaterThisTurn { filter: Some(filter), .. } => named |= filter.names_that_card(),
                 _ => {}
             }
         });
@@ -4621,7 +4631,7 @@ impl Effect {
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
-            Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn, while_in_play } => Effect::LaterThisTurn {
+            Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn, while_in_play, until_the_game_ends } => Effect::LaterThisTurn {
                 when,
                 filter: filter.map(|filter| filter.with_chosen_name(card)),
                 every_time,
@@ -4629,6 +4639,7 @@ impl Effect {
                 this_run,
                 next_turn,
                 while_in_play,
+                until_the_game_ends,
             },
             other => other,
         }
@@ -4698,6 +4709,18 @@ impl Effect {
             Effect::ChooseNumber { chooser, min, max, of, then, text, secret } => Effect::ChooseNumber { chooser, min, max, of, then: boxed(then), text, secret },
             // Turntable's "swap **that agenda**".
             Effect::SwapScoredAgenda { yours, that_agenda } => Effect::SwapScoredAgenda { yours, that_agenda: that_agenda.map(|filter| filter.with_that_card(card)) },
+            // Watch the World Burn's "a copy of that card", heard later; the
+            // ability's own effect is about what it hears then, not this.
+            Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn, while_in_play, until_the_game_ends } => Effect::LaterThisTurn {
+                when,
+                filter: filter.map(|filter| filter.with_that_card(card)),
+                every_time,
+                effect,
+                this_run,
+                next_turn,
+                while_in_play,
+                until_the_game_ends,
+            },
             other => other,
         }
     }
@@ -4866,7 +4889,7 @@ impl Effect {
             }
             // RNG Key's "the next card that you access this run": the
             // number named rides into what waits for the access.
-            Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn, while_in_play } => Effect::LaterThisTurn { when, filter, every_time, effect: boxed(effect), this_run, next_turn, while_in_play },
+            Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn, while_in_play, until_the_game_ends } => Effect::LaterThisTurn { when, filter, every_time, effect: boxed(effect), this_run, next_turn, while_in_play, until_the_game_ends },
             Effect::InstallRunnerCardFromZone { from, discount: Discount::Amount(a), if_installed } => {
                 Effect::InstallRunnerCardFromZone { from, discount: Discount::Amount(Box::new(amount(*a))), if_installed }
             }

@@ -657,6 +657,21 @@ pub enum Trigger {
     /// occurrence of nothing, and no other moment is the Runner's side of a
     /// trace.
     OnLinkBoosted,
+    /// "Whenever you spend an agenda counter" (Mark Yale): one agenda
+    /// counter the Corp spent paying a cost (CR 4.7.3),
+    /// `GameEvent::AgendaCounterSpent`, heard once for each. About nothing
+    /// a card's `when` narrows, and the Corp's own. Composition didn't
+    /// work: a counter removed was an occurrence of nothing, and a removal
+    /// by an effect is not a spend.
+    OnAgendaCounterSpent,
+    /// "Whenever the Runner searches the stack" (Personality Profiles): a
+    /// search of a deck (CR 8.7) — a selection over the whole deck that
+    /// shuffles it after — at `GameEvent::DeckSearched`, as the search
+    /// ends. About nothing, the searcher's side the moment's, so "the
+    /// Runner's" is `when: Whose(Runner)`. Composition
+    /// didn't work: a selection was an occurrence of nothing, and the
+    /// shuffle a search ends with is not a moment.
+    OnDeckSearched,
 }
 
 /// What a run's moment about a piece of ice says of it beyond the card —
@@ -1253,6 +1268,27 @@ pub enum EventFilter {
 impl EventFilter {
     /// `CardFilter::ChosenName` written over as `card`, in a filter on the
     /// card a moment is about (`Effect::with_chosen_name`).
+    /// `CardFilter::ThatCard` written over as `card` in a filter on the
+    /// card a moment is about — Watch the World Burn's "whenever you
+    /// access **a copy of that card**", a `LaterThisTurn` made by the
+    /// delayed ability that heard the first access.
+    pub fn with_that_card(self, card: &crate::dsl::CardId) -> EventFilter {
+        match self {
+            EventFilter::Card(filter) => EventFilter::Card(filter.with_that_card(card)),
+            EventFilter::All(parts) => EventFilter::All(parts.into_iter().map(|part| part.with_that_card(card)).collect()),
+            other => other,
+        }
+    }
+
+    /// Whether `with_that_card` would write anything.
+    pub fn names_that_card(&self) -> bool {
+        match self {
+            EventFilter::Card(filter) => filter.names_that_card(),
+            EventFilter::All(parts) => parts.iter().any(EventFilter::names_that_card),
+            _ => false,
+        }
+    }
+
     pub fn with_chosen_name(self, card: &crate::dsl::CardId) -> EventFilter {
         match self {
             EventFilter::Card(filter) => EventFilter::Card(filter.with_chosen_name(card)),
@@ -1357,7 +1393,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 78] = [
+    pub const ALL: [Trigger; 80] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -1436,6 +1472,8 @@ impl Trigger {
         Trigger::OnAccessAboutToResolve,
         Trigger::OnAnyClicksLost,
         Trigger::OnLinkBoosted,
+        Trigger::OnAgendaCounterSpent,
+        Trigger::OnDeckSearched,
     ];
 
     /// This trigger's position in `ALL`.
@@ -1528,6 +1566,8 @@ impl Trigger {
             | Trigger::OnCreditsLost
             | Trigger::OnTraceInitiated
             | Trigger::OnLinkBoosted
+            | Trigger::OnAgendaCounterSpent
+            | Trigger::OnDeckSearched
             | Trigger::WhileTrue
             | Trigger::Paid => TriggerAbout::Nothing,
             // `OnDamageDealt` would be the second, the day a card prints
@@ -1610,6 +1650,10 @@ impl Trigger {
             | Trigger::OnCreditsLost
             | Trigger::OnServerCreated
             | Trigger::OnCreditsSpentFromInstalledCard
+            | Trigger::OnAgendaCounterSpent
+            // "Whenever **the Runner** searches", printed on a Corp agenda:
+            // whose it is, `EventFilter::Whose`.
+            | Trigger::OnDeckSearched
             // "When you forfeit this agenda": the Runner forfeits stolen
             // agendas too (Data Dealer), so whose forfeit it was is a word
             // the card says (`EventFilter::Whose`) — `Subject::This` alone
@@ -1701,7 +1745,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnTagsAvoided | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed | Trigger::OnAbilityTookCredits | Trigger::OnCardRevealed | Trigger::OnCardDrawn | Trigger::OnCardExposed | Trigger::OnAgendaAddedToScoreArea | Trigger::OnDrawAboutToResolve | Trigger::OnExposeAboutToResolve | Trigger::OnServerCreated | Trigger::OnTraceSuccessful | Trigger::OnBasicCreditAction | Trigger::WhileTrue | Trigger::OnMandatoryDraw | Trigger::OnAccessPassed | Trigger::OnBreachEnded | Trigger::OnStrengthBoosted | Trigger::OnSecretCreditsRevealed | Trigger::OnCardsDrawn | Trigger::OnClicksLost | Trigger::OnCreditsLost | Trigger::OnTraceInitiated | Trigger::OnAdvancementCounterPlaced | Trigger::OnBadPublicityAboutToResolve | Trigger::OnAccessAboutToResolve | Trigger::OnAnyClicksLost | Trigger::OnLinkBoosted => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnTagsAvoided | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed | Trigger::OnAbilityTookCredits | Trigger::OnCardRevealed | Trigger::OnCardDrawn | Trigger::OnCardExposed | Trigger::OnAgendaAddedToScoreArea | Trigger::OnDrawAboutToResolve | Trigger::OnExposeAboutToResolve | Trigger::OnServerCreated | Trigger::OnTraceSuccessful | Trigger::OnBasicCreditAction | Trigger::WhileTrue | Trigger::OnMandatoryDraw | Trigger::OnAccessPassed | Trigger::OnBreachEnded | Trigger::OnStrengthBoosted | Trigger::OnSecretCreditsRevealed | Trigger::OnCardsDrawn | Trigger::OnClicksLost | Trigger::OnCreditsLost | Trigger::OnTraceInitiated | Trigger::OnAdvancementCounterPlaced | Trigger::OnBadPublicityAboutToResolve | Trigger::OnAccessAboutToResolve | Trigger::OnAnyClicksLost | Trigger::OnLinkBoosted | Trigger::OnAgendaCounterSpent | Trigger::OnDeckSearched => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

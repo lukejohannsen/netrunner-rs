@@ -960,6 +960,20 @@ pub enum GameEvent {
     CountersAdded { card: CardId, amount: u32 },
     /// No install handle, for the reason on `CountersAdded`.
     CountersRemoved { card: CardId, amount: u32 },
+    /// One agenda counter the Corp spent paying a cost (CR 4.7.3) — off a
+    /// scored agenda's own ability (`Cost::RemoveCounters`) or off any
+    /// (`Cost::AgendaCounters`); `card` is the agenda it came from, public
+    /// in the score area. One event for each counter, since Mark Yale's
+    /// "whenever you spend an agenda counter" is heard once for each.
+    /// Pushed by the payment and dispatched by its payer
+    /// (`ability::dispatch_cost_events`).
+    AgendaCounterSpent { card: CardId },
+    /// `side` searched their own deck (CR 8.7) — a selection over the whole
+    /// deck that shuffled it after (`pending_choice::searches_own_deck`),
+    /// found anything or not: Personality Profiles' "whenever the Runner
+    /// searches the stack". Public: the search is announced, and what it
+    /// found is told apart (`CardsSelected`).
+    DeckSearched { side: Side },
     /// Fired only by `engine::draw_card_click` — the *basic* click-to-draw
     /// action specifically, not `Effect::DrawCards` (e.g. Sure Gamble
     /// still only emits `CardDrawn`). Feeds `Trigger::OnBasicDrawAction`.
@@ -1116,7 +1130,7 @@ impl GameEvent {
             | GameEvent::AccessReplaced { .. } | GameEvent::CreditsLost { .. } | GameEvent::ClicksLost { .. }
             | GameEvent::ClicksGained { .. }
             | GameEvent::AgendaScored { .. } | GameEvent::AboutToResolve { .. } | GameEvent::AboutToBeUninstalled { .. }
-            | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. }
+            | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. } | GameEvent::AgendaCounterSpent { .. } | GameEvent::DeckSearched { .. }
             | GameEvent::BasicDrawActionTaken { .. } | GameEvent::BasicCreditActionTaken { .. } | GameEvent::MandatoryDrawMade { .. }
             | GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. }
             | GameEvent::NumberChoiceOffered { .. } | GameEvent::NumberChosen { .. } | GameEvent::CardNameChosen { .. }

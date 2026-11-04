@@ -1,0 +1,51 @@
+{
+  "id": "mark_yale",
+  "title": "Mark Yale",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnAgendaCounterSpent",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever you spend an agenda counter, gain 1[credit]."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[trash] or any agenda counter: Gain 2[credit]. — trash this asset",
+      "cost": "TrashSelf",
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          2
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "[trash] or any agenda counter: Gain 2[credit]. — spend an agenda counter",
+      "cost": {
+        "AgendaCounters": 1
+      },
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          2
+        ]
+      }
+    }
+  ],
+  "built_from": 7009,
+  "is_playable": true
+}

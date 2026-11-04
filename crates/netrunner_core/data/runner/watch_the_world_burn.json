@@ -1,0 +1,58 @@
+{
+  "id": "watch_the_world_burn",
+  "title": "Watch the World Burn",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "only_in": "Remote",
+            "on_start": {
+              "Sequence": [
+                {
+                  "LaterThisTurn": {
+                    "when": "OnAccessed",
+                    "filter": {
+                      "Card": "NonAgenda"
+                    },
+                    "this_run": true,
+                    "effect": {
+                      "Sequence": [
+                        "RemoveCurrentlyAccessedCardFromGame",
+                        {
+                          "LaterThisTurn": {
+                            "when": "OnAccessed",
+                            "filter": {
+                              "Card": "ThatCard"
+                            },
+                            "every_time": true,
+                            "until_the_game_ends": true,
+                            "effect": "RemoveCurrentlyAccessedCardFromGame"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "SetRunEndedEffect": "EndActionPhase"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Make a run on a remote server. If successful, remove the first non-agenda card that you access from the game."
+    }
+  ],
+  "built_from": 23100,
+  "is_playable": true
+}

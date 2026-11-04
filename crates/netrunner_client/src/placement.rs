@@ -130,13 +130,8 @@ impl<'a> Placement<'a> {
             // Outward of another, the table may add to it (Network
             // Exchange): the engine's number, never counted here.
             let surcharge = if ice > 0 { self.view.outer_ice_install_surcharge } else { 0 };
-            let tax = if self.pay_cost { (ice + surcharge).saturating_sub(self.discount) } else { 0 };
-            let cost = match tax {
-                0 => String::new(),
-                1 => " — costs 1 credit".to_string(),
-                n => format!(" — costs {n} credits"),
-            };
-            return format!("Install protecting {}{cost}", server_name(server));
+            let tax = if self.pay_cost { (ice + surcharge + self.additional(server)).saturating_sub(self.discount) } else { 0 };
+            return format!("Install protecting {}{}", server_name(server), costs(tax));
         }
         if self.is_new(server) {
             return "Install in a new remote server".to_string();
@@ -145,14 +140,23 @@ impl<'a> Placement<'a> {
             ServerId::Remote(_) => server_name(server),
             central => format!("the root of {}", server_name(central)),
         };
+        // An agenda, asset or upgrade costs nothing to install, unless the
+        // table adds to it (Diwan's server).
+        let cost = costs(if self.pay_cost { self.additional(server).saturating_sub(self.discount) } else { 0 });
         if let Some(region) = self.is_region().then(|| self.region_there(server)).flatten() {
-            return format!("Install in {place} — trashes {region}");
+            return format!("Install in {place}{cost} — trashes {region}");
         }
         match (self.occupant(server), self.takes_the_remote()) {
-            (Some(there), Some(true)) => format!("Install in {place} — trashes {there}"),
-            (Some(there), None) => format!("Install in {place} — holds {there}"),
-            _ => format!("Install in {place}"),
+            (Some(there), Some(true)) => format!("Install in {place}{cost} — trashes {there}"),
+            (Some(there), None) => format!("Install in {place}{cost} — holds {there}"),
+            _ => format!("Install in {place}{cost}"),
         }
+    }
+
+    /// What the table adds to any install in `server` (Diwan's): the
+    /// engine's number, never counted here.
+    fn additional(&self, server: ServerId) -> u32 {
+        self.view.install_surcharges.iter().find(|(taxed, _)| *taxed == server).map_or(0, |(_, cost)| *cost)
     }
 
     /// The prompt's heading after the asking card's name.
@@ -179,10 +183,22 @@ impl<'a> Placement<'a> {
                 lines.push("A card in play makes ice installed outward of another cost more.");
             }
         }
+        if self.pay_cost && !self.view.install_surcharges.is_empty() {
+            lines.push("A card in play makes installing in a server it chose cost more.");
+        }
         if !self.is_ice() && self.takes_the_remote() != Some(false) && self.allowed.is_some_and(|allowed| allowed.iter().any(|s| self.occupant(*s).is_some())) {
             lines.push("A remote holds one agenda or asset: installing one where one already is trashes it.");
         }
         lines.join(" ")
+    }
+}
+
+/// " — costs N credits", or nothing for nothing.
+fn costs(tax: u32) -> String {
+    match tax {
+        0 => String::new(),
+        1 => " — costs 1 credit".to_string(),
+        n => format!(" — costs {n} credits"),
     }
 }
 
@@ -309,5 +325,23 @@ mod tests {
         assert_eq!(placement.label(ServerId::Hq), "Install in the root of HQ");
         assert_eq!(placement.label(ServerId::Remote(0)), "Install in Remote 0");
         assert_eq!(placement.detail(), "A new remote server is an option.");
+    }
+
+    /// Diwan's 1 credit on every install in the server it chose, which the
+    /// engine carries: on an upgrade's root as on a piece of ice.
+    #[test]
+    fn a_server_the_table_taxes_names_its_price_for_every_install() {
+        let (registry, mut view) = parked("manegarm");
+        view.install_surcharges = vec![(ServerId::Hq, 1)];
+        let placement = Placement::of(&view, &registry).unwrap();
+        assert_eq!(placement.label(ServerId::Hq), "Install in the root of HQ — costs 1 credit");
+        assert_eq!(placement.label(ServerId::Remote(0)), "Install in Remote 0");
+        assert!(placement.detail().contains("installing in a server it chose cost more"));
+
+        let (registry, mut view) = parked("ice_wall");
+        view.install_surcharges = vec![(ServerId::Hq, 1), (ServerId::Remote(0), 1)];
+        let placement = Placement::of(&view, &registry).unwrap();
+        assert_eq!(placement.label(ServerId::Hq), "Install protecting HQ — costs 2 credits");
+        assert_eq!(placement.label(ServerId::Remote(0)), "Install protecting Remote 0 — costs 1 credit");
     }
 }

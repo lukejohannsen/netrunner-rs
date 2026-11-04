@@ -238,6 +238,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::TakeTags(n) => format!("take {}", plural(*n, "tag", "tags")),
         Cost::TakeBadPublicity(n) => format!("take {n} bad publicity"),
         Cost::RemoveCounters(n) => format!("remove {}", plural(*n, "counter", "counters")),
+        Cost::AgendaCounters(n) => format!("spend any {}", plural(*n, "agenda counter", "agenda counters")),
         Cost::VirusCounters(Amount::Fixed(n)) => format!("remove any {}", plural(*n, "virus counter", "virus counters")),
         Cost::VirusCounters(amount) => format!("remove any virus counters equal to {}", describe_amount(amount)),
         Cost::RemoveAdvancementCounters(n) => format!("remove {}", plural(*n, "hosted advancement counter", "hosted advancement counters")),
@@ -589,11 +590,15 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         // the words already read.
         Effect::AsThisCard(effect) => describe_effect(effect, registry),
         Effect::AsInstall { effect, .. } => describe_effect(effect, registry),
+        // Watch the World Burn's: until the game ends.
+        Effect::LaterThisTurn { when, filter, effect, until_the_game_ends: true, .. } => {
+            describe_later_this_turn(*when, filter.as_ref(), true, false, effect, registry).replace("for the rest of this turn", "until the game ends")
+        }
         // Targeted Marketing's: as long as the current stays in play.
         Effect::LaterThisTurn { when, filter, every_time, effect, while_in_play: true, .. } => {
             describe_later_this_turn(*when, filter.as_ref(), *every_time, false, effect, registry).replace("for the rest of this turn", "while this card is in play").replace("the next time this turn", "the next time while this card is in play")
         }
-        Effect::LaterThisTurn { when, filter, every_time, effect, this_run: false, next_turn, while_in_play: false } => describe_later_this_turn(*when, filter.as_ref(), *every_time, *next_turn, effect, registry),
+        Effect::LaterThisTurn { when, filter, every_time, effect, this_run: false, next_turn, while_in_play: false, .. } => describe_later_this_turn(*when, filter.as_ref(), *every_time, *next_turn, effect, registry),
         Effect::LaterThisTurn { when, filter, every_time, effect, this_run: true, .. } => {
             describe_later_this_turn(*when, filter.as_ref(), *every_time, false, effect, registry).replace("this turn", "this run")
         }
@@ -1150,6 +1155,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::Installing(filter) => format!("a card its controller installs ({})", lower(format!("{filter:?}"))),
         Scope::OpponentInstalling(filter) => format!("a card the other player installs ({})", lower(format!("{filter:?}"))),
         Scope::IceNotInnermost => "each piece of ice not installed in the innermost position".to_string(),
+        Scope::InstallingInChosenServer => "each card the Corp installs in the server this chose".to_string(),
         Scope::InstallingOntoThis(filter) => format!("a card its controller installs onto this card ({})", lower(format!("{filter:?}"))),
         Scope::Ice(CardFilter::Any) => "each piece of ice".to_string(),
         Scope::Ice(filter) => format!("each piece of ice ({})", lower(format!("{filter:?}"))),

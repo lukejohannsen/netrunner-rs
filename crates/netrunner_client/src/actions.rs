@@ -556,6 +556,10 @@ pub fn narrate_event(
         // rules' trash, nobody's.
         GameEvent::CardTrashed { card, from: netrunner_core::dsl::TrashedFrom::PlayArea, .. } => format!("{} is trashed", title(card)),
         GameEvent::CardTrashed { side, card, .. } => format!("{side:?} trashed {}", title(card)),
+        // A search is announced (CR 8.7); what it found is `CardsSelected`.
+        GameEvent::DeckSearched { side: Side::Runner } => "Runner searched the stack".to_string(),
+        GameEvent::DeckSearched { side: Side::Corp } => "Corp searched R&D".to_string(),
+        GameEvent::AgendaCounterSpent { card } => format!("spent an agenda counter from {}", title(card)),
         GameEvent::CardsLookedAt { deck, cards, .. } => {
             let names: Vec<String> = cards.iter().map(&title).collect();
             format!("looked at the top of {}: {}", if *deck == Side::Corp { "R&D" } else { "the stack" }, and_list(&names))

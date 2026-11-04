@@ -173,7 +173,6 @@ pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Business First* (`business_first`): tranche F6 of the FFG plan.
 pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("diwan", "Diwan"),
 ];
 
 /// *Democracy and Dogma* (`democracy_and_dogma`): tranche F6 of the FFG plan.
@@ -182,7 +181,6 @@ pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Salsette Island* (`salsette_island`): tranche F6 of the FFG plan.
 pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("personality_profiles", "Personality Profiles"),
     ("jeeves_model_bioroids", "Jeeves Model Bioroids"),
 ];
 
@@ -240,7 +238,6 @@ pub(crate) const UOT_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Order and Chaos* (`order_and_chaos`): tranche F7 of the FFG plan.
 pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("mark_yale", "Mark Yale"),
     ("hivemind", "Hivemind"),
 ];
 
@@ -329,7 +326,6 @@ pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Humanity's Shadow* (`humanitys_shadow`): tranche F11 of the FFG plan.
 pub(crate) const HS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("surge", "Surge"),
 ];
 
 /// *Future Proof* (`future_proof`): tranche F11 of the FFG plan.
@@ -343,7 +339,6 @@ pub(crate) const NAPD_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Magnum Opus* (`magnum_opus`): tranche F12 of the FFG plan.
 pub(crate) const MO_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("watch_the_world_burn", "Watch the World Burn"),
 ];
 
 /// *System Core 2019* (`system_core_2019`): tranche F12 of the FFG plan.

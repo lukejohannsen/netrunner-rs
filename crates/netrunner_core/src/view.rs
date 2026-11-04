@@ -314,6 +314,15 @@ pub struct ClientView {
     /// will take; the card is a faceup Runner install both players see.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub outer_ice_install_surcharge: u32,
+    /// What the table adds, as an additional cost, to the Corp's install of
+    /// any card in the root of or protecting a server — Diwan's "the Corp
+    /// must pay 1[credit]" in the server it chose
+    /// (`continuous::additional_install_cost_in`). Only servers that cost
+    /// something are listed; the engine's answer, as `run_costs` is, so the
+    /// placement prompt names the price. The choice is public (CR 9.10.3),
+    /// made by a faceup Runner install.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub install_surcharges: Vec<(crate::rules::ServerId, u32)>,
     /// `PublicGameState::revealed` verbatim — the cards revealed in a hand
     /// that an ability still resolving has not moved yet (Burner's).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -562,6 +571,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
             .collect(),
         run_costs: run_costs(state, registry),
         outer_ice_install_surcharge: crate::rules::continuous::outer_ice_install_surcharge(state, registry),
+        install_surcharges: install_surcharges(state, registry),
         revealed: public.revealed,
         selection,
         legal_actions: viewer.side().map(|side| legal_actions_for(state, registry, side)).unwrap_or_default(),
@@ -570,7 +580,8 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
 
 /// Each existing server whose run costs something beyond the click, with
 /// what it costs ([`ClientView::run_costs`]).
-fn run_costs(state: &GameState, registry: &CardRegistry) -> Vec<(crate::rules::ServerId, crate::dsl::Cost)> {
+/// The centrals and every remote with a card in it, in table order.
+fn table_servers(state: &GameState) -> Vec<crate::rules::ServerId> {
     use crate::rules::ServerId;
     let mut servers = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
     for installed in &state.corp.installed {
@@ -579,6 +590,18 @@ fn run_costs(state: &GameState, registry: &CardRegistry) -> Vec<(crate::rules::S
         }
     }
     servers
+}
+
+fn install_surcharges(state: &GameState, registry: &CardRegistry) -> Vec<(crate::rules::ServerId, u32)> {
+    table_servers(state)
+        .into_iter()
+        .map(|server| (server, crate::rules::continuous::additional_install_cost_in(state, registry, server)))
+        .filter(|(_, cost)| *cost > 0)
+        .collect()
+}
+
+fn run_costs(state: &GameState, registry: &CardRegistry) -> Vec<(crate::rules::ServerId, crate::dsl::Cost)> {
+    table_servers(state)
         .into_iter()
         .filter_map(|server| {
             let mut costs = crate::rules::continuous::run_costs(state, registry, server);
