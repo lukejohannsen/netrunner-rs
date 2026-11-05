@@ -62008,3 +62008,398 @@ mod engine_words_stage_38 {
         assert_eq!((none.corp.hq.len(), none.corp.r_and_d.len(), none.runner.resources.credits), (0, 8, Credits(6)));
     }
 }
+
+mod engine_words_stage_39 {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> (GameState, Vec<GameEvent>) {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}"))
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.next_install_id = 100;
+        state
+    }
+
+    // ---- Skorpios Defense Systems: Persuasive Power ----
+
+    fn skorpios() -> GameState {
+        let mut state = runner_turn();
+        state.corp.identity = Some(id("skorpios_defense_systems_persuasive_power"));
+        state
+    }
+
+    /// The Corp is asked about `card` in the heap: whether a selection over
+    /// it is parked for the Corp.
+    fn asked_about(state: &GameState, registry: &CardRegistry, card: &str) -> Option<usize> {
+        let legal = crate::rules::legal_actions_for(state, registry, Side::Corp);
+        if !legal.contains(&PlayerAction::ConfirmCardSelection) {
+            return None;
+        }
+        state.runner.heap.iter().position(|c| *c == id(card)).filter(|position| legal.contains(&PlayerAction::ToggleCardSelection { position: *position }))
+    }
+
+    /// An event is trashed as it finishes resolving (CR 8.2.7), and the
+    /// Corp may remove it from the game instead.
+    #[test]
+    fn skorpios_may_remove_a_played_event_from_the_game() {
+        let registry = registry();
+        let mut state = skorpios();
+        state.runner.grip = vec![id("sure_gamble")];
+        let (asked, _) = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") });
+        let (asked, _) = pass_until_settled(asked, &registry);
+        let position = asked_about(&asked, &registry, "sure_gamble").expect("the Corp is asked about Sure Gamble");
+        let (chosen, _) = act(&asked, &registry, PlayerAction::ToggleCardSelection { position });
+        let (removed, _) = act(&chosen, &registry, PlayerAction::ConfirmCardSelection);
+        assert_eq!(removed.runner.removed_from_game, vec![id("sure_gamble")]);
+        assert!(removed.runner.heap.is_empty(), "never left in the heap");
+        assert_eq!(removed.runner.resources.credits, Credits(14), "the event resolved");
+    }
+
+    /// "Ignore this ability if you have already removed a card from the
+    /// game with it this turn": a card declined spends nothing, a card
+    /// removed spends the turn's use.
+    #[test]
+    fn skorpios_is_spent_only_by_a_card_it_removed() {
+        let registry = registry();
+        let mut state = skorpios();
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        let play = PlayerAction::PlayEvent { card_id: id("sure_gamble") };
+        let (asked, _) = act(&state, &registry, play.clone());
+        let (asked, _) = pass_until_settled(asked, &registry);
+        assert!(asked_about(&asked, &registry, "sure_gamble").is_some());
+        let (declined, _) = act(&asked, &registry, PlayerAction::ConfirmCardSelection);
+        assert_eq!(declined.runner.heap, vec![id("sure_gamble")], "declined: to the heap");
+
+        let (asked, _) = act(&declined, &registry, play.clone());
+        let (asked, _) = pass_until_settled(asked, &registry);
+        let position = asked_about(&asked, &registry, "sure_gamble").expect("asked again: nothing was removed");
+        let (chosen, _) = act(&asked, &registry, PlayerAction::ToggleCardSelection { position });
+        let (removed, _) = act(&chosen, &registry, PlayerAction::ConfirmCardSelection);
+        assert_eq!(removed.runner.removed_from_game, vec![id("sure_gamble")]);
+
+        let (third, _) = act(&removed, &registry, play);
+        let (third, _) = pass_until_settled(third, &registry);
+        assert!(third.pending_decision.is_none(), "already removed one this turn");
+        assert_eq!(third.runner.heap, vec![id("sure_gamble"), id("sure_gamble")]);
+
+        assert_eq!(removed.corp.once_per_turn_used.len(), 1, "the identity's use, spent");
+        // A new turn, a new use: the use limit is cleared as each turn
+        // begins, as every `OncePerTurn` is.
+    }
+
+    /// Damage trashes cards from the grip (CR 10.4.2a): the Corp chooses
+    /// among those cards, and only those.
+    #[test]
+    fn skorpios_chooses_among_the_cards_damage_trashed() {
+        let registry = registry();
+        let mut state = skorpios();
+        state.runner.heap = vec![id("corroder")];
+        state.runner.grip = vec![id("sure_gamble"), id("diesel")];
+        let source = id("snare");
+        crate::rules::evaluate_effect(&mut state, &crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Net, 2), &mut crate::rules::ResolutionContext::for_card(Some(&source)), &registry).expect("damage");
+        let (asked, _) = pass_until_settled(state, &registry);
+        assert!(asked_about(&asked, &registry, "corroder").is_none(), "a card already in the heap was not trashed this way");
+        let position = asked_about(&asked, &registry, "diesel").expect("one of those cards");
+        assert!(asked_about(&asked, &registry, "sure_gamble").is_some());
+        let (chosen, _) = act(&asked, &registry, PlayerAction::ToggleCardSelection { position });
+        let (removed, _) = act(&chosen, &registry, PlayerAction::ConfirmCardSelection);
+        assert_eq!(removed.runner.removed_from_game, vec![id("diesel")]);
+        assert_eq!(removed.runner.heap, vec![id("corroder"), id("sure_gamble")], "the other goes to the heap");
+    }
+
+    /// The Corp's own trash of an installed resource, from the rig.
+    #[test]
+    fn skorpios_may_remove_a_resource_the_corp_trashed() {
+        let registry = registry();
+        let mut state = skorpios();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.runner.tags = 1;
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("daily_casts"), install_id: InstallId(20), ..Default::default() }];
+        let (asked, _) = act(&state, &registry, PlayerAction::TrashResource { target: InstallId(20) });
+        let (asked, _) = pass_until_settled(asked, &registry);
+        let position = asked_about(&asked, &registry, "daily_casts").expect("asked about the resource");
+        let (chosen, _) = act(&asked, &registry, PlayerAction::ToggleCardSelection { position });
+        let (removed, _) = act(&chosen, &registry, PlayerAction::ConfirmCardSelection);
+        assert_eq!(removed.runner.removed_from_game, vec![id("daily_casts")]);
+    }
+
+    /// Without Skorpios nothing is asked.
+    #[test]
+    fn without_skorpios_a_trashed_card_goes_to_the_heap_unasked() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble")];
+        let (played, _) = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") });
+        let (played, _) = pass_until_settled(played, &registry);
+        assert!(played.pending_decision.is_none());
+        assert_eq!(played.runner.heap, vec![id("sure_gamble")]);
+    }
+
+    // ---- Adam: Compulsive Hacker ----
+
+    fn toggles(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, side)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, position: usize) -> GameState {
+        let (chosen, _) = act(state, registry, PlayerAction::ToggleCardSelection { position });
+        act(&chosen, registry, PlayerAction::ConfirmCardSelection).0
+    }
+
+    /// "You start the game with 3 different directive cards installed
+    /// (these cards are not considered part of your deck)": chosen from
+    /// the directives brought (CR 1.5.3b), before the starting hand, and
+    /// the one left over stays outside the game.
+    #[test]
+    fn adam_starts_the_game_with_three_different_directives_installed_from_outside_the_deck() {
+        let registry = registry();
+        let corp = crate::decks::by_id("ad_nihilum").expect("a Corp deck").to_deck();
+        let runner = crate::decks::by_id("zzzzzzzzzzzzzzzzzzzzzzzzzz").expect("Adam's deck").to_deck();
+        let (mut state, _) = GameState::setup(&corp, &runner, &registry, 7).expect("setup");
+        let directives = [id("always_be_running"), id("find_the_truth"), id("neutralize_all_threats"), id("safety_first")];
+        assert_eq!(state.runner.brought, directives.to_vec(), "every directive, brought outside the deck");
+        assert!(state.runner.grip.is_empty(), "before the starting hand");
+        assert!(toggles(&state, &registry, Side::Corp).is_empty(), "the Runner's choice");
+        let corp_view = crate::view::build_client_view(&state, &registry, Side::Corp);
+        assert_eq!(corp_view.runner.brought, directives.to_vec(), "public: it says nothing the registry does not");
+        let stack = state.runner.stack.len();
+        for round in 0..3 {
+            let offered = toggles(&state, &registry, Side::Runner);
+            assert_eq!(offered.len(), 4 - round, "a directive not installed yet");
+            // The last on offer, so the first two installed are not the
+            // pile's first two.
+            state = pick(&state, &registry, *offered.last().expect("one"));
+        }
+        let installed: Vec<CardId> = state.runner.rig.iter().map(|card| card.card.clone()).collect();
+        assert_eq!(installed.len(), 3, "three installed: {installed:?}");
+        let mut distinct = installed.clone();
+        distinct.sort();
+        distinct.dedup();
+        assert_eq!(distinct.len(), 3, "three different directives");
+        assert_eq!(state.runner.brought.len(), 1, "the other stays outside the game");
+        assert_eq!(state.runner.resources.credits, Credits(5), "ignoring all costs");
+        assert_eq!(state.runner.grip.len(), 5, "then the starting hand");
+        assert_eq!(state.runner.stack.len(), stack - 5, "none of them part of the deck");
+        assert_eq!(state.phase, GamePhase::Mulligan(Side::Corp));
+    }
+
+    /// Without Adam nothing is brought.
+    #[test]
+    fn another_identity_brings_no_directives() {
+        let registry = registry();
+        let corp = crate::decks::by_id("ad_nihilum").expect("a Corp deck").to_deck();
+        let runner = crate::decks::by_id("zymogen").expect("a Runner deck").to_deck();
+        let (state, _) = GameState::setup(&corp, &runner, &registry, 7).expect("setup");
+        assert!(state.runner.brought.is_empty());
+        assert!(state.runner.rig.is_empty());
+    }
+
+
+    // ---- Cyber Bureau: Keeping the Peace ----
+
+    fn bureau_installed(card: &str, install: u32, server: ServerId, slot: InstallSlot) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed: false, ..Default::default() }
+    }
+
+    /// "Rez any number of them, lowering the total rez cost among all cards
+    /// by 20": the 20 is shared, each rez taking as much of it as it costs,
+    /// and what is left over is paid.
+    #[test]
+    fn rez_lowering_total_shares_one_discount_among_the_cards_rezzed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(5);
+        state.corp.installed = vec![
+            bureau_installed("hadrians_wall", 10, ServerId::Hq, InstallSlot::Ice),
+            bureau_installed("tyrant", 11, ServerId::RnD, InstallSlot::Ice),
+            bureau_installed("assassin", 12, ServerId::Archives, InstallSlot::Ice),
+            bureau_installed("hostile_architecture", 13, ServerId::Remote(0), InstallSlot::Root),
+        ];
+        let source = id("cyber_bureau_keeping_the_peace");
+        let rez = crate::dsl::Effect::RezLoweringTotal { among: crate::dsl::CardFilter::AmongInstalls(vec![InstallId(10), InstallId(11), InstallId(12)]), by: crate::dsl::Amount::Fixed(20) };
+        crate::rules::evaluate_effect(&mut state, &rez, &mut crate::rules::ResolutionContext::for_card(Some(&source)), &registry).expect("rez");
+        assert!(state.corp.installed[..3].iter().all(|card| card.rezzed), "10 + 7 + 7 = 24, 4 over the 20");
+        assert!(!state.corp.installed[3].rezzed, "not chosen");
+        assert_eq!(state.corp.resources.credits, Credits(1), "the 4 over the 20, paid");
+
+        // Under 20, nothing is paid and nothing is refunded.
+        let mut cheap = base_state();
+        cheap.corp.resources.credits = Credits(5);
+        cheap.corp.installed = vec![bureau_installed("bailiff", 10, ServerId::Hq, InstallSlot::Ice), bureau_installed("drudge_work", 11, ServerId::Remote(0), InstallSlot::Root)];
+        let rez = crate::dsl::Effect::RezLoweringTotal { among: crate::dsl::CardFilter::AmongInstalls(vec![InstallId(10), InstallId(11)]), by: crate::dsl::Amount::Fixed(20) };
+        crate::rules::evaluate_effect(&mut cheap, &rez, &mut crate::rules::ResolutionContext::for_card(Some(&source)), &registry).expect("rez");
+        assert!(cheap.corp.installed.iter().all(|card| card.rezzed));
+        assert_eq!(cheap.corp.resources.credits, Credits(5));
+    }
+
+    /// "You draw a starting hand of 10 cards. Before taking your first
+    /// turn, install up to 5 cards, ignoring all install costs. Rez any
+    /// number of them, lowering the total rez cost among all cards by 20.
+    /// Flip this identity."
+    #[test]
+    fn cyber_bureau_installs_and_rezzes_before_its_first_turn_and_flips() {
+        let registry = registry();
+        let corp = crate::decks::by_id("zzzzzzzzzzzzzzzzzzzzzzzzzzz").expect("Cyber Bureau's deck").to_deck();
+        let runner = crate::decks::by_id("zymogen").expect("a Runner deck").to_deck();
+        let (state, _) = GameState::setup(&corp, &runner, &registry, 3).expect("setup");
+        assert_eq!(state.corp.hq.len(), 10, "a starting hand of 10 cards");
+        let (state, _) = act(&state, &registry, PlayerAction::KeepHand);
+        let (mut state, _) = act(&state, &registry, PlayerAction::KeepHand);
+        assert_eq!(state.turn, 0, "before the first turn");
+        let mut installed = 0;
+        for _ in 0..5 {
+            let offered = toggles(&state, &registry, Side::Corp);
+            let ice = offered.iter().copied().find(|position| registry.get(&state.corp.hq[*position]).is_some_and(|card| matches!(card.card_type, crate::dsl::CardType::Ice(_))));
+            let Some(position) = ice else {
+                state = act(&state, &registry, PlayerAction::ConfirmCardSelection).0;
+                continue;
+            };
+            state = pick(&state, &registry, position);
+            let server = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+                .into_iter()
+                .find(|action| matches!(action, PlayerAction::ChooseServerForPendingDecision { .. }))
+                .expect("a server for the ice");
+            state = act(&state, &registry, server).0;
+            installed += 1;
+        }
+        assert!(installed > 0, "the hand held ice");
+        assert_eq!(state.corp.installed.len(), installed);
+        assert_eq!(state.corp.resources.credits, Credits(5), "ignoring all install costs, the ice tax too");
+        assert!(!state.corp.identity_flipped, "not yet");
+        let offered = toggles(&state, &registry, Side::Corp);
+        assert_eq!(offered.len(), installed, "any of them");
+        let mut choosing = state.clone();
+        for position in &offered {
+            choosing = act(&choosing, &registry, PlayerAction::ToggleCardSelection { position: *position }).0;
+        }
+        let total: u32 = state.corp.installed.iter().filter_map(|card| registry.get(&card.card)).map(|card| card.cost).sum();
+        let (rezzed, _) = act(&choosing, &registry, PlayerAction::ConfirmCardSelection);
+        let (rezzed, _) = pass_until_settled(rezzed, &registry);
+        if total <= 25 {
+            assert!(rezzed.corp.installed.iter().all(|card| card.rezzed), "total {total}");
+            assert_eq!(rezzed.corp.resources.credits.0, 5 - total.saturating_sub(20));
+        }
+        assert!(rezzed.corp.identity_flipped, "flip this identity");
+        assert_eq!(rezzed.turn, 1, "then the first turn");
+        assert_eq!(rezzed.phase, GamePhase::Action(Side::Corp));
+    }
+
+    fn bureau_flipped() -> GameState {
+        let mut state = runner_turn();
+        state.corp.identity = Some(id("cyber_bureau_keeping_the_peace"));
+        state.corp.identity_flipped = true;
+        state.corp.resources.credits = Credits(0);
+        state.runner.resources.credits = Credits(10);
+        state.runner.resources.agenda_points = AgendaPoints(3);
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("hostile_takeover")); 3];
+        state
+    }
+
+    /// "The first time the Runner initiates a run each turn, force the
+    /// Runner to lose 1[credit] for each agenda point in his or her score
+    /// area, then you gain 1[credit] for each credit lost."
+    #[test]
+    fn detectives_bureau_takes_a_credit_per_runner_agenda_point_on_the_first_run_each_turn() {
+        let registry = registry();
+        let state = bureau_flipped();
+        let (first, _) = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let (first, _) = pass_until_settled(first, &registry);
+        assert_eq!((first.runner.resources.credits, first.corp.resources.credits), (Credits(7), Credits(3)));
+
+        // A Runner with 2 credits loses 2, and the Corp gains what was lost.
+        let mut poor = bureau_flipped();
+        poor.runner.resources.credits = Credits(2);
+        let (poor, _) = act(&poor, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let (poor, _) = pass_until_settled(poor, &registry);
+        assert_eq!((poor.runner.resources.credits, poor.corp.resources.credits), (Credits(0), Credits(2)));
+
+        // The front side does nothing of the kind.
+        let mut front = bureau_flipped();
+        front.corp.identity_flipped = false;
+        let (front, _) = act(&front, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let (front, _) = pass_until_settled(front, &registry);
+        assert_eq!(front.runner.resources.credits, Credits(10));
+    }
+
+    /// "[click]: Gain 3[credit] or draw 3 cards." — the back side's.
+    #[test]
+    fn detectives_bureau_clicks_for_three_credits_or_three_cards() {
+        let registry = registry();
+        let mut state = bureau_flipped();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        let ability = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+            .into_iter()
+            .find(|action| matches!(action, PlayerAction::ActivateAbility { .. }))
+            .expect("the identity's ability");
+        let (asked, _) = act(&state, &registry, ability.clone());
+        let options = crate::rules::legal_actions_for(&asked, &registry, Side::Corp);
+        let (credits, _) = act(&asked, &registry, options[0].clone());
+        assert_eq!((credits.corp.resources.credits, credits.corp.resources.clicks), (Credits(3), Clicks(2)));
+        let (cards, _) = act(&asked, &registry, options[1].clone());
+        assert_eq!(cards.corp.hq.len(), 3);
+
+        state.corp.identity_flipped = false;
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&ability), "the front side has no such ability");
+    }
+
+
+    // ---- Rebirth ----
+
+    /// "Switch your identity with another identity from the same faction.
+    /// Remove Rebirth from the game instead of trashing it." The identity
+    /// leaving play goes back to the pile (CR 1.5.4b), the one entering it
+    /// front side up (1.5.4d), its recurring credits placed.
+    #[test]
+    fn rebirth_switches_the_identity_for_another_of_the_same_faction() {
+        let registry = registry();
+        let corp = crate::decks::by_id("ad_nihilum").expect("a Corp deck").to_deck();
+        let runner = crate::decks::by_id("zymosis").expect("Rebirth's deck").to_deck();
+        let (setup, _) = GameState::setup(&corp, &runner, &registry, 7).expect("setup");
+        assert!(!setup.runner.other_identities.is_empty(), "a deck with Rebirth brings a pile of identities");
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("nero_severn_information_broker"));
+        state.runner.identity_flipped = true;
+        state.runner.other_identities = setup.runner.other_identities.clone();
+        state.runner.grip = vec![id("rebirth")];
+        let (asked, _) = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("rebirth") });
+        let offered = toggles(&asked, &registry, Side::Runner);
+        let factions: Vec<_> = offered.iter().map(|position| registry.get(&asked.runner.other_identities[*position]).expect("an identity").faction).collect();
+        let criminal = registry.get(&id("nero_severn_information_broker")).expect("Nero").faction;
+        assert!(!offered.is_empty() && factions.iter().all(|faction| *faction == criminal), "the same faction only: {factions:?}");
+        let ken = asked.runner.other_identities.iter().position(|card| *card == id("ken_express_tenma_disappeared_clone")).expect("Ken in the pile");
+        assert!(offered.contains(&ken));
+        let switched = pick(&asked, &registry, ken);
+        let (switched, _) = pass_until_settled(switched, &registry);
+        assert_eq!(switched.runner.identity, Some(id("ken_express_tenma_disappeared_clone")));
+        assert!(!switched.runner.identity_flipped, "front side up");
+        assert!(switched.runner.other_identities.contains(&id("nero_severn_information_broker")), "back in the pile");
+        assert!(!switched.runner.other_identities.contains(&id("ken_express_tenma_disappeared_clone")));
+        let mut sorted = switched.runner.other_identities.clone();
+        sorted.sort();
+        assert_eq!(sorted, switched.runner.other_identities, "the pile stays sorted");
+        assert_eq!(switched.runner.removed_from_game, vec![id("rebirth")], "removed from the game instead of trashed");
+        assert!(switched.runner.heap.is_empty());
+        let corp_view = crate::view::build_client_view(&switched, &registry, Side::Corp);
+        assert_eq!(corp_view.runner.identity, Some(id("ken_express_tenma_disappeared_clone")), "public");
+    }
+
+}

@@ -1183,6 +1183,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         // The pile of other identities and the one DJ Fenris hosts: faceup,
         // and no card of the deck, so copied whole and never drawn.
         other_identities: view.runner.other_identities.clone(),
+        brought: view.runner.brought.clone(),
         hosted_identities: view.runner.hosted_identities.clone(),
         play_area: view.runner.play_area.clone(),
         in_play: view.runner.in_play.clone(),
@@ -1629,6 +1630,7 @@ mod tests {
                 installed_facedown: Vec::new(),
                 rig_facedown: Vec::new(),
                 other_identities: Vec::new(),
+                brought: Vec::new(),
                 hosted_identities: Vec::new(),
                 play_area: Vec::new(),
                 in_play: Vec::new(),

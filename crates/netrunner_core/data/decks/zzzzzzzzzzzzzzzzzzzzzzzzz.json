@@ -1,0 +1,121 @@
+{
+  "id": "zzzzzzzzzzzzzzzzzzzzzzzzz",
+  "name": "Zzzzzzzzzzzzzzzzzzzzzzzzz",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Skorpios Defense Systems: Persuasive Power, the Weyland identity that may remove from the game 1 of the Runner cards trashed at once, from any location, the first time each turn it does. Zzzzzzzzzzzzzzzzzzz's list, its identity swapped, whole: its Hadrian's Wall, Hortum and Tyrant end runs, and its Power Shutdown, Forced Connection and Shattered Remains trash the Runner's cards. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only: Terminal Directive Cards is in neither the Standard nor the Startup pool. Engine words, Stage 39.",
+  "style": [
+    "traps"
+  ],
+  "identity": "skorpios_defense_systems_persuasive_power",
+  "cards": [
+    {
+      "card": "hostile_takeover",
+      "count": 3
+    },
+    {
+      "card": "off_the_books",
+      "count": 1
+    },
+    {
+      "card": "greenmail",
+      "count": 1
+    },
+    {
+      "card": "sacrifice_zone_expansion",
+      "count": 2
+    },
+    {
+      "card": "hortum",
+      "count": 2
+    },
+    {
+      "card": "broad_daylight",
+      "count": 2
+    },
+    {
+      "card": "divested_trust",
+      "count": 2
+    },
+    {
+      "card": "hadrians_wall",
+      "count": 2
+    },
+    {
+      "card": "oduduwa",
+      "count": 1
+    },
+    {
+      "card": "forced_connection",
+      "count": 2
+    },
+    {
+      "card": "audacity",
+      "count": 2
+    },
+    {
+      "card": "corporate_sales_team",
+      "count": 2
+    },
+    {
+      "card": "docklands_crackdown",
+      "count": 2
+    },
+    {
+      "card": "snatch_and_grab",
+      "count": 2
+    },
+    {
+      "card": "shattered_remains",
+      "count": 2
+    },
+    {
+      "card": "tyrant",
+      "count": 2
+    },
+    {
+      "card": "simone_diego",
+      "count": 1
+    },
+    {
+      "card": "lycan",
+      "count": 2
+    },
+    {
+      "card": "chimera",
+      "count": 2
+    },
+    {
+      "card": "mother_goddess",
+      "count": 1
+    },
+    {
+      "card": "oversight_ai",
+      "count": 2
+    },
+    {
+      "card": "curtain_wall",
+      "count": 2
+    },
+    {
+      "card": "worlds_plaza",
+      "count": 1
+    },
+    {
+      "card": "power_shutdown",
+      "count": 1
+    },
+    {
+      "card": "amazon_industrial_zone",
+      "count": 1
+    },
+    {
+      "card": "sealed_vault",
+      "count": 1
+    },
+    {
+      "card": "satellite_grid",
+      "count": 1
+    }
+  ]
+}

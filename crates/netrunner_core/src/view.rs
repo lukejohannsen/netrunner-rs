@@ -174,6 +174,10 @@ pub struct RunnerClientView {
     /// refers to another identity chooses from (DJ Fenris).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub other_identities: Vec<CardId>,
+    /// Public — see `RunnerState::brought`: the cards brought outside the
+    /// deck that Adam's directives are chosen from.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub brought: Vec<CardId>,
     /// Public — see `RunnerState::hosted_identities`: each identity and the
     /// rig card that hosts it and has its text, which a client names on the
     /// host's abilities and a bot's sample copies.
@@ -529,6 +533,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         installed_facedown_cards: zone_cards(&public.runner.installed_facedown),
         rig_facedown: public.runner.rig_facedown,
         other_identities: public.runner.other_identities,
+        brought: public.runner.brought,
         hosted_identities: public.runner.hosted_identities,
         play_area: public.runner.play_area,
         in_play: public.runner.in_play,

@@ -731,6 +731,18 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub refers_to_other_identities: bool,
 
+    /// The cards a deck with this identity brings outside the deck (CR
+    /// 1.5.1, 1.5.3a) — Adam: Compulsive Hacker's directives, "these cards
+    /// are not considered part of your deck": one copy of every playable
+    /// card of the identity's side this filter admits, since a deck file
+    /// lists no such cards and a player may bring any number of them
+    /// (1.5.3a). Seeded at setup into `RunnerState::brought`, which the
+    /// identity's `before_starting_hand` chooses from (1.5.3b). A
+    /// declaration rather than a scan of the identity's effects for the
+    /// zone, as `refers_to_other_identities` is: setup asks it of a deck.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub brings: Option<crate::dsl::CardFilter>,
+
     /// This event is removed from the game once it has resolved, rather
     /// than trashed — Take a Dive's and Kompromat's last line, "Remove
     /// this event from the game." It lands in
@@ -1481,6 +1493,7 @@ impl Default for CardDefinition {
             stolen_with_agenda_counters: None,
             playable_from_archives: false,
             refers_to_other_identities: false,
+            brings: None,
             removed_after_play: false,
             not_trashed_until_your_next_turn: false,
             pays_for: Vec::new(),
@@ -1701,7 +1714,7 @@ impl CardDefinition {
         if self.refers_to_other_identities && !self.abilities.is_empty() {
             return Err(CardValidationError::OtherIdentitiesBesideAbilities(self.id.clone()));
         }
-        if self.before_starting_hand.is_some() && self.card_type != CardType::Identity {
+        if (self.before_starting_hand.is_some() || self.brings.is_some()) && self.card_type != CardType::Identity {
             return Err(CardValidationError::SetupOffAnIdentity(self.id.clone()));
         }
         if self.before_first_turn.is_some() && (self.card_type != CardType::Identity || self.side != Side::Corp) {

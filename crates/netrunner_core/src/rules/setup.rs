@@ -80,6 +80,20 @@ impl GameState {
             state.runner.other_identities = pile;
         }
 
+        // The cards brought outside the deck (CR 1.5.3a), for an identity
+        // that says so (Adam's directives): one copy of every playable
+        // card of the Runner's the identity's filter admits, sorted by id
+        // for the pile's reason above.
+        if let Some(filter) = registry.get(&runner_deck.identity).and_then(|definition| definition.brings.clone()) {
+            let mut brought: Vec<CardId> = registry
+                .iter()
+                .filter(|def| def.side == Side::Runner && def.card_type != CardType::Identity && def.is_playable && crate::dsl::card_matches_filter(def, &filter))
+                .map(|def| def.id.clone())
+                .collect();
+            brought.sort();
+            state.runner.brought = brought;
+        }
+
         state.corp.resources.credits = Credits(STARTING_CREDITS);
         state.runner.resources.credits = Credits(STARTING_CREDITS);
         // Seeded directly rather than through `memory::refresh` only

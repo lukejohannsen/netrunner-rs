@@ -412,6 +412,9 @@ fn assert_cards_are_conserved(state: &GameState, registry: &netrunner_core::card
             // Less an identity DJ Fenris hosted, removed from the game with
             // him and never a card of the deck (CR 1.5.4).
             .chain(runner.removed_from_game.iter().filter(|id| registry.get(id).is_none_or(|card| card.card_type != netrunner_core::dsl::CardType::Identity)))
+            // The cards brought outside the deck that stayed there (Adam's
+            // directives, CR 1.5.3b).
+            .chain(&runner.brought)
             .chain(&runner.set_aside)
             // Ayla's six, set aside facedown before her starting hand.
             .chain(&runner.set_aside_facedown)
@@ -439,7 +442,15 @@ fn assert_cards_are_conserved(state: &GameState, registry: &netrunner_core::card
             // the Street).
             .chain(state.corp.scored_agendas.iter().map(|s| &s.card).filter(|id| !corp_ids.contains_key(&id.0))),
     );
-    assert_eq!(runner_cards, deck_tally(runner_deck), "seed {seed} ({matchup}): Runner cards are not conserved");
+    // The deck, and one of every card its identity brought outside it
+    // (`CardDefinition::brings`: Adam's directives, CR 1.5.3a).
+    let mut expected = deck_tally(runner_deck);
+    if let Some(filter) = registry.get(&runner_deck.identity).and_then(|identity| identity.brings.as_ref()) {
+        for card in registry.iter().filter(|card| card.side == Side::Runner && card.card_type != netrunner_core::dsl::CardType::Identity && card.is_playable && netrunner_core::dsl::card_matches_filter(card, filter)) {
+            *expected.entry(card.id.0.clone()).or_default() += 1;
+        }
+    }
+    assert_eq!(runner_cards, expected, "seed {seed} ({matchup}): Runner cards are not conserved");
     // …and only while its host is where it can host one: on the table or
     // in the Corp's score area (Political Graffiti).
     for condition in &runner.conditions {

@@ -123,6 +123,7 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
         // names the card it named.
         CardZoneRef::OwnInstalledFacedown => state.runner.installed_facedown.iter().chain(state.runner.rig_facedown.iter().map(|installed| &installed.card)).cloned().collect(),
         CardZoneRef::OtherIdentities => state.runner.other_identities.clone(),
+        CardZoneRef::Brought => state.runner.brought.clone(),
         CardZoneRef::OpponentSetAside => match owner {
             Side::Corp => state.corp.set_aside.clone(),
             Side::Runner => state.runner.set_aside.clone(),
@@ -491,6 +492,7 @@ fn instance_matches_filter(
                 // it": offered only what could be installed.
                 CardZoneRef::OwnStack => Some(RunnerCardSource::Stack),
                 CardZoneRef::OwnSetAside => Some(RunnerCardSource::SetAside),
+                CardZoneRef::Brought => Some(RunnerCardSource::Brought),
                 CardZoneRef::HostedOnSource => source.map(RunnerCardSource::Hosted),
                 _ => None,
             };
@@ -953,6 +955,7 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         CardZoneRef::OwnSetAsideFacedown => Some(&mut state.runner.set_aside_facedown),
         CardZoneRef::OwnInstalledFacedown => Some(&mut state.runner.installed_facedown),
         CardZoneRef::OtherIdentities => Some(&mut state.runner.other_identities),
+        CardZoneRef::Brought => Some(&mut state.runner.brought),
         CardZoneRef::OpponentSetAside => match owner {
             Side::Corp => Some(&mut state.corp.set_aside),
             Side::Runner => Some(&mut state.runner.set_aside),

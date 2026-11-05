@@ -2506,6 +2506,9 @@ pub(crate) enum RunnerCardSource {
     /// The Runner's set-aside cards (`RunnerState::set_aside`) — The
     /// Wizard's Chest.
     SetAside,
+    /// The cards brought outside the deck (`RunnerState::brought`) —
+    /// Adam's directives, installed as the game begins (CR 1.5.3b).
+    Brought,
 }
 
 impl RunnerCardSource {
@@ -2514,6 +2517,7 @@ impl RunnerCardSource {
             RunnerCardSource::Grip => Some(&state.runner.grip),
             RunnerCardSource::Heap => Some(&state.runner.heap),
             RunnerCardSource::SetAside => Some(&state.runner.set_aside),
+            RunnerCardSource::Brought => Some(&state.runner.brought),
             RunnerCardSource::Stack => Some(&state.runner.stack),
             RunnerCardSource::Hosted(host) => crate::rules::pending_choice::hosted_cards_of(state, Some(host)),
         }
@@ -2542,6 +2546,7 @@ impl RunnerCardSource {
             RunnerCardSource::Grip => Some(&mut state.runner.grip),
             RunnerCardSource::Heap => Some(&mut state.runner.heap),
             RunnerCardSource::SetAside => Some(&mut state.runner.set_aside),
+            RunnerCardSource::Brought => Some(&mut state.runner.brought),
             RunnerCardSource::Stack => Some(&mut state.runner.stack),
             RunnerCardSource::Hosted(host) => crate::rules::pending_choice::hosted_cards_of_mut(state, Some(host)),
         }

@@ -1,0 +1,48 @@
+{
+  "id": "adam_compulsive_hacker",
+  "title": "Adam: Compulsive Hacker",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "brings": {
+    "HasSubtype": "Directive"
+  },
+  "before_starting_hand": {
+    "Repeat": {
+      "times": {
+        "Fixed": 3
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "Brought",
+          "filter": {
+            "All": [
+              {
+                "HasSubtype": "Directive"
+              },
+              {
+                "Not": "CopyInstalled"
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "InstallRunnerCardFromZone": {
+              "from": "Brought",
+              "discount": "AllCosts"
+            }
+          }
+        }
+      }
+    }
+  },
+  "triggers": [],
+  "built_from": 9037,
+  "is_playable": true
+}

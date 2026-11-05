@@ -151,7 +151,7 @@ pub fn purpose(
             // A source only, moved whole and never chosen.
             Some(CardZoneRef::RootOfAttackedServer | CardZoneRef::AttackedServer) => format!("Choose {what}"),
             // Nothing is ever put back into the pile.
-            Some(CardZoneRef::OtherIdentities) => format!("Choose {what}"),
+            Some(CardZoneRef::OtherIdentities | CardZoneRef::Brought) => format!("Choose {what}"),
         }
     };
     // "You may trash the top card of R&D": a choice of none or one with
@@ -260,6 +260,7 @@ fn zone_name(chooser: Side, zone: &CardZoneRef, source_card: Option<&CardId>, re
         CardZoneRef::OwnSetAsideFacedown => "the cards set aside facedown".to_string(),
         CardZoneRef::OwnInstalledFacedown => "your facedown installed cards".to_string(),
         CardZoneRef::OtherIdentities => "your other identities".to_string(),
+        CardZoneRef::Brought => "the cards brought outside your deck".to_string(),
         CardZoneRef::OpponentSetAside => format!("{}'s cards set aside", crate::prose::who(opponent)),
         CardZoneRef::HostedOnSource => match source_card {
             Some(card) => format!("hosted on {}", card_title(card, registry)),
@@ -668,6 +669,7 @@ fn zone_place(view: &ClientView, chooser: Side, zone: &CardZoneRef, position: us
         CardZoneRef::OwnSetAsideFacedown => "the cards set aside facedown".to_string(),
         CardZoneRef::OwnInstalledFacedown => "your facedown installed cards".to_string(),
         CardZoneRef::OtherIdentities => "your other identities".to_string(),
+        CardZoneRef::Brought => "the cards brought outside your deck".to_string(),
         CardZoneRef::OpponentSetAside => format!("the {opponent:?}'s cards set aside"),
         CardZoneRef::HostedOnSource => match source_card {
             Some(card) => format!("hosted on {}", card_title(card, registry)),

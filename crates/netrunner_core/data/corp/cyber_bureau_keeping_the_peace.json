@@ -1,0 +1,259 @@
+{
+  "id": "cyber_bureau_keeping_the_peace",
+  "title": "Cyber Bureau: Keeping the Peace",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 40,
+  "unlimited_influence": true,
+  "starting_hand_size": 10,
+  "before_first_turn": {
+    "Sequence": [
+      {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnHq",
+          "filter": {
+            "Not": {
+              "CardType": "Operation"
+            }
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "CardsSelected",
+                  1
+                ]
+              },
+              "effect": {
+                "PromptInstallCorpCard": {
+                  "origin_zone": "OwnHq",
+                  "ignore_costs": true
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnHq",
+          "filter": {
+            "Not": {
+              "CardType": "Operation"
+            }
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "CardsSelected",
+                  1
+                ]
+              },
+              "effect": {
+                "PromptInstallCorpCard": {
+                  "origin_zone": "OwnHq",
+                  "ignore_costs": true
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnHq",
+          "filter": {
+            "Not": {
+              "CardType": "Operation"
+            }
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "CardsSelected",
+                  1
+                ]
+              },
+              "effect": {
+                "PromptInstallCorpCard": {
+                  "origin_zone": "OwnHq",
+                  "ignore_costs": true
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnHq",
+          "filter": {
+            "Not": {
+              "CardType": "Operation"
+            }
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "CardsSelected",
+                  1
+                ]
+              },
+              "effect": {
+                "PromptInstallCorpCard": {
+                  "origin_zone": "OwnHq",
+                  "ignore_costs": true
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnHq",
+          "filter": {
+            "Not": {
+              "CardType": "Operation"
+            }
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "CardsSelected",
+                  1
+                ]
+              },
+              "effect": {
+                "PromptInstallCorpCard": {
+                  "origin_zone": "OwnHq",
+                  "ignore_costs": true
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": {
+            "All": [
+              "InstalledThisTurn",
+              "Unrezzed",
+              {
+                "Not": {
+                  "CardType": "Agenda"
+                }
+              }
+            ]
+          },
+          "min": 0,
+          "max": 5,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "RezLoweringTotal": {
+              "among": "ChosenThisWay",
+              "by": {
+                "Fixed": 20
+              }
+            }
+          }
+        }
+      },
+      "FlipIdentity"
+    ]
+  },
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "IdentityFlipped",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "GainCredits": [
+                "Corp",
+                3
+              ]
+            },
+            {
+              "DrawCards": [
+                "Corp",
+                3
+              ]
+            }
+          ],
+          "texts": [
+            "Gain 3[credit]",
+            "draw 3 cards"
+          ]
+        }
+      },
+      "text": "[click]: Gain 3[credit] or draw 3 cards."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRunStart",
+      "subject": "Any",
+      "first_each_turn": true,
+      "requirement": "IdentityFlipped",
+      "effects": [
+        {
+          "LoseCreditsAmount": [
+            "Runner",
+            {
+              "AgendaPoints": "Runner"
+            }
+          ]
+        },
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            "CreditsLostThisResolution"
+          ]
+        }
+      ],
+      "text": "The first time the Runner initiates a run each turn, force the Runner to lose 1[credit] for each agenda point in his or her score area, then you gain 1[credit] for each credit lost."
+    }
+  ],
+  "built_from": 24001,
+  "is_playable": true
+}

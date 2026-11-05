@@ -982,6 +982,22 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
+        // Each install chosen, in the order installed, each rez taking as
+        // much of the total discount as it costs; the rest is paid.
+        Effect::RezLoweringTotal { among, by } => {
+            let crate::dsl::CardFilter::AmongInstalls(chosen) = among else { return Ok(Vec::new()) };
+            let mut left = resolve_amount(by, ctx, state, registry);
+            let mut rezzes = Vec::new();
+            for installed in state.corp.installed.iter().filter(|card| chosen.contains(&card.install_id) && !card.rezzed) {
+                let Some(definition) = registry.get(&installed.card) else { continue };
+                let cost = (definition.cost as i32 + crate::rules::continuous::rez_cost_delta(state, registry, installed.install_id)).max(0) as u32;
+                let discount = cost.min(left);
+                left -= discount;
+                rezzes.push(Effect::RezInstalled { install: installed.install_id, pay_cost: true, discount: Amount::Fixed(discount), refuse_unaffordable: false });
+            }
+            evaluate_sequence(state, &rezzes, ctx, registry)
+        }
+
         Effect::ShuffleHqIntoRnDKeepingAtRandom(keep) => {
             let mut keep = (resolve_amount(keep, ctx, state, registry) as usize).min(state.corp.hq.len());
             let mut kept = Vec::new();
@@ -1211,6 +1227,8 @@ pub fn evaluate_effect(
             let source = match from {
                 crate::dsl::CardZoneRef::OwnHeap => RunnerCardSource::Heap,
                 crate::dsl::CardZoneRef::OwnSetAside => RunnerCardSource::SetAside,
+                // Adam's directives, installed as the game begins.
+                crate::dsl::CardZoneRef::Brought => RunnerCardSource::Brought,
                 // The card a search found — World Tree's "Install the card
                 // you found, paying 3[credit] less"; one it cannot afford
                 // stays in the stack (CR 1.16.4b).
@@ -1774,6 +1792,24 @@ pub fn evaluate_effect(
             let mut events = Vec::new();
             dispatcher::emit(state, registry, &mut events, GameEvent::IdentityFlipped { side })?;
             Ok(events)
+        }
+
+        Effect::SwitchIdentity => {
+            let new = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            // Gone from the pile while the choice was parked: no switch.
+            let Some(position) = state.runner.other_identities.iter().position(|card| *card == new) else {
+                return Ok(Vec::new());
+            };
+            state.runner.other_identities.remove(position);
+            // Back in the pile, which stays sorted, so a position read off
+            // it later names the card it named for every other card.
+            if let Some(old) = state.runner.identity.replace(new.clone()) {
+                let at = state.runner.other_identities.binary_search(&old).unwrap_or_else(|at| at);
+                state.runner.other_identities.insert(at, old);
+            }
+            state.runner.identity_flipped = false;
+            state.runner.identity_counters = 0;
+            crate::rules::payment::place_recurring(state, registry, Side::Runner, None, &new)
         }
 
         Effect::IdentifyMark => {

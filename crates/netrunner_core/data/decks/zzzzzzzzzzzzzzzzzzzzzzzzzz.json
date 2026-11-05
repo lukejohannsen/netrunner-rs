@@ -1,0 +1,89 @@
+{
+  "id": "zzzzzzzzzzzzzzzzzzzzzzzzzz",
+  "name": "Zzzzzzzzzzzzzzzzzzzzzzzzzz",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "A published list, whole: ToThBeBe's “Adam on the edge (Brno regionals winner)” (NetrunnerDB, https://netrunnerdb.com/en/decklist/91e8aefd-a0eb-4b8d-86ac-5c388d52f5a0, 4 August 2019), so the sweeps reach Adam: Compulsive Hacker, who starts the game with 3 different directive cards installed, chosen from the directives brought outside the deck (CR 1.5.3) — Always Be Running, Find the Truth, Neutralize All Threats and Safety First; the list names none, as NetrunnerDB lists none, and Brain Chip is its own Adam card. A Sweep deck rather than a Sample one, so nothing trains on it and no recorded measurement moves. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only: Data and Destiny is in neither the Standard nor the Startup pool. Engine words, Stage 39.",
+  "style": [
+    "pressure"
+  ],
+  "identity": "adam_compulsive_hacker",
+  "cards": [
+    {
+      "card": "brain_chip",
+      "count": 3
+    },
+    {
+      "card": "bukhgalter",
+      "count": 1
+    },
+    {
+      "card": "career_fair",
+      "count": 3
+    },
+    {
+      "card": "corroder",
+      "count": 1
+    },
+    {
+      "card": "daily_casts",
+      "count": 3
+    },
+    {
+      "card": "data_folding",
+      "count": 3
+    },
+    {
+      "card": "dirty_laundry",
+      "count": 3
+    },
+    {
+      "card": "earthrise_hotel",
+      "count": 3
+    },
+    {
+      "card": "emergent_creativity",
+      "count": 3
+    },
+    {
+      "card": "engolo",
+      "count": 1
+    },
+    {
+      "card": "film_critic",
+      "count": 3
+    },
+    {
+      "card": "freedom_through_equality",
+      "count": 1
+    },
+    {
+      "card": "interdiction",
+      "count": 2
+    },
+    {
+      "card": "liberated_account",
+      "count": 2
+    },
+    {
+      "card": "logic_bomb",
+      "count": 3
+    },
+    {
+      "card": "misdirection",
+      "count": 1
+    },
+    {
+      "card": "multithreader",
+      "count": 3
+    },
+    {
+      "card": "stimhack",
+      "count": 3
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    }
+  ]
+}
