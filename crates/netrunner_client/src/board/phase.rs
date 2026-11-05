@@ -303,6 +303,7 @@ mod tests {
             breached: None,
             breaches_after: Vec::new(),
             encounter_breach: None,
+            hq_pile: None,
             encounters: 0,
             ice_passed: 0,
             run_credits_pay_for: None,

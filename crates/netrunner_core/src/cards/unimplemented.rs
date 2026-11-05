@@ -181,9 +181,7 @@ pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Liberated Mind* (`the_liberated_mind`): tranche F6 of the FFG plan.
 pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("information_sifting", "Information Sifting"),
     ("rebirth", "Rebirth"),
-    ("dedicated_neural_net", "Dedicated Neural Net"),
 ];
 
 /// *Fear the Masses* (`fear_the_masses`): tranche F6 of the FFG plan.
@@ -256,7 +254,6 @@ pub(crate) const HAP_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Creation and Control* (`creation_and_control`): tranche F9 of the FFG plan.
 pub(crate) const CAC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("awakening_center", "Awakening Center"),
 ];
 
 /// *Opening Moves* (`opening_moves`): tranche F10 of the FFG plan.

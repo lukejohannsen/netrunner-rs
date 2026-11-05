@@ -61385,3 +61385,328 @@ mod engine_words_stage_36 {
         assert_eq!(clicked.corp.resources.credits, Credits(1));
     }
 }
+
+mod engine_words_stage_37 {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0
+    }
+
+    fn act_with(state: &GameState, registry: &CardRegistry, action: PlayerAction, events: &mut Vec<GameEvent>) -> GameState {
+        let (next, made) = apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}"));
+        events.extend(made);
+        next
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.next_install_id = 100;
+        state
+    }
+
+    fn ice(card: &str, install: u32, server: ServerId, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    fn root(card: &str, install: u32, server: ServerId, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Root, rezzed, ..Default::default() }
+    }
+
+    /// A run step nobody acts in: a pass for whoever holds a window, else
+    /// the run moves on, or completes once it stands at success.
+    fn step(state: &GameState, registry: &CardRegistry, events: &mut Vec<GameEvent>) -> GameState {
+        let action = match (&state.paid_ability_window, state.active_run.as_ref().map(|run| run.phase)) {
+            (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+            (None, Some(crate::rules::RunPhase::Success)) => PlayerAction::CompleteRun,
+            (None, _) => PlayerAction::ContinueRun,
+        };
+        act_with(state, registry, action, events)
+    }
+
+    fn step_until(mut state: GameState, registry: &CardRegistry, events: &mut Vec<GameEvent>, done: impl Fn(&GameState) -> bool) -> GameState {
+        for _ in 0..40 {
+            if done(&state) {
+                return state;
+            }
+            state = step(&state, registry, events);
+        }
+        panic!("never reached: {:?} {:?}", state.active_run.as_ref().map(|run| run.phase), state.pending_decision);
+    }
+
+    fn accessed(events: &[GameEvent]) -> Vec<CardId> {
+        events
+            .iter()
+            .filter_map(|event| match event {
+                GameEvent::CardAccessed { card, .. } => Some(card.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Takes every access on offer, choosing the first candidate and
+    /// passing on each card, until the run is over.
+    fn access_everything(mut state: GameState, registry: &CardRegistry, events: &mut Vec<GameEvent>) -> GameState {
+        for _ in 0..40 {
+            if state.active_run.is_none() {
+                return state;
+            }
+            let legal = crate::rules::legal_actions_for(&state, registry, Side::Runner);
+            let action = legal
+                .iter()
+                .find(|action| matches!(action, PlayerAction::SelectCardToAccess { .. }))
+                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::PassAccessedCard { .. })))
+                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::PassPriority { .. })))
+                .cloned()
+                .unwrap_or_else(|| panic!("nothing to do: {legal:?}"));
+            state = act_with(&state, registry, action, events);
+        }
+        panic!("the accesses never ended");
+    }
+
+    // ---- Awakening Center ----
+
+    /// "You can install bioroid ice onto this upgrade at no install cost."
+    #[test]
+    fn awakening_center_hosts_bioroid_ice_at_no_install_cost() {
+        let registry = registry();
+        let mut state = base_state();
+        state.next_install_id = 100;
+        state.corp.installed = vec![ice("ice_wall", 90, ServerId::Remote(0), true), root("awakening_center", 101, ServerId::Remote(0), true)];
+        state.corp.hq = vec![id("heimdall_2_0"), id("enigma")];
+        let legal = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        let onto = PlayerAction::InstallCard { card_id: id("heimdall_2_0"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false, host: Some(InstallId(101)) };
+        assert!(legal.contains(&onto), "a bioroid onto it");
+        assert!(!legal.iter().any(|action| matches!(action, PlayerAction::InstallCard { card_id, host: Some(_), .. } if *card_id == id("enigma"))), "never a code gate");
+        let hosted = act(&state, &registry, onto);
+        assert_eq!(hosted.corp.resources.credits, Credits(10), "at no install cost, with a piece of ice protecting the server");
+        let heimdall = hosted.corp.installed.iter().find(|card| card.card == id("heimdall_2_0")).expect("installed");
+        assert_eq!((heimdall.host, heimdall.slot, heimdall.rezzed), (Some(InstallId(101)), InstallSlot::Root, false));
+        assert_eq!(hosted.corp.installed.iter().filter(|card| card.server == ServerId::Remote(0) && card.slot == InstallSlot::Ice).count(), 1, "hosted, it protects nothing");
+
+        // Unrezzed, the upgrade's text is not active.
+        state.corp.installed[1].rezzed = false;
+        let legal = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        assert!(!legal.iter().any(|action| matches!(action, PlayerAction::InstallCard { host: Some(_), .. })));
+    }
+
+    /// A remote with an unrezzed Ice Wall, Awakening Center rezzed in its
+    /// root and Heimdall 2.0 hosted on it; the Runner's run has just passed
+    /// the Ice Wall and the Corp is asked.
+    fn awakening_center_asked(registry: &CardRegistry, events: &mut Vec<GameEvent>) -> GameState {
+        let mut state = runner_turn();
+        let heimdall = crate::rules::InstalledCard { host: Some(InstallId(101)), ..root("heimdall_2_0", 102, ServerId::Remote(0), false) };
+        state.corp.installed = vec![ice("ice_wall", 90, ServerId::Remote(0), false), root("awakening_center", 101, ServerId::Remote(0), true), heimdall];
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        let running = act(&state, registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
+        let asked = step_until(running, registry, events, |state| state.pending_decision.is_some());
+        assert!(matches!(asked.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })), "{:?}", asked.pending_decision);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::IcePassed { .. })), "asked as the ice is passed");
+        asked
+    }
+
+    /// "Whenever the Runner passes all of the ice protecting this server,
+    /// you may rez 1 hosted piece of ice, paying 7[credit] less. If you do,
+    /// the Runner encounters that ice. When this run ends, trash that ice."
+    #[test]
+    fn awakening_center_rezzes_hosted_ice_for_seven_less_the_runner_encounters_it_and_the_runs_end_trashes_it() {
+        let registry = registry();
+        let mut events = Vec::new();
+        let asked = awakening_center_asked(&registry, &mut events);
+        let choosing = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 });
+        let legal = crate::rules::legal_actions_for(&choosing, &registry, Side::Corp);
+        assert_eq!(legal.iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).count(), 1, "the hosted ice alone: {legal:?}");
+        let position = crate::rules::pending_choice::zone_install_ids(&choosing, Side::Corp, &crate::dsl::CardZoneRef::OwnInstalled).and_then(|installs| installs.iter().position(|install| *install == InstallId(102))).expect("offered");
+        let picked = act(&choosing, &registry, PlayerAction::ToggleCardSelection { position });
+        let rezzed = act_with(&picked, &registry, PlayerAction::ConfirmCardSelection, &mut events);
+        assert_eq!(rezzed.corp.resources.credits, Credits(6), "Heimdall 2.0's 11, paying 7 less");
+        assert!(rezzed.corp.installed.iter().any(|card| card.card == id("heimdall_2_0") && card.rezzed));
+        let run = rezzed.active_run.as_ref().expect("the run goes on");
+        assert_eq!(run.phase, crate::rules::RunPhase::EncounterIce);
+        assert_eq!(run.ice.first().map(|ice| ice.card_id.clone()), Some(id("heimdall_2_0")), "the Runner encounters that ice");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::IceEncountered { card_id, .. } if *card_id == id("heimdall_2_0"))));
+        // Heimdall's subroutines end the run; when it ends, the ice goes.
+        let ended = step_until(rezzed, &registry, &mut events, |state| state.active_run.is_none());
+        assert!(!ended.corp.installed.iter().any(|card| card.card == id("heimdall_2_0")), "trash that ice");
+        assert!(ended.corp.archives.iter().any(|archived| archived.card == id("heimdall_2_0")));
+        assert!(ended.corp.installed.iter().any(|card| card.card == id("awakening_center")), "the upgrade stays");
+    }
+
+    /// Declined, the hosted ice stays unrezzed and the run goes on to the
+    /// server.
+    #[test]
+    fn awakening_center_declined_leaves_the_ice_hosted() {
+        let registry = registry();
+        let mut events = Vec::new();
+        let asked = awakening_center_asked(&registry, &mut events);
+        let declined = act(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 });
+        let run = declined.active_run.as_ref().expect("the run goes on");
+        assert_eq!(run.phase, crate::rules::RunPhase::Movement);
+        assert!(run.on_end.is_empty());
+        assert!(declined.corp.installed.iter().any(|card| card.card == id("heimdall_2_0") && !card.rezzed && card.host == Some(InstallId(101))));
+        assert_eq!(declined.corp.resources.credits, Credits(10));
+    }
+
+    /// With nothing hosted, nobody is asked.
+    #[test]
+    fn awakening_center_with_nothing_hosted_asks_nothing() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice("ice_wall", 90, ServerId::Remote(0), false), root("awakening_center", 101, ServerId::Remote(0), true)];
+        let running = act(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
+        let mut events = Vec::new();
+        let at_server = step_until(running, &registry, &mut events, |state| state.pending_decision.is_some() || state.active_run.as_ref().is_none_or(|run| run.phase == crate::rules::RunPhase::Success || run.phase == crate::rules::RunPhase::AccessingCard));
+        assert!(at_server.pending_decision.is_none(), "{:?}", at_server.pending_decision);
+    }
+
+    // ---- Dedicated Neural Net ----
+
+    /// DNN scored, HQ of three, and a run on HQ standing at the psi game.
+    fn neural_net_asked(registry: &CardRegistry) -> GameState {
+        let mut state = runner_turn();
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("dedicated_neural_net"))];
+        state.corp.hq = vec![id("hedge_fund"), id("enigma"), id("ice_wall")];
+        let running = act(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let mut events = Vec::new();
+        let asked = step_until(running, registry, &mut events, |state| state.pending_decision.is_some());
+        assert!(matches!(asked.pending_decision, Some(crate::rules::PendingDecision::PsiGame { .. })), "{:?}", asked.pending_decision);
+        asked
+    }
+
+    fn bid(state: &GameState, registry: &CardRegistry, corp: u32, runner: u32) -> GameState {
+        let corp_bid = act(state, registry, PlayerAction::ChooseNumber { amount: corp });
+        act(&corp_bid, registry, PlayerAction::ChooseNumber { amount: runner })
+    }
+
+    /// "If you and the Runner spent a different number of credits, you
+    /// choose which cards the Runner accesses from HQ for the remainder of
+    /// this run."
+    #[test]
+    fn dedicated_neural_net_on_differing_bids_lets_the_corp_choose_the_hq_accesses() {
+        let registry = registry();
+        let asked = neural_net_asked(&registry);
+        let mut events = Vec::new();
+        let differ = bid(&asked, &registry, 0, 1);
+        let choosing = step_until(differ, &registry, &mut events, |state| state.pending_decision.is_some());
+        match &choosing.pending_decision {
+            Some(crate::rules::PendingDecision::ChooseCards { side: Side::Corp, source: crate::dsl::CardZoneRef::OwnHq, min: 1, max: 1, .. }) => {}
+            other => panic!("the Corp chooses as many as the access limit: {other:?}"),
+        }
+        let legal = crate::rules::legal_actions_for(&choosing, &registry, Side::Corp);
+        assert!(legal.contains(&PlayerAction::ToggleCardSelection { position: 1 }), "{legal:?}");
+        let picked = act(&choosing, &registry, PlayerAction::ToggleCardSelection { position: 1 });
+        let chosen = act_with(&picked, &registry, PlayerAction::ConfirmCardSelection, &mut events);
+        let done = access_everything(chosen, &registry, &mut events);
+        assert_eq!(accessed(&events), [id("enigma")], "the card the Corp chose");
+        assert!(done.lingering.iter().all(|effect| !effect.holds(&done)), "for the remainder of this run");
+    }
+
+    /// Matching bids leave the access at random: the Corp is asked nothing.
+    #[test]
+    fn dedicated_neural_net_on_matching_bids_leaves_the_access_at_random() {
+        let registry = registry();
+        let asked = neural_net_asked(&registry);
+        let mut events = Vec::new();
+        let corp_bid = act(&asked, &registry, PlayerAction::ChooseNumber { amount: 1 });
+        let matched = act_with(&corp_bid, &registry, PlayerAction::ChooseNumber { amount: 1 }, &mut events);
+        let done = access_everything(matched, &registry, &mut events);
+        assert_eq!(accessed(&events).len(), 1);
+        assert!(events.iter().all(|event| !matches!(event, GameEvent::PendingChoicePresented { chooser: Side::Corp, .. })), "{events:?}");
+        assert!(done.active_run.is_none());
+    }
+
+    /// The first successful run on HQ alone: a second run that turn plays
+    /// no psi game.
+    #[test]
+    fn dedicated_neural_net_plays_once_a_turn() {
+        let registry = registry();
+        let asked = neural_net_asked(&registry);
+        let mut events = Vec::new();
+        let done = access_everything(bid(&asked, &registry, 1, 1), &registry, &mut events);
+        let again = act(&done, &registry, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let reached = step_until(again, &registry, &mut events, |state| state.pending_decision.is_some() || state.active_run.as_ref().is_none_or(|run| run.phase == crate::rules::RunPhase::AccessingCard));
+        assert!(!matches!(reached.pending_decision, Some(crate::rules::PendingDecision::PsiGame { .. })));
+    }
+
+    // ---- Information Sifting ----
+
+    /// Information Sifting played on HQ of three, standing at the Corp's
+    /// separation.
+    fn sifting_asked(registry: &CardRegistry) -> GameState {
+        let mut state = runner_turn();
+        state.corp.hq = vec![id("hedge_fund"), id("hedge_fund"), id("enigma")];
+        state.runner.grip = vec![id("information_sifting")];
+        let played = act(&state, registry, PlayerAction::PlayEvent { card_id: id("information_sifting") });
+        let mut events = Vec::new();
+        let asked = step_until(played, registry, &mut events, |state| state.pending_decision.is_some());
+        match &asked.pending_decision {
+            Some(crate::rules::PendingDecision::ChooseCards { side: Side::Corp, source: crate::dsl::CardZoneRef::OwnHq, min: 0, .. }) => {}
+            other => panic!("the Corp separates HQ: {other:?}"),
+        }
+        assert!(accessed(&events).is_empty(), "instead of breaching HQ");
+        asked
+    }
+
+    /// The Corp puts one Hedge Fund in the first pile.
+    fn sifted(registry: &CardRegistry) -> GameState {
+        let asked = sifting_asked(registry);
+        let picked = act(&asked, registry, PlayerAction::ToggleCardSelection { position: 0 });
+        let separated = act(&picked, registry, PlayerAction::ConfirmCardSelection);
+        assert!(matches!(separated.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "{:?}", separated.pending_decision);
+        separated
+    }
+
+    /// "The Corp separates all cards in HQ into 2 facedown piles": the
+    /// Runner sees how many are in the pile, never which.
+    #[test]
+    fn information_sifting_piles_are_hidden_from_the_runner() {
+        let registry = registry();
+        let separated = sifted(&registry);
+        let runners = crate::view::build_client_view(&separated, &registry, Side::Runner);
+        let pile = runners.active_run.as_ref().and_then(|run| run.hq_pile.clone()).expect("a pile on the table");
+        assert_eq!((pile.count, pile.cards), (1, None));
+        let corps = crate::view::build_client_view(&separated, &registry, Side::Corp);
+        assert_eq!(corps.active_run.as_ref().and_then(|run| run.hq_pile.clone()).and_then(|pile| pile.cards), Some(vec![id("hedge_fund")]));
+        let json = serde_json::to_string(&runners).expect("serialize");
+        assert!(!json.contains("hedge_fund"), "no card of HQ in the Runner's view");
+    }
+
+    /// "Choose 1 of the piles. Access each card in the chosen pile."
+    #[test]
+    fn information_sifting_accesses_each_card_in_the_chosen_pile() {
+        let registry = registry();
+        let separated = sifted(&registry);
+        let mut events = Vec::new();
+        let first = act_with(&separated, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }, &mut events);
+        let done = access_everything(first, &registry, &mut events);
+        assert_eq!(accessed(&events), [id("hedge_fund")], "the first pile");
+        assert!(done.active_run.is_none(), "and the run ends");
+
+        let mut events = Vec::new();
+        let second = act_with(&separated, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }, &mut events);
+        let done = access_everything(second, &registry, &mut events);
+        let mut cards = accessed(&events);
+        cards.sort();
+        assert_eq!(cards, [id("enigma"), id("hedge_fund")], "the second: the other Hedge Fund and Enigma");
+        assert!(done.active_run.is_none());
+    }
+
+    /// An empty pile is a pile: chosen, nothing is accessed.
+    #[test]
+    fn information_sifting_empty_pile_accesses_nothing() {
+        let registry = registry();
+        let asked = sifting_asked(&registry);
+        let separated = act(&asked, &registry, PlayerAction::ConfirmCardSelection);
+        let mut events = Vec::new();
+        let chosen = act_with(&separated, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }, &mut events);
+        let done = access_everything(chosen, &registry, &mut events);
+        assert!(accessed(&events).is_empty());
+        assert!(done.active_run.is_none());
+    }
+}

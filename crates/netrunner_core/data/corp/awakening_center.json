@@ -1,0 +1,108 @@
+{
+  "id": "awakening_center",
+  "title": "Awakening Center",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 3,
+  "continuous": [
+    {
+      "kind": "MayHost",
+      "applies_to": {
+        "InstallingOntoThis": {
+          "All": [
+            "Ice",
+            {
+              "HasSubtype": "Bioroid"
+            }
+          ]
+        }
+      },
+      "text": "You can install bioroid ice onto this upgrade at no install cost."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Ice": {
+              "innermost": true
+            }
+          },
+          "ProtectingThisServer"
+        ]
+      },
+      "requirement": {
+        "HostsInstalled": "Ice"
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnInstalled",
+                  "filter": {
+                    "All": [
+                      "HostedOnThisCard",
+                      "UnrezzedIce"
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "Sequence": [
+                      {
+                        "RezInstalled": {
+                          "install": 0,
+                          "pay_cost": true,
+                          "discount": {
+                            "Fixed": 7
+                          }
+                        }
+                      },
+                      {
+                        "EffectIf": {
+                          "condition": {
+                            "ActingCardMatches": "Rezzed"
+                          },
+                          "effect": {
+                            "Sequence": [
+                              "ForceEncounter",
+                              {
+                                "SetRunEndedEffect": {
+                                  "TrashCard": "ThisCard"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may rez 1 hosted piece of ice, paying 7[credit] less",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever the Runner passes all of the ice protecting this server, you may rez 1 hosted piece of ice, paying 7[credit] less. If you do, the Runner encounters that ice. When this run ends, trash that ice."
+    }
+  ],
+  "built_from": 3021,
+  "is_playable": true
+}

@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Creation and Control Stages 1 and 2's (FFG F9) deck for Cybernetics Division, on Zzzz's list, carrying the set's composed Haas-Bioroid and neutral Corp cards: Bastion, Datapike, Heimdall 2.0, Ichi 2.0 and Viktor 2.0 for Pulse, Echo, two Wave and a NEXT Silver; Sentinel Defense Program for a Project Vitruvius and Gila Hands Arcology for Elivagar Bifurcation, a point for a point; Alix T4LB07, Levy University, Director Haas, Thomas Haas and Server Diagnostics for two Biotic Labor, a Cerebral Overwriter, Brain-Taping Warehouse and Test Ground. Zzzz keeps every card swapped out. Eternal-legal only. Spin Stages 1 to 4 (FFG F10) swapped in Fenris, Wotan, Paper Wall and Blue Level Clearance for a NEXT Bronze, a NEXT Silver, Turing and a Black Level Clearance, which other decks keep. Genesis (F11) swaps in Dracō, Private Contracts and Corporate War. The FFG pool's composable leftovers swap in Guard and Lag Time. Isabel McGuire is in for Black Level Clearance. Engine words Stage 25 (FFG): an Eden Fragment for its Vulnerability Audit, three points for three. Engine words Stage 26 (FFG): a Self-destruct for its Ryon Knight, one upgrade for another, which two other decks keep.",
+  "description": "Not a published list: Creation and Control Stages 1 and 2's (FFG F9) deck for Cybernetics Division, on Zzzz's list, carrying the set's composed Haas-Bioroid and neutral Corp cards: Bastion, Datapike, Heimdall 2.0, Ichi 2.0 and Viktor 2.0 for Pulse, Echo, two Wave and a NEXT Silver; Sentinel Defense Program for a Project Vitruvius and Gila Hands Arcology for Elivagar Bifurcation, a point for a point; Alix T4LB07, Levy University, Director Haas, Thomas Haas and Server Diagnostics for two Biotic Labor, a Cerebral Overwriter, Brain-Taping Warehouse and Test Ground. Zzzz keeps every card swapped out. Eternal-legal only. Spin Stages 1 to 4 (FFG F10) swapped in Fenris, Wotan, Paper Wall and Blue Level Clearance for a NEXT Bronze, a NEXT Silver, Turing and a Black Level Clearance, which other decks keep. Genesis (F11) swaps in Dracō, Private Contracts and Corporate War. The FFG pool's composable leftovers swap in Guard and Lag Time. Isabel McGuire is in for Black Level Clearance. Engine words Stage 25 (FFG): an Eden Fragment for its Vulnerability Audit, three points for three. Engine words Stage 26 (FFG): a Self-destruct for its Ryon Knight, one upgrade for another, which two other decks keep. Engine words Stage 37 (FFG): an Awakening Center for its Oaktown Grid, an upgrade for an upgrade, which hosts its bioroid ice and rezzes one 7[credit] cheaper for the Runner to encounter past the server's ice; two other decks keep Oaktown Grid.",
   "style": [
     "glacier"
   ],
@@ -15,10 +15,6 @@
     },
     {
       "card": "self_destruct_chips",
-      "count": 1
-    },
-    {
-      "card": "oaktown_grid",
       "count": 1
     },
     {
@@ -187,6 +183,10 @@
     },
     {
       "card": "self_destruct",
+      "count": 1
+    },
+    {
+      "card": "awakening_center",
       "count": 1
     }
   ]

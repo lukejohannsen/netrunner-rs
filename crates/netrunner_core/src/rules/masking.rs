@@ -527,6 +527,18 @@ pub struct PublicSuspendedEncounter {
     pub uninstalled_ice: Option<crate::rules::state::InstallId>,
 }
 
+/// `RunState::hq_pile` as one player sees it: the size of the pile the Corp
+/// set apart is on the table (Information Sifting's two facedown piles, one
+/// of which the Runner chooses), and which cards are in it is the Corp's
+/// alone — `cards` is `None` for anybody else, as `EncounterBreach::first`
+/// is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicHqPile {
+    pub count: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cards: Option<Vec<CardId>>,
+}
+
 /// `run::RunState` as seen by a particular viewer. Drops
 /// `bad_publicity_credits`/`additional_rd_access`/`additional_hq_access`/
 /// `access_replacement` from the projection — none carry card identity,
@@ -635,6 +647,11 @@ pub struct PublicRunState {
     /// encounter where the real game will.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encounter_breach: Option<crate::rules::run::EncounterBreach>,
+    /// `RunState::hq_pile`: the cards of HQ the Corp set apart in secret,
+    /// which only the Corp sees; the Runner sees how many, as they see two
+    /// facedown piles on the table (`PublicHqPile`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hq_pile: Option<PublicHqPile>,
     /// `RunState::encounters`: public, as every encounter is. Carried so a
     /// sample asks S-Dobrado's "the second time you encounter a piece of
     /// ice during that run" where the real game does.
@@ -1766,6 +1783,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
             first: breach.first.clone().filter(|_| viewer.is(Side::Corp)),
             ..breach.clone()
         }),
+        hq_pile: run.hq_pile.as_ref().map(|pile| PublicHqPile { count: pile.len() as u32, cards: viewer.is(Side::Corp).then(|| pile.clone()) }),
         encounters: run.encounters,
         ice_passed: run.ice_passed,
         this_encounter: run.this_encounter.clone(),

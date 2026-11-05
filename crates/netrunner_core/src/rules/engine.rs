@@ -1030,6 +1030,10 @@ pub(crate) fn place_corp_card(
     }
     match (slot, &card_def.card_type) {
         (InstallSlot::Ice, CardType::Ice(_)) | (InstallSlot::Root, CardType::Upgrade) => {}
+        // Ice installed onto a card that hosts it (Awakening Center) sits
+        // in its host's root and protects nothing: no ice install cost, and
+        // no position among the server's ice (CR 1.13.6a).
+        (InstallSlot::Root, CardType::Ice(_)) if host.is_some() => {}
         (InstallSlot::Ice, _) => return Err(RulesError::CardTypeMismatch { card: card_id, expected: "ice" }),
         (InstallSlot::Root, CardType::Agenda | CardType::Asset) => {
             if !matches!(zone, ServerId::Remote(_)) {

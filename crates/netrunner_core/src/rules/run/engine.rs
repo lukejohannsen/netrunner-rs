@@ -311,7 +311,7 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { finishes: None, broke_with: Vec::new(), rd_from_bottom: false, ice_approached: 0, suspended: Vec::new(), uninstalled_ice: None, gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, redirect_at_success: false, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, click_lost_to_break: false, reached_success_phase: false, breached: None, breaches_after: Vec::new(), encounter_breach: None, encounters: 0, ice_passed: 0, passed: Vec::new(), rezzed: Vec::new(), used: Vec::new(), fully_broken_ice: Vec::new(), last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
+    state.active_run = Some(RunState { finishes: None, broke_with: Vec::new(), rd_from_bottom: false, ice_approached: 0, suspended: Vec::new(), uninstalled_ice: None, gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, redirect_at_success: false, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, click_lost_to_break: false, reached_success_phase: false, breached: None, breaches_after: Vec::new(), encounter_breach: None, hq_pile: None, encounters: 0, ice_passed: 0, passed: Vec::new(), rezzed: Vec::new(), used: Vec::new(), fully_broken_ice: Vec::new(), last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -603,7 +603,9 @@ fn pass_current_ice(run: &mut RunState, position: usize, rezzed_as: Vec<crate::d
 /// position to stand on, and this one does not — Konjin's choice may
 /// protect another server, and an access stands past every piece of ice.
 fn force_encounter_elsewhere(state: &mut GameState, registry: &CardRegistry, install: crate::rules::state::InstallId) -> Result<Vec<GameEvent>, RulesError> {
-    let Some(installed) = state.corp.installed.iter().find(|c| c.install_id == install && c.slot == InstallSlot::Ice) else { return Ok(Vec::new()) };
+    // Ice hosted on another card (Awakening Center's) protects no server,
+    // and is encountered where it is all the same.
+    let Some(installed) = state.corp.installed.iter().find(|c| c.install_id == install && (c.slot == InstallSlot::Ice || c.host.is_some())) else { return Ok(Vec::new()) };
     if !installed.rezzed {
         return Ok(Vec::new());
     }
@@ -716,6 +718,13 @@ fn resume_suspended(run: &mut RunState) -> bool {
 pub(crate) fn force_encounter(state: &mut GameState, registry: &CardRegistry, install: crate::rules::state::InstallId) -> Result<Vec<GameEvent>, RulesError> {
     let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
     if matches!(run.phase, RunPhase::EncounterIce | RunPhase::AccessingCard) {
+        return force_encounter_elsewhere(state, registry, install);
+    }
+    // Awakening Center's "the Runner encounters that ice", as the Runner
+    // passes all of the ice protecting its server: ice hosted on a card is
+    // on no server's list, so the encounter is away from the Runner's
+    // position and goes back to the movement phase it interrupted.
+    if run.phase == RunPhase::Movement && state.corp.installed.iter().any(|c| c.install_id == install && c.host.is_some()) {
         return force_encounter_elsewhere(state, registry, install);
     }
     let Some(position) = run.ice.iter().position(|ice| ice.install_id == install) else { return Ok(Vec::new()) };

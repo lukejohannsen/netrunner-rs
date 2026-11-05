@@ -1,0 +1,73 @@
+{
+  "id": "information_sifting",
+  "title": "Information Sifting",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Hq"
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "Hq",
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnHq",
+                "filter": "Any",
+                "min": 0,
+                "max": 99,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "AsThisCard": {
+                    "Sequence": [
+                      {
+                        "SetHqPile": []
+                      },
+                      {
+                        "PresentChoice": {
+                          "chooser": "Runner",
+                          "options": [
+                            {
+                              "Access": {
+                                "from": "OpponentHand",
+                                "filter": "InHqPile",
+                                "count": 99
+                              }
+                            },
+                            {
+                              "Access": {
+                                "from": "OpponentHand",
+                                "filter": {
+                                  "Not": "InHqPile"
+                                },
+                                "count": 99
+                              }
+                            }
+                          ],
+                          "texts": [
+                            "Choose 1 of the piles. Access each card in the chosen pile — the first pile",
+                            "Choose 1 of the piles. Access each card in the chosen pile — the second pile"
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run HQ. If successful, instead of breaching HQ, the Corp separates all cards in HQ into 2 facedown piles. Choose 1 of the piles. Access each card in the chosen pile."
+    }
+  ],
+  "built_from": 10079,
+  "is_playable": true
+}

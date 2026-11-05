@@ -619,6 +619,16 @@ fn determinize_access_cards(zone: &MaskedZone, pools: &mut Pools<'_>) -> Vec<Car
 /// player knows them — a Corp that sees its hand still does not know which
 /// card of it the Runner will reach — so no view carries more than their
 /// number, which `from_zone`'s length already holds.
+/// The pile of HQ the Corp set apart (Information Sifting's), when the
+/// view gave only its size: that many cards of the sample's HQ, at random.
+fn draw_hq_pile(run: &mut RunState, view: &ClientView, corp: &CorpState, rng: &mut impl Rng) {
+    use rand::seq::IndexedRandom;
+    let hidden = view.active_run.as_ref().and_then(|run| run.hq_pile.as_ref()).is_some_and(|pile| pile.cards.is_none());
+    if let Some(pile) = run.hq_pile.as_mut().filter(|_| hidden) {
+        *pile = corp.hq.choose_multiple(rng, pile.len()).cloned().collect();
+    }
+}
+
 fn draw_from_zone(run: &mut RunState, corp: &CorpState, rng: &mut impl Rng) {
     use rand::seq::IndexedRandom;
     let Some(access) = run.access_state.as_mut() else { return };
@@ -928,6 +938,10 @@ fn determinize_run(
         // The breach an encounter began, as the view carries it: the card
         // of HQ it begins with only when the sample is the Corp's own.
         encounter_breach: run.encounter_breach.clone(),
+        // The Corp's secret pile of HQ, as the view carries it: its cards
+        // only in the Corp's own sample, otherwise drawn from the sample's
+        // HQ once it exists (`draw_hq_pile`).
+        hq_pile: run.hq_pile.as_ref().map(|pile| pile.cards.clone().unwrap_or_else(|| vec![unnamed(); pile.count as usize])),
         // Public, and what S-Dobrado's "the second time" reads.
         encounters: run.encounters,
         // Public, and what Into the Depths' "for each time you passed ice"
@@ -1184,6 +1198,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
 
     let mut active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools, &corp.installed));
     if let Some(run) = active_run.as_mut() {
+        draw_hq_pile(run, view, &corp, rng);
         draw_from_zone(run, &corp, rng);
         name_the_accessed_card(run, &corp, registry, &mut pools, rng);
     }
@@ -1502,6 +1517,7 @@ pub fn resample_hidden(state: &mut GameState, view: &ClientView, registry: &Card
     seat_revealed(state);
     // A breach already under way reaches cards of the zones just re-drawn.
     if let Some(run) = state.active_run.as_mut() {
+        draw_hq_pile(run, view, &state.corp, rng);
         draw_from_zone(run, &state.corp, rng);
     }
 }
