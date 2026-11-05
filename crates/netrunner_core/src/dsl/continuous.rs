@@ -686,6 +686,14 @@ pub enum ContinuousKind {
     /// resolved (`Effect::Prohibit`), and this one is made by nothing — it
     /// is on while its `while` holds.
     Cannot(crate::dsl::Prohibition),
+    /// The Runner spends credits first in a trace — Surveillance Sweep's
+    /// "The Runner must spend credits first for each trace attempt during
+    /// a run" (`Scope::Controller`, with `while: RunInProgress`, the breach included), which turns
+    /// round the order of CR 10.8.6c–d. Asked as a trace is initiated
+    /// (`continuous::runner_spends_first`), which fixes the order on the
+    /// trace (`TraceState::runner_first`). Composition didn't work:
+    /// nothing said who bids first, which was the trace's own rule.
+    RunnerSpendsFirst,
     /// The card loses all its abilities but its printed subroutines (CR
     /// 9.1.9a) — Hush's "Host ice … loses all abilities except its printed
     /// subroutines" (`Scope::Host`), and Magnet's "Each hosted program

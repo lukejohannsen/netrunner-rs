@@ -2400,6 +2400,7 @@ impl CardDefinition {
                 }
                 (ContinuousKind::StealCost(_), Scope::Stealing(_) | Scope::StealingFromThisServer) => {}
                 (ContinuousKind::RemoteServerLimit(_), Scope::Controller) => {}
+                (ContinuousKind::RunnerSpendsFirst, Scope::Controller) if self.side == Side::Corp => {}
                 (ContinuousKind::OrdersSubroutines, Scope::Controller) if self.side == Side::Runner => {}
                 (ContinuousKind::OrdersSubroutines, _) => return misfit("OrdersSubroutines", "the order subroutines resolve in is declared by the Runner who controls the card (`Controller`)"),
                 (ContinuousKind::ChoosesDamageTrash(_), Scope::Controller) => {}
@@ -2411,6 +2412,7 @@ impl CardDefinition {
                 (ContinuousKind::BidAtMost(_), Scope::Player(_)) => {}
                 (ContinuousKind::BidAtMost(_), _) => return misfit("BidAtMost", "a limit on a bid is about the player bidding (`Player`)"),
                 (ContinuousKind::RemoteServerLimit(_), _) => return misfit("RemoteServerLimit", "a limit on remote servers is its controller's"),
+                (ContinuousKind::RunnerSpendsFirst, _) => return misfit("RunnerSpendsFirst", "who spends first in a trace is said by a Corp card about its controller's traces"),
                 (ContinuousKind::AdditionalTrashCost(_), Scope::This) => {}
                 (ContinuousKind::AdditionalTrashCost(_), _) => {
                     return misfit("AdditionalTrashCost", "an additional cost to trash a card the Runner accesses is that card's own");
@@ -2573,12 +2575,17 @@ impl CardDefinition {
                 // cannot rez non-ice cards"), asked of the install by
                 // `continuous::cannot_install`.
                 (ContinuousKind::Cannot(crate::dsl::Prohibition::Rez), Scope::CorpInstalled(_)) => {}
+                // A Runner card's word about the cards its controller
+                // installs (Apex: Invasive Predator's "You cannot install
+                // non-virtual resources"), asked of the card being installed
+                // by `continuous::cannot_install_card`.
+                (ContinuousKind::Cannot(crate::dsl::Prohibition::Install), Scope::Installing(_)) if self.side == Side::Runner => {}
                 // A card that can be advanced saying when it cannot
                 // (Tyrant's "You can advance this ice if it is rezzed"),
                 // asked of the install by `engine::may_be_advanced`.
                 (ContinuousKind::Cannot(crate::dsl::Prohibition::Advance), Scope::This) if self.advancement_requirement.is_some() => {}
                 (ContinuousKind::Cannot(_), _) => {
-                    return misfit("Cannot", "a prohibition is about the player it binds (`Player`), an agenda's about its own score (`This`), an advanceable card's about its own advancing (`This`), a card's about the agenda being scored (`Scoring`), or a rez about the Corp's installs (`CorpInstalled`)");
+                    return misfit("Cannot", "a prohibition is about the player it binds (`Player`), an agenda's about its own score (`This`), an advanceable card's about its own advancing (`This`), a card's about the agenda being scored (`Scoring`), a rez about the Corp's installs (`CorpInstalled`), or a Runner card's about what its controller installs (`Installing`)");
                 }
             }
         }

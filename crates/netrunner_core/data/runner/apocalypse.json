@@ -1,0 +1,66 @@
+{
+  "id": "apocalypse",
+  "title": "Apocalypse",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "play_requirement": {
+    "And": [
+      {
+        "AmountAtLeast": [
+          { "TimesThisTurnWhen": { "trigger": "OnSuccessfulRun", "when": { "Server": ["Hq"] } } },
+          1
+        ]
+      },
+      {
+        "And": [
+          {
+            "AmountAtLeast": [
+              { "TimesThisTurnWhen": { "trigger": "OnSuccessfulRun", "when": { "Server": ["RnD"] } } },
+              1
+            ]
+          },
+          {
+            "AmountAtLeast": [
+              { "TimesThisTurnWhen": { "trigger": "OnSuccessfulRun", "when": { "Server": ["Archives"] } } },
+              1
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "ForEach": {
+            "source": "OpponentInstalled",
+            "filter": "Any",
+            "effect": {
+              "TrashCard": {
+                "Install": 0
+              }
+            }
+          }
+        },
+        {
+          "ForEach": {
+            "source": "OwnInstalled",
+            "filter": "Any",
+            "effect": {
+              "TurnFacedown": {
+                "Install": 0
+              }
+            }
+          }
+        }
+      ],
+      "text": "Trash all installed Corp cards. Turn all installed Runner cards facedown."
+    }
+  ],
+  "built_from": 9030,
+  "is_playable": true
+}

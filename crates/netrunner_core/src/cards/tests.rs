@@ -7443,6 +7443,8 @@ mod system_gateway {
             corp_bid: None,
             effect_on_success: crate::dsl::Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: crate::rules::TraceResume::None,
+            runner_first: false,
+            runner_bid: None,
             effect_on_failure: None,
         });
         let highest = crate::rules::legal_actions(&tracing, &registry)
@@ -7532,6 +7534,8 @@ mod system_gateway {
             corp_bid: Some(0),
             effect_on_success: crate::dsl::Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: crate::rules::TraceResume::None,
+            runner_first: false,
+            runner_bid: None,
             effect_on_failure: None,
         });
         let bids: Vec<u32> = crate::rules::legal_actions(&state, &registry)
@@ -61708,5 +61712,299 @@ mod engine_words_stage_37 {
         let done = access_everything(chosen, &registry, &mut events);
         assert!(accessed(&events).is_empty());
         assert!(done.active_run.is_none());
+    }
+}
+
+/// Engine words, Stage 38 (FFG): facedown Runner installs — Apex:
+/// Invasive Predator and Apocalypse — then Surveillance Sweep's trace
+/// order and Alexa Belsky's shuffle.
+mod engine_words_stage_38 {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> (GameState, Vec<GameEvent>) {
+        apply_action(state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}"))
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.next_install_id = 100;
+        state
+    }
+
+    fn rig_card(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    /// Whether `card` appears anywhere in what the Corp is shown.
+    fn the_corp_sees(card: &str, state: &GameState, registry: &CardRegistry, events: &[GameEvent]) -> bool {
+        let view = serde_json::to_string(&crate::view::build_client_view(state, registry, Side::Corp)).expect("view");
+        let masked: Vec<GameEvent> = events.iter().filter_map(|event| crate::rules::mask_event_for_player(event, state, Side::Corp)).collect();
+        view.contains(card) || serde_json::to_string(&masked).expect("events").contains(card)
+    }
+
+    // ---- Apex: Invasive Predator ----
+
+    /// "You cannot install non-virtual resources."
+    #[test]
+    fn apex_cannot_install_a_non_virtual_resource_and_may_install_a_virtual_one() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("apex_invasive_predator"));
+        state.runner.grip = vec![id("daily_casts"), id("wasteland"), id("corroder")];
+        let legal = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+        assert!(!legal.contains(&PlayerAction::InstallResource { card_id: id("daily_casts"), host: None }), "Daily Casts is no virtual resource");
+        assert!(legal.contains(&PlayerAction::InstallResource { card_id: id("wasteland"), host: None }), "Wasteland is a virtual one");
+        assert!(legal.iter().any(|action| matches!(action, PlayerAction::InstallProgram { card_id, .. } if *card_id == id("corroder"))), "a program is no resource");
+        assert!(apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("daily_casts"), host: None }).is_err());
+
+        // Under another identity, Daily Casts is installed as ever.
+        state.runner.identity = None;
+        let legal = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+        assert!(legal.contains(&PlayerAction::InstallResource { card_id: id("daily_casts"), host: None }));
+    }
+
+    fn apex_turn_begins(grip: &[&str], registry: &CardRegistry) -> (GameState, Vec<GameEvent>) {
+        let mut state = base_state();
+        state.runner.identity = Some(id("apex_invasive_predator"));
+        state.runner.grip = grip.iter().map(|card| id(card)).collect();
+        state.runner.stack = vec![id("sure_gamble"); 5];
+        let (state, mut events) = act(&crate::rules::test_support::clicks_spent(&state), registry, PlayerAction::EndTurn);
+        let (state, more) = pass_until_settled(state, registry);
+        events.extend(more);
+        (state, events)
+    }
+
+    /// "When your turn begins, you may install 1 card from your grip
+    /// facedown." A non-virtual resource too: facedown, it has no
+    /// characteristics (CR 8.1.4a), and the Corp is not told which card.
+    #[test]
+    fn apex_installs_a_card_from_the_grip_facedown_as_the_turn_begins_hidden_from_the_corp() {
+        let registry = registry();
+        let (asked, mut events) = apex_turn_begins(&["sure_gamble", "daily_casts"], &registry);
+        assert!(asked.pending_decision.is_some(), "the Runner is asked: {:?}", asked.phase);
+        let legal = crate::rules::legal_actions_for(&asked, &registry, Side::Runner);
+        assert!(legal.contains(&PlayerAction::ConfirmCardSelection), "a \"may\": none at all is an answer");
+        let position = asked.runner.grip.iter().position(|card| *card == id("daily_casts")).expect("in the grip");
+        let (chosen, more) = act(&asked, &registry, PlayerAction::ToggleCardSelection { position });
+        events.extend(more);
+        let (installed, more) = act(&chosen, &registry, PlayerAction::ConfirmCardSelection);
+        events.extend(more);
+        assert_eq!(installed.runner.installed_facedown, vec![id("daily_casts")]);
+        assert!(!installed.runner.grip.contains(&id("daily_casts")));
+        assert!(installed.runner.rig.is_empty(), "facedown, never in the rig");
+        let corp_view = crate::view::build_client_view(&installed, &registry, Side::Corp);
+        assert_eq!((corp_view.runner.installed_facedown_count, corp_view.runner.installed_facedown_cards.as_ref()), (1, None));
+        assert!(!the_corp_sees("daily_casts", &installed, &registry, &events), "the Corp is not shown the card");
+        let logged = crate::rules::mask_logged_action_for_player(&PlayerAction::ToggleCardSelection { position }, Side::Runner, &[], Side::Corp);
+        assert!(!serde_json::to_string(&logged).expect("log").contains("daily_casts"));
+        let runner_view = crate::view::build_client_view(&installed, &registry, Side::Runner);
+        assert_eq!(runner_view.runner.installed_facedown_cards, Some(vec![id("daily_casts")]), "the Runner may look at it (CR 1.21.2a)");
+    }
+
+    #[test]
+    fn apex_may_install_nothing() {
+        let registry = registry();
+        let (asked, _) = apex_turn_begins(&["sure_gamble"], &registry);
+        let (declined, _) = act(&asked, &registry, PlayerAction::ConfirmCardSelection);
+        assert!(declined.runner.installed_facedown.is_empty());
+        assert_eq!(declined.runner.grip, vec![id("sure_gamble")], "kept in the grip");
+        assert!(declined.pending_decision.is_none());
+    }
+
+    // ---- Apocalypse ----
+
+    fn with_runs(servers: &[ServerId], registry: &CardRegistry) -> GameState {
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("apocalypse")];
+        for server in servers {
+            crate::rules::turn_log::record(&mut state, registry, &GameEvent::RunSucceeded { server: *server });
+        }
+        state
+    }
+
+    /// "Play only if you made a successful run on HQ, R&D and Archives this
+    /// turn."
+    #[test]
+    fn apocalypse_is_played_only_after_successful_runs_on_hq_rnd_and_archives_this_turn() {
+        let registry = registry();
+        let play = PlayerAction::PlayEvent { card_id: id("apocalypse") };
+        for missing in [ServerId::Hq, ServerId::RnD, ServerId::Archives] {
+            let runs: Vec<ServerId> = [ServerId::Hq, ServerId::RnD, ServerId::Archives].into_iter().filter(|server| *server != missing).chain([ServerId::Remote(0)]).collect();
+            let state = with_runs(&runs, &registry);
+            assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&play), "no successful run on {missing:?}");
+        }
+        let state = with_runs(&[ServerId::Archives, ServerId::Hq, ServerId::RnD], &registry);
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&play));
+    }
+
+    fn apocalypse_board(registry: &CardRegistry) -> GameState {
+        let mut state = with_runs(&[ServerId::Hq, ServerId::RnD, ServerId::Archives], registry);
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { install_id: InstallId(10), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() },
+            crate::rules::InstalledCard { install_id: InstallId(11), card: id("pad_campaign"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: false, ..Default::default() },
+            crate::rules::InstalledCard { install_id: InstallId(12), card: id("hedge_fund"), server: ServerId::Remote(1), slot: InstallSlot::Root, rezzed: false, ..Default::default() },
+        ];
+        state.runner.rig = vec![rig_card("corroder", 20), crate::rules::InstalledRunnerCard { counters: 1, ..rig_card("cyberfeeder", 21) }, rig_card("kati_jones", 22)];
+        state.runner.rig[2].counters = 6;
+        state
+    }
+
+    /// "Trash all installed Corp cards. Turn all installed Runner cards
+    /// facedown." Each rig card stays installed, the same object (CR
+    /// 1.12.5, 8.1.4d), and what it was stays open (8.1.4b).
+    #[test]
+    fn apocalypse_trashes_every_installed_corp_card_and_turns_the_rig_facedown_where_it_stands() {
+        let registry = registry();
+        let state = apocalypse_board(&registry);
+        let (after, events) = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("apocalypse") });
+        let (after, more) = pass_until_settled(after, &registry);
+        let events: Vec<GameEvent> = events.into_iter().chain(more).collect();
+        assert!(after.corp.installed.is_empty(), "{:?}", after.corp.installed);
+        assert_eq!(events.iter().filter(|event| matches!(event, GameEvent::CardTrashed { side: Side::Corp, .. })).count(), 3);
+        let filed: Vec<(CardId, bool)> = after.corp.archives.iter().map(|archived| (archived.card.clone(), archived.facedown)).collect();
+        assert!(filed.contains(&(id("ice_wall"), false)), "rezzed, seen: faceup (CR 4.4.6b)");
+        assert!(filed.contains(&(id("pad_campaign"), true)), "never seen: facedown");
+        assert!(after.runner.rig.is_empty());
+        let facedown: Vec<(CardId, InstallId, u32)> = after.runner.rig_facedown.iter().map(|card| (card.card.clone(), card.install_id, card.counters)).collect();
+        assert_eq!(facedown, vec![(id("corroder"), InstallId(20), 0), (id("cyberfeeder"), InstallId(21), 1), (id("kati_jones"), InstallId(22), 6)], "the same objects, counters and all");
+        assert_eq!(after.runner.resources.credits, Credits(7), "3[credit] to play");
+        assert!(after.runner.heap.contains(&id("apocalypse")));
+
+        // Inactive: Kati Jones's ability and Cyberfeeder's credit are gone
+        // with their characteristics (CR 8.1.4a).
+        let legal = crate::rules::legal_actions_for(&after, &registry, Side::Runner);
+        assert!(!legal.iter().any(|action| matches!(action, PlayerAction::ActivateAbility { target, .. } if target.0 == 22)), "{legal:?}");
+        // Public, by name, to the Corp, who saw each faceup card turned.
+        let corp_view = crate::view::build_client_view(&after, &registry, Side::Corp);
+        assert_eq!(corp_view.runner.rig_facedown.iter().map(|card| card.card.clone()).collect::<Vec<_>>(), vec![id("corroder"), id("cyberfeeder"), id("kati_jones")]);
+        assert!(corp_view.runner.rig.is_empty());
+    }
+
+    /// Assimilator turns an Apocalypse card faceup as the object it was:
+    /// its handle and counters back with it, its recurring credits raised
+    /// as it becomes active (CR 1.10.5b), and a Trojan whose ice has left
+    /// the table is trashed (10.3.1e).
+    #[test]
+    fn assimilator_turns_a_card_apocalypse_turned_facedown_back_as_the_same_object() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig_card("assimilator", 30)];
+        state.runner.rig_facedown = vec![rig_card("cyberfeeder", 21), crate::rules::InstalledRunnerCard { counters: 4, ..rig_card("kati_jones", 22) }, crate::rules::InstalledRunnerCard { hosted_on_ice: Some(InstallId(10)), ..rig_card("kyuban", 23) }];
+        let turn = |state: &GameState, card: &str| {
+            let (asked, _) = act(state, &registry, PlayerAction::ActivateAbility { target: InstallId(30), ability_index: 0 });
+            let zone = crate::rules::pending_choice::zone_card_ids(&asked, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalledFacedown, None);
+            let position = zone.iter().position(|facedown| *facedown == id(card)).expect("offered");
+            let (chosen, _) = act(&asked, &registry, PlayerAction::ToggleCardSelection { position });
+            act(&chosen, &registry, PlayerAction::ConfirmCardSelection).0
+        };
+        let kati = turn(&state, "kati_jones");
+        let back = kati.runner.rig.iter().find(|card| card.card == id("kati_jones")).expect("in the rig");
+        assert_eq!((back.install_id, back.counters), (InstallId(22), 4), "the same object, its credits still on it");
+        assert_eq!(kati.runner.rig_facedown.len(), 2);
+        let cyberfeeder = turn(&state, "cyberfeeder");
+        assert_eq!(cyberfeeder.runner.rig.iter().find(|card| card.card == id("cyberfeeder")).map(|card| (card.install_id, card.counters)), Some((InstallId(21), 1)));
+        let kyuban = turn(&state, "kyuban");
+        assert!(kyuban.runner.heap.contains(&id("kyuban")), "its ice is gone");
+        assert!(!kyuban.runner.rig.iter().any(|card| card.card == id("kyuban")));
+    }
+
+    // ---- Surveillance Sweep ----
+
+    /// A rezzed Hunter on HQ and the Runner's run on it, stepped to the
+    /// trace its subroutine begins; Surveillance Sweep played first when
+    /// `swept`.
+    fn hunter_traces(swept: bool, registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(10), card: id("hunter"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        if swept {
+            state.corp.hq = vec![id("surveillance_sweep")];
+            state = act(&state, registry, PlayerAction::PlayOperation { card_id: id("surveillance_sweep") }).0;
+            let (settled, _) = pass_until_settled(state, registry);
+            state = settled;
+            assert!(state.corp.play_area.iter().any(|played| played.card == id("surveillance_sweep")), "a current stays in play");
+        }
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.corp.resources.credits = Credits(5);
+        let mut state = act(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).0;
+        for _ in 0..40 {
+            if state.active_trace.is_some() {
+                return state;
+            }
+            let action = match (&state.paid_ability_window, state.active_run.as_ref().map(|run| run.phase)) {
+                (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+                _ => PlayerAction::ContinueRun,
+            };
+            state = act(&state, registry, action).0;
+        }
+        panic!("no trace: {:?}", state.active_run.as_ref().map(|run| run.phase));
+    }
+
+    /// "The Runner must spend credits first for each trace attempt during
+    /// a run."
+    #[test]
+    fn surveillance_sweep_makes_the_runner_spend_first_in_a_trace_during_a_run() {
+        let registry = registry();
+        let tracing = hunter_traces(true, &registry);
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.awaiting()), Some(Side::Runner));
+        let legal = crate::rules::legal_actions_for(&tracing, &registry, Side::Runner);
+        assert!(legal.contains(&PlayerAction::SubmitRunnerTraceBid { amount: 2 }));
+        assert!(apply_action(&tracing, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 }).is_err(), "the Corp waits");
+        let (bid, _) = act(&tracing, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 2 });
+        assert_eq!(bid.runner.resources.credits, Credits(3), "spent as it is bid");
+        let trace = bid.active_trace.as_ref().expect("still waiting on the Corp");
+        assert_eq!((trace.runner_bid, trace.awaiting()), (Some(2), Side::Corp));
+        let corp_view = crate::view::build_client_view(&bid, &registry, Side::Corp);
+        assert_eq!(corp_view.active_trace.as_ref().and_then(|trace| trace.runner_bid), Some(2), "the Corp sees what was spent");
+        // Base 3 against link 0 and 2 credits: the Corp needs nothing more.
+        let (resolved, events) = act(&bid, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 });
+        assert!(resolved.active_trace.is_none());
+        assert!(events.iter().any(|event| matches!(event, GameEvent::TraceSuccessful { corp_total: 3, runner_total: 2 })), "{events:?}");
+        assert_eq!(resolved.runner.tags, 1);
+        assert_eq!(resolved.corp.resources.credits, Credits(5));
+    }
+
+    #[test]
+    fn without_surveillance_sweep_the_corp_spends_first() {
+        let registry = registry();
+        let tracing = hunter_traces(false, &registry);
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| (trace.runner_first, trace.awaiting())), Some((false, Side::Corp)));
+    }
+
+    // ---- Alexa Belsky ----
+
+    /// "[trash]: Shuffle all cards in HQ into R&D. The Runner may pay any
+    /// number of credits to prevent 1 random card in HQ from being
+    /// shuffled into R&D for every 2[credit] spent."
+    #[test]
+    fn alexa_belsky_shuffles_hq_into_rnd_but_a_random_card_for_every_two_credits_the_runner_pays() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(11), card: id("alexa_belsky"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() }];
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall"), id("enigma"), id("pad_campaign"), id("hostile_takeover")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.runner.resources.credits = Credits(6);
+        let (asked, _) = act(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(11), ability_index: 0 });
+        assert!(asked.corp.installed.is_empty(), "[trash]");
+        let legal = crate::rules::legal_actions_for(&asked, &registry, Side::Runner);
+        assert!(legal.contains(&PlayerAction::ChooseNumber { amount: 0 }) && legal.contains(&PlayerAction::ChooseNumber { amount: 6 }), "{legal:?}");
+        let (paid, _) = act(&asked, &registry, PlayerAction::ChooseNumber { amount: 5 });
+        assert_eq!(paid.runner.resources.credits, Credits(1));
+        assert_eq!((paid.corp.hq.len(), paid.corp.r_and_d.len()), (2, 6), "5[credit] keeps 2 cards");
+        let runner_view = crate::view::build_client_view(&paid, &registry, Side::Runner);
+        assert!(runner_view.corp.hq_cards.is_none(), "which stayed is the Corp's");
+
+        // Nothing paid: all of HQ goes.
+        let (none, _) = act(&asked, &registry, PlayerAction::ChooseNumber { amount: 0 });
+        assert_eq!((none.corp.hq.len(), none.corp.r_and_d.len(), none.runner.resources.credits), (0, 8, Credits(6)));
     }
 }

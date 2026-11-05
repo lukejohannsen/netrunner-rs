@@ -208,7 +208,7 @@ pub fn current_actor(state: &GameState) -> Option<Side> {
         return Some(payment.side);
     }
     if let Some(trace) = &state.active_trace {
-        return Some(if trace.corp_bid.is_none() { Side::Corp } else { Side::Runner });
+        return Some(trace.awaiting());
     }
     if let Some(side) = state.pending_paid_choice.as_ref().map(|choice| choice.side) {
         return Some(side);
@@ -1000,12 +1000,12 @@ fn pass_priority_candidates(state: &GameState) -> Vec<PlayerAction> {
 /// (Overclock), so a Runner traced mid-run could not bid them.
 fn trace_bid_candidates(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
     let Some(trace) = &state.active_trace else { return Vec::new() };
-    match trace.corp_bid {
-        None => {
+    match trace.awaiting() {
+        Side::Corp => {
             let max = payment::available(state, registry, Side::Corp, Purpose::Trace);
             (0..=max).map(|amount| PlayerAction::SubmitCorpTraceBid { amount }).collect()
         }
-        Some(_) => {
+        Side::Runner => {
             let max = payment::available(state, registry, Side::Runner, Purpose::Trace);
             (0..=max).map(|amount| PlayerAction::SubmitRunnerTraceBid { amount }).collect()
         }
@@ -1266,6 +1266,8 @@ mod tests {
             corp_bid: None,
             effect_on_success: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: TraceResume::None,
+            runner_first: false,
+            runner_bid: None,
             effect_on_failure: None,
         });
         let legal = legal_actions(&awaiting_corp, &CardRegistry::new());
@@ -1283,6 +1285,8 @@ mod tests {
             corp_bid: Some(2),
             effect_on_success: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: TraceResume::None,
+            runner_first: false,
+            runner_bid: None,
             effect_on_failure: None,
         });
         let legal = legal_actions(&awaiting_runner, &CardRegistry::new());
@@ -1550,6 +1554,8 @@ mod tests {
             corp_bid: None,
             effect_on_success: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: TraceResume::None,
+            runner_first: false,
+            runner_bid: None,
             effect_on_failure: None,
         });
         assert_eq!(current_actor(&state), Some(Side::Corp));

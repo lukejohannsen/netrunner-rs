@@ -397,6 +397,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::Reveal(target) => format!("reveal {}", describe_target(target, registry)),
         Effect::TrashCard(target) => format!("trash {}", describe_target(target, registry)),
         Effect::DerezCard(target) => format!("derez {}", describe_target(target, registry)),
+        Effect::ShuffleHqIntoRnDKeepingAtRandom(keep) => format!("shuffle all cards in HQ into R&D but {} at random", describe_amount(keep)),
+        Effect::TurnFacedown(target) => format!("turn {} facedown", describe_target(target, registry)),
         Effect::BoostStrength { amount, duration: d } => format!("+{amount} strength {}", duration(d)),
         Effect::BoostStrengthAmount { amount, duration: d } => format!("strength +{} {}", describe_amount(amount), duration(d)),
         Effect::BreakSubroutines { count, restrict_to } => {
@@ -1263,6 +1265,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::StealCost(cost) => format!("to steal it, also {}", describe_cost(cost)),
         ContinuousKind::RunCost(cost) => format!("costs the Runner \"{}\" to make, as the server is announced", describe_cost(cost)),
         ContinuousKind::AdditionalTrashCost(cost) => format!("to trash it, also {}", describe_cost(cost)),
+        ContinuousKind::RunnerSpendsFirst => "makes the Runner spend credits first in each trace".to_string(),
         ContinuousKind::RemoteServerLimit(n) => format!("may have no more than {}", plural(*n, "remote server", "remote servers")),
         ContinuousKind::ScoreCost(cost) => format!("costs \"{}\" to score", describe_cost(cost)),
         ContinuousKind::AdditionalRezCost(cost) => format!("costs \"{}\" to rez", describe_cost(cost)),

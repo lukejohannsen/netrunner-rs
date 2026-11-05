@@ -1,0 +1,53 @@
+{
+  "id": "apex_invasive_predator",
+  "title": "Apex: Invasive Predator",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "Install"
+      },
+      "applies_to": {
+        "Installing": {
+          "All": [
+            {
+              "CardType": "Resource"
+            },
+            {
+              "Not": {
+                "HasSubtype": "Virtual"
+              }
+            }
+          ]
+        }
+      },
+      "text": "You cannot install non-virtual resources."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnGrip",
+            "filter": "Any",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnInstalledFacedown"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may install 1 card from your grip facedown."
+    }
+  ],
+  "built_from": 9029,
+  "is_playable": true
+}

@@ -711,9 +711,11 @@ impl Prompt {
             return Some(Prompt { title, detail: format!("{} offers to", title_of(prevention.source_card.as_ref(), registry)) });
         }
         if let Some(trace) = &view.active_trace {
-            let detail = match trace.corp_bid {
-                Some(bid) => format!("The Corp bid {bid}; beat it with link and credits"),
-                None => "The Corp bids first".to_string(),
+            let detail = match (trace.runner_first, trace.corp_bid, trace.runner_bid) {
+                (false, Some(bid), _) => format!("The Corp bid {bid}; beat it with link and credits"),
+                (false, None, _) => "The Corp bids first".to_string(),
+                (true, _, None) => "The Runner bids first".to_string(),
+                (true, _, Some(bid)) => format!("The Runner bid {bid}; the Corp bids to beat it"),
             };
             return Some(Prompt { title: format!("Trace, base strength {}", trace.base_strength), detail });
         }

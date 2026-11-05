@@ -141,7 +141,6 @@ pub(crate) const BM_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Escalation* (`escalation`): tranche F5 of the FFG plan.
 pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("alexa_belsky", "Alexa Belsky"),
 ];
 
 /// *Intervention* (`intervention`): tranche F5 of the FFG plan.
@@ -190,9 +189,6 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.
 pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("surveillance_sweep", "Surveillance Sweep"),
-    ("apex_invasive_predator", "Apex: Invasive Predator"),
-    ("apocalypse", "Apocalypse"),
     ("adam_compulsive_hacker", "Adam: Compulsive Hacker"),
 ];
 

@@ -428,9 +428,11 @@ fn assert_cards_are_conserved(state: &GameState, registry: &netrunner_core::card
             // A condition counter the Runner's event became (On the Lam),
             // in no other zone.
             .chain(runner.conditions.iter().map(|condition| &condition.card))
-            .chain(runner.rig.iter().map(|c| &c.card))
+            // The rig, and what Apocalypse turned facedown where it stood,
+            // which is still installed (CR 8.1.4d).
+            .chain(runner.rig.iter().chain(&runner.rig_facedown).map(|c| &c.card))
             // Hosted uninstalled on a rig card (Madani) — in no other zone.
-            .chain(runner.rig.iter().flat_map(|c| c.hosted_cards.iter()).filter(|id| !corp_ids.contains_key(&id.0)))
+            .chain(runner.rig.iter().chain(&runner.rig_facedown).flat_map(|c| c.hosted_cards.iter()).filter(|id| !corp_ids.contains_key(&id.0)))
             // A Runner card added to the score area as an agenda (Jeitinho).
             .chain(runner.scored_agendas.iter().map(|s| &s.card).filter(|id| !corp_ids.contains_key(&id.0)))
             // …or to the Corp's, as an additional cost to score (Word on
@@ -442,7 +444,7 @@ fn assert_cards_are_conserved(state: &GameState, registry: &netrunner_core::card
     // in the Corp's score area (Political Graffiti).
     for condition in &runner.conditions {
         let hosted = corp.installed.iter().any(|card| card.install_id == condition.host)
-            || runner.rig.iter().any(|card| card.install_id == condition.host)
+            || runner.rig.iter().chain(&runner.rig_facedown).any(|card| card.install_id == condition.host)
             || corp.scored_agendas.iter().any(|scored| scored.install_id == condition.host);
         assert!(hosted, "seed {seed} ({matchup}): {} is a condition on a host no longer in play", condition.card.0);
     }

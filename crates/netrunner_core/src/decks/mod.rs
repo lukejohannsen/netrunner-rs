@@ -679,6 +679,9 @@ mod tests {
             ("zzzzzzzzzzzzzzzzzzzzzz", &neither),
             // Engine words, Stage 34: Seidr Laboratories, on Zzzzzzzzzzz's list.
             ("zzzzzzzzzzzzzzzzzzzzzzz", &neither),
+            // Engine words, Stage 38: Apex: Invasive Predator, on momar's
+            // published "Apex Eater", whole.
+            ("zzzzzzzzzzzzzzzzzzzzzzzz", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.
