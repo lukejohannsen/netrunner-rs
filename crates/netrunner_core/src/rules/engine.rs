@@ -300,7 +300,7 @@ fn apply_action_once(
     if let Some(trace) = &state.active_trace
         && !matches!(action, PlayerAction::SubmitCorpTraceBid { .. } | PlayerAction::SubmitRunnerTraceBid { .. })
     {
-        let awaiting = if trace.corp_bid.is_none() { Side::Corp } else { Side::Runner };
+        let awaiting = trace.awaiting();
         return Err(RulesError::ActionBlockedByActiveTrace { awaiting });
     }
     // A parked `PendingPaidChoice`/`PendingDecision` admits no "stays legal
@@ -2382,7 +2382,26 @@ pub(crate) fn swap_rig_card_with_grip_card(state: &mut GameState, registry: &Car
 /// no ice, may not stand in the rig and is trashed (10.3.1e). The memory
 /// limit, the console rule and uniqueness are the checkpoint's, as for
 /// any card that becomes active. Nothing when no such copy is there now.
+///
+/// A copy turned facedown where it stood (`RunnerState::rig_facedown`,
+/// Apocalypse's) is asked first: it goes back as the same object it was
+/// (CR 1.12.5), its handle, counters and hosted cards with it — a Trojan
+/// back onto its ice, or trashed if the ice has left the table since.
 pub(crate) fn turn_runner_card_faceup(state: &mut GameState, registry: &CardRegistry, card_id: &CardId) -> Result<Vec<GameEvent>, RulesError> {
+    if let Some(position) = state.runner.rig_facedown.iter().position(|installed| &installed.card == card_id) {
+        let record = state.runner.rig_facedown.remove(position);
+        let install = record.install_id;
+        if record.hosted_on_ice.is_some_and(|ice| state.find_corp_install(ice).is_none()) {
+            state.runner.heap.push(record.card.clone());
+            state.runner.heap.extend(record.hosted_cards);
+            let mut events = Vec::new();
+            let trashed = GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone(), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner), install: None, damage: None };
+            dispatcher::emit(state, registry, &mut events, trashed)?;
+            return Ok(events);
+        }
+        state.runner.rig.push(record);
+        return payment::place_recurring(state, registry, Side::Runner, Some(install), card_id);
+    }
     let Some(position) = state.runner.installed_facedown.iter().position(|card| card == card_id) else { return Ok(Vec::new()) };
     let card_def = registry.get(card_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
     state.runner.installed_facedown.remove(position);
@@ -2399,6 +2418,21 @@ pub(crate) fn turn_runner_card_faceup(state: &mut GameState, registry: &CardRegi
     payment::place_recurring(state, registry, Side::Runner, Some(install), card_id)
 }
 
+/// Turns the rig card `install` facedown where it is (`Effect::
+/// TurnFacedown`, Apocalypse's): off the rig, where every reader asks only
+/// about active cards, and into `RunnerState::rig_facedown` as the same
+/// object (CR 1.12.5) — still installed (8.1.4d), with its counters and the
+/// cards it hosts. Programs hosted on it are installed cards of their own
+/// and are turned by their own entries. The memory limit and every
+/// standing effect it gave are the checkpoint's and the scan's, which no
+/// longer find it. Nothing when it is not in the rig.
+pub(crate) fn turn_runner_card_facedown(state: &mut GameState, install: InstallId) {
+    if let Some(position) = state.runner.rig.iter().position(|installed| installed.install_id == install) {
+        let record = state.runner.rig.remove(position);
+        state.runner.rig_facedown.push(record);
+    }
+}
+
 /// Whether `card_id`'s "Install only if…" holds now
 /// (`CardDefinition::install_requirement`), asked as the card. The door
 /// (`install_into_rig`) and every gate that offers a text install ask it,
@@ -2407,7 +2441,15 @@ pub(crate) fn install_requirement_met(state: &GameState, registry: &CardRegistry
     if continuous::cannot(state, registry, Prohibition::Install) {
         return false;
     }
-    let Some(requirement) = registry.get(card_id).and_then(|definition| definition.install_requirement.as_ref()) else { return true };
+    let Some(definition) = registry.get(card_id) else { return true };
+    // A prohibition about the card being installed (Apex: Invasive
+    // Predator's "You cannot install non-virtual resources"), read off the
+    // card as an install's price is. A facedown install is of a card with
+    // no characteristics (CR 8.1.4a), and never asks.
+    if continuous::cannot_install_card(state, registry, definition) {
+        return false;
+    }
+    let Some(requirement) = definition.install_requirement.as_ref() else { return true };
     let ctx = ability::ResolutionContext::for_card(Some(card_id));
     ability::check_requirement(state, requirement, Side::Runner, &ctx, registry).is_ok()
 }
@@ -6073,6 +6115,8 @@ mod tests {
             corp_bid: None,
             effect_on_success: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: crate::rules::state::TraceResume::None,
+            runner_first: false,
+            runner_bid: None,
             effect_on_failure: None,
         });
 

@@ -1,0 +1,73 @@
+{
+  "id": "zzzzzzzzzzzzzzzzzzzzzzzz",
+  "name": "Zzzzzzzzzzzzzzzzzzzzzzzz",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "A published list, whole: momar's “Apex Eater” (NetrunnerDB, https://netrunnerdb.com/en/decklist/89c26759-b2a3-4afc-97d4-a19e4ba76ec5, 3 December 2022), so the sweeps reach Apex: Invasive Predator, who may install a card from the grip facedown as each turn begins and cannot install non-virtual resources, and Apocalypse, which trashes every installed Corp card after successful runs on HQ, R&D and Archives and turns the rig facedown; Assimilator, Reboot, Hunting Grounds and Harbinger are the list's other facedown cards. A Sweep deck rather than a Sample one, so nothing trains on it and no recorded measurement moves. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only: Data and Destiny is in neither the Standard nor the Startup pool. Engine words, Stage 38.",
+  "style": [
+    "dismantle"
+  ],
+  "identity": "apex_invasive_predator",
+  "cards": [
+    {
+      "card": "apocalypse",
+      "count": 3
+    },
+    {
+      "card": "assimilator",
+      "count": 3
+    },
+    {
+      "card": "dirty_laundry",
+      "count": 3
+    },
+    {
+      "card": "endless_hunger",
+      "count": 3
+    },
+    {
+      "card": "harbinger",
+      "count": 3
+    },
+    {
+      "card": "heartbeat",
+      "count": 3
+    },
+    {
+      "card": "hunting_grounds",
+      "count": 3
+    },
+    {
+      "card": "prey",
+      "count": 3
+    },
+    {
+      "card": "reaver",
+      "count": 3
+    },
+    {
+      "card": "reboot",
+      "count": 3
+    },
+    {
+      "card": "self_modifying_code",
+      "count": 3
+    },
+    {
+      "card": "simulchip",
+      "count": 3
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "test_run",
+      "count": 3
+    },
+    {
+      "card": "wasteland",
+      "count": 3
+    }
+  ]
+}

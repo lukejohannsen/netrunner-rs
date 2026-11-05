@@ -2980,6 +2980,30 @@ pub enum Effect {
     /// BANGUN's faceup agendas are: faceup is what the flag records for
     /// the view, and an agenda is never rezzed (CR 8.1.1).
     TurnFaceup,
+    /// The Runner's installed card `target` names is turned facedown where
+    /// it is (CR 8.1.4) — Apocalypse's "Turn all installed Runner cards
+    /// facedown", each card a `ForEach` over the rig names as
+    /// `CardTarget::Install`. It loses its characteristics and its
+    /// abilities (8.1.4a) and stays installed (8.1.4d), the same object
+    /// (1.12.5), so it leaves the rig for `RunnerState::rig_facedown` with
+    /// its record whole. Nothing hears it: no trigger in the pool is about
+    /// a Runner card turned facedown. A card already gone is passed over.
+    /// Composition didn't work: `TurnFaceup` is the other direction, a
+    /// `DerezCard` turns a *rezzed Corp* card facedown (8.1.3), and a Runner
+    /// card is never rezzed (8.1.1); the one Runner card turned facedown
+    /// before, Harbinger, was turned as it was trashed, by the trash.
+    TurnFacedown(CardTarget),
+    /// Every card in HQ is shuffled into R&D but this many, chosen at
+    /// random with the state's own PRNG — Alexa Belsky's "Shuffle all cards
+    /// in HQ into R&D. The Runner may pay any number of credits to prevent
+    /// 1 random card in HQ from being shuffled into R&D for every
+    /// 2[credit] spent", the `then` of the Runner's `ChooseNumber` of cards
+    /// kept, as `Amount::ChosenNumber`. Which cards stay is the Corp's
+    /// hidden information (CR 10.2.2a), so nothing is recorded, as for
+    /// `ShuffleIntoDeck([OwnHq])`: the counts say how many went. Composition
+    /// didn't work: `ShuffleIntoDeck` takes a zone whole, and a random card
+    /// is a target only to be trashed (`CardTarget::RandomFromHand`).
+    ShuffleHqIntoRnDKeepingAtRandom(Amount),
 }
 
 /// What `Effect::Remember` keeps. Only what a card in the pool chooses
@@ -4850,6 +4874,7 @@ impl Effect {
         match self {
             Effect::TrashCard(t) => Effect::TrashCard(target(t)),
             Effect::DerezCard(t) => Effect::DerezCard(target(t)),
+            Effect::TurnFacedown(t) => Effect::TurnFacedown(target(t)),
             // Howler's "derez the ice you installed", left waiting for the
             // run's end as the ice whose subroutine it is.
             Effect::SetRunEndedEffect(effect) => Effect::SetRunEndedEffect(boxed(effect)),
@@ -5078,6 +5103,7 @@ impl Effect {
             },
             Effect::GainCreditsAmount(side, a) => Effect::GainCreditsAmount(side, amount(a)),
             Effect::LoseCreditsAmount(side, a) => Effect::LoseCreditsAmount(side, amount(a)),
+            Effect::ShuffleHqIntoRnDKeepingAtRandom(a) => Effect::ShuffleHqIntoRnDKeepingAtRandom(amount(a)),
             Effect::AddAtRandomToBottomOfDeck { side, count } => Effect::AddAtRandomToBottomOfDeck { side, count: amount(count) },
             Effect::DrawCardsAmount(side, a) => Effect::DrawCardsAmount(side, amount(a)),
             Effect::GiveTags(a) => Effect::GiveTags(amount(a)),
@@ -5380,6 +5406,8 @@ impl Effect {
             | Effect::ForgoAccess
             | Effect::RemoveCurrentlyAccessedCardFromGame
             | Effect::DerezCard(..)
+            | Effect::TurnFacedown(..)
+            | Effect::ShuffleHqIntoRnDKeepingAtRandom(..)
             | Effect::GainCreditsPerCounter { .. }
             | Effect::SwapInstalledIce(..)
             | Effect::SwapThisWithSelectedFromGrip

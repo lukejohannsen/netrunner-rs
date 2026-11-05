@@ -54,7 +54,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         runner,                // below
         active_run,            // below
         paid_ability_window: _, // drawn: Prompt::of ("Paid ability window: … has priority"), board::phase
-        active_trace: _,       // drawn: Prompt::of (base strength, the Corp's bid)
+        active_trace: _,       // drawn: Prompt::of (base strength, the Corp's bid; under Surveillance Sweep, who spends first and the Runner's bid, `TraceState::runner_first`, `runner_bid`)
         pending_prevention: _, // drawn: Prompt::of and Prompt::card (what would happen, the card offering)
         pending_paid_choice: _, // drawn: Prompt::of and Prompt::card
         pending_decision,      // below
@@ -117,6 +117,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         host_set_aside_cards: _, // drawn: hud::in_effect, named where the viewer saw them on the host; the chooser's pop-up draws the ones it offers
         installed_facedown_count: _, // drawn: hud::in_effect ("installed facedown: N cards"), both clients: Reboot's blank, inactive installs (CR 8.1.4a)
         installed_facedown_cards: _, // drawn: hud::in_effect, named to the Runner (CR 1.21.2a)
+        rig_facedown: _, // drawn: hud::in_effect ("turned facedown: …"), both clients, named to both players: Apocalypse's rig, blank and inactive, what each card was open (CR 8.1.4b)
         other_identities: _, // drawn: the selection pop-up draws the ones DJ Fenris offers; engine's otherwise, the pile is every identity but the Runner's own (CR 1.5.4a)
         hosted_identities: _, // drawn: hud::in_effect ("hosted on DJ Fenris, with its text: …"), both clients, and its abilities named on the host's menu (actions::abilities_card_id)
         play_area: _,           // drawn: hud::in_effect ("resolving: …"), both clients: an event whose own choice is still open (CR 3.7.1)

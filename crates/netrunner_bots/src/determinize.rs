@@ -348,7 +348,7 @@ pub(crate) fn visible_cards(view: &ClientView) -> Vec<CardId> {
     ids.extend(view.runner.play_area.iter().cloned());
     ids.extend(view.runner.conditions.iter().map(|condition| condition.card.clone()));
     ids.extend(view.runner.scored_agendas.iter().map(|scored| scored.card.clone()));
-    for rig_card in &view.runner.rig {
+    for rig_card in view.runner.rig.iter().chain(&view.runner.rig_facedown) {
         ids.push(rig_card.card.clone());
         ids.extend(rig_card.hosted_cards.iter().cloned());
     }
@@ -421,6 +421,7 @@ fn cards_in_game(view: &ClientView, side: Side, registry: &CardRegistry) -> usiz
                 + view.runner.play_area.len()
                 + view.runner.conditions.len()
                 + view.runner.rig.iter().map(|card| 1 + card.hosted_cards.len() + card.hosted_unseen).sum::<usize>()
+                + view.runner.rig_facedown.iter().map(|card| 1 + card.hosted_cards.len() + card.hosted_unseen).sum::<usize>()
                 + in_corp_score_area
         }
     }
@@ -1103,11 +1104,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         installed,
     };
 
-    let rig = view
-        .runner
-        .rig
-        .iter()
-        .map(|card| InstalledRunnerCard {
+    let mut rig_card = |card: &netrunner_core::rules::PublicInstalledRunnerCard| InstalledRunnerCard {
             card: card.card.clone(),
             // Carried, never reallocated — see `determinize_installed`.
             install_id: card.install_id,
@@ -1143,8 +1140,11 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
             hosted_cards_playable: card.hosted_cards_playable,
             // Not in the view, as the Corp install's is not.
             this_turn: Default::default(),
-        })
-        .collect();
+        };
+    let rig: Vec<InstalledRunnerCard> = view.runner.rig.iter().map(&mut rig_card).collect();
+    // Apocalypse's rig, turned facedown where it stood: public as the rig
+    // is (CR 8.1.4b), and carried the same way.
+    let rig_facedown: Vec<InstalledRunnerCard> = view.runner.rig_facedown.iter().map(&mut rig_card).collect();
 
     let runner = RunnerState {
         // Carried — see `corp.identity` above.
@@ -1171,6 +1171,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         // Reboot's facedown installs: hidden from the Corp the same way,
         // drawn after them for the same reason.
         installed_facedown: determinize_zone(&view.runner.installed_facedown_cards, view.runner.installed_facedown_count, &mut pools, Slot::RunnerAny),
+        rig_facedown,
         // What a host's cost set aside while the effect that reads it waits
         // (Street Peddler's choice), drawn after the rest for the same
         // reason; facedown where the viewer is not shown them.
@@ -1216,7 +1217,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         .installed
         .iter()
         .map(|c| c.install_id.0)
-        .chain(runner.rig.iter().map(|c| c.install_id.0))
+        .chain(runner.rig.iter().chain(&runner.rig_facedown).map(|c| c.install_id.0))
         .max()
         .map_or(view.next_install_id, |highest| view.next_install_id.max(highest + 1));
 
@@ -1498,7 +1499,7 @@ pub fn resample_hidden(state: &mut GameState, view: &ClientView, registry: &Card
     if view.runner.grip_cards.is_none() {
         state.runner.grip = pools.draw_n(Slot::RunnerAny, state.runner.grip.len());
     }
-    for (installed, seen) in state.runner.rig.iter_mut().zip(&view.runner.rig) {
+    for (installed, seen) in state.runner.rig.iter_mut().zip(&view.runner.rig).chain(state.runner.rig_facedown.iter_mut().zip(&view.runner.rig_facedown)) {
         if seen.hosted_unseen > 0 {
             installed.hosted_cards = pools.draw_n(Slot::RunnerAny, installed.hosted_cards.len());
         }
@@ -1626,6 +1627,7 @@ mod tests {
                 set_aside_facedown: Vec::new(),
                 set_aside_by_host: None,
                 installed_facedown: Vec::new(),
+                rig_facedown: Vec::new(),
                 other_identities: Vec::new(),
                 hosted_identities: Vec::new(),
                 play_area: Vec::new(),

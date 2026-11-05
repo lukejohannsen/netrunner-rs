@@ -1633,6 +1633,23 @@ pub fn cannot_install(state: &GameState, registry: &CardRegistry, what: Prohibit
             }))
 }
 
+/// Whether a standing `Cannot(Install)` is about `card` as it is
+/// installed (`Scope::Installing`, Apex: Invasive Predator's "You cannot
+/// install non-virtual resources"). Asked by `engine::
+/// install_requirement_met`, the one question every Runner install and
+/// every offer of one puts, beside the prohibitions that bind a player.
+pub(crate) fn cannot_install_card(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> bool {
+    any(state, registry, Target::Card(card), |kind| *kind == ContinuousKind::Cannot(Prohibition::Install))
+}
+
+/// Whether the Runner spends first in a trace initiated now
+/// (`ContinuousKind::RunnerSpendsFirst`, Surveillance Sweep's "The Runner
+/// must spend credits first for each trace attempt during a run", whose
+/// `while` says "during a run"). Asked once, by `ability::start_trace`.
+pub(crate) fn runner_spends_first(state: &GameState, registry: &CardRegistry) -> bool {
+    any(state, registry, Target::Player(Side::Corp), |kind| *kind == ContinuousKind::RunnerSpendsFirst)
+}
+
 /// Whether the Corp install `install` cannot host cards
 /// (`ContinuousKind::CannotHost`, Tithonium) — asked wherever a card is put
 /// onto a piece of ice.

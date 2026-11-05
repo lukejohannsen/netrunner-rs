@@ -116,7 +116,12 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
         CardZoneRef::OwnHeap => state.runner.heap.clone(),
         CardZoneRef::OwnSetAside => state.runner.set_aside.clone(),
         CardZoneRef::OwnSetAsideFacedown => state.runner.set_aside_facedown.clone(),
-        CardZoneRef::OwnInstalledFacedown => state.runner.installed_facedown.clone(),
+        // Both kinds of facedown install: those installed facedown, then
+        // the rig cards turned facedown where they were (Apocalypse's). A
+        // place to put cards (`plain_zone_mut`) is the first list alone,
+        // which only ever grows at its end, so a position read here still
+        // names the card it named.
+        CardZoneRef::OwnInstalledFacedown => state.runner.installed_facedown.iter().chain(state.runner.rig_facedown.iter().map(|installed| &installed.card)).cloned().collect(),
         CardZoneRef::OtherIdentities => state.runner.other_identities.clone(),
         CardZoneRef::OpponentSetAside => match owner {
             Side::Corp => state.corp.set_aside.clone(),

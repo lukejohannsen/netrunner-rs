@@ -982,6 +982,34 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
+        Effect::ShuffleHqIntoRnDKeepingAtRandom(keep) => {
+            let mut keep = (resolve_amount(keep, ctx, state, registry) as usize).min(state.corp.hq.len());
+            let mut kept = Vec::new();
+            while keep > 0 {
+                let index = (state.next_u64() % state.corp.hq.len() as u64) as usize;
+                kept.push(state.corp.hq.remove(index));
+                keep -= 1;
+            }
+            let mut cards = std::mem::replace(&mut state.corp.hq, kept);
+            state.corp.r_and_d.append(&mut cards);
+            crate::rules::pending_choice::shuffle_decks(state, Side::Corp, &crate::dsl::CardZoneRef::OwnRAndD, None);
+            Ok(Vec::new())
+        }
+
+        // Each rig card a `ForEach` names (Apocalypse), off the rig with
+        // its record whole; a handle no longer in the rig is passed over.
+        Effect::TurnFacedown(target) => {
+            let install = match target {
+                CardTarget::Install(install) => Some(*install),
+                CardTarget::RunnerRig(card) => state.runner.rig.iter().find(|installed| &installed.card == card).map(|installed| installed.install_id),
+                _ => return Err(RulesError::UnresolvedCardTarget),
+            };
+            if let Some(install) = install {
+                crate::rules::engine::turn_runner_card_facedown(state, install);
+            }
+            Ok(Vec::new())
+        }
+
         Effect::GainCreditsPerCounter { side, credits_per_counter } => {
             acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
             let current = counters_on_acting(state, registry, ctx).unwrap_or(0);
@@ -6272,6 +6300,10 @@ pub(crate) fn start_trace(state: &mut GameState, registry: &CardRegistry, base: 
         effect_on_success: on_success.clone(),
         effect_on_failure: on_failure.cloned(),
         resume: TraceResume::None,
+        // Asked once, as the trace is initiated (Surveillance Sweep's
+        // "for each trace attempt during a run").
+        runner_first: crate::rules::continuous::runner_spends_first(state, registry),
+        runner_bid: None,
     });
     Ok(events)
 }

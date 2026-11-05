@@ -941,6 +941,21 @@ pub struct RunnerState {
     /// then a card here stays until the game ends.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub installed_facedown: Vec<CardId>,
+    /// Rig cards turned facedown where they are (CR 8.1.4) — Apocalypse's
+    /// "Turn all installed Runner cards facedown" (`Effect::TurnFacedown`).
+    /// Blank and inactive (8.1.4a), so off the rig for the reason
+    /// `installed_facedown` is; but the same object as the faceup card
+    /// (1.12.5) and still installed (8.1.4d), so each keeps its whole record
+    /// — its install handle, its counters and the cards it hosts — which
+    /// Assimilator gives back to the rig as it was when it turns one faceup
+    /// (`engine::turn_runner_card_faceup`). A list of its own beside
+    /// `installed_facedown` rather than a record on every entry there,
+    /// because what this card was is open information (8.1.4b: "what
+    /// faceup installed card was turned facedown"): the view carries it
+    /// whole, as it carries the rig, where a card installed facedown is
+    /// hidden from the Corp.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rig_facedown: Vec<InstalledRunnerCard>,
     /// The pile of other Runner identities brought with the deck (CR
     /// 1.5.4a), which an ability that refers to an identity other than the
     /// Runner's own reads (1.5.4b): DJ Fenris's "host a g-mod identity".
@@ -1243,6 +1258,32 @@ pub struct TraceState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effect_on_failure: Option<Effect>,
     pub resume: TraceResume,
+    /// The Runner spends first in this trace (CR 10.8.6c reversed by a card:
+    /// Surveillance Sweep's "The Runner must spend credits first for each
+    /// trace attempt during a run", `ContinuousKind::RunnerSpendsFirst`).
+    /// Fixed as the trace is initiated, so a current trashed while the
+    /// bids are being made does not reorder a trace half bid.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub runner_first: bool,
+    /// The Runner's bid, made first, while the Corp's is awaited — `None`
+    /// in every trace where the Corp spends first, whose Runner bid ends
+    /// it. Public, as the Corp's is: both players see what is spent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runner_bid: Option<u32>,
+}
+
+impl TraceState {
+    /// Whose bid the trace waits on: the Corp's then the Runner's (CR
+    /// 10.8.6), or the other way round in a trace where the Runner spends
+    /// first. The one answer every reader of a trace's turn puts.
+    pub fn awaiting(&self) -> Side {
+        match (self.runner_first, self.corp_bid, self.runner_bid) {
+            (false, None, _) => Side::Corp,
+            (false, Some(_), _) => Side::Runner,
+            (true, _, None) => Side::Runner,
+            (true, _, Some(_)) => Side::Corp,
+        }
+    }
 }
 
 /// What to do once a `PendingPrevention` resolves, mirroring `TraceResume`'s

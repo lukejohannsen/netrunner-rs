@@ -3,7 +3,7 @@
   "name": "Zzzzzzzzzzzzzzzzzzzzzz",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Harishchandra Ent.: Where You're the Star, the NBN identity under whose text the Runner plays with the grip revealed while tagged. Pay to Win's list, its identity swapped: its Data Raven, Peeping Tom and SYNC Rerouting are what tag the Runner. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words Stage 33 (FFG).",
+  "description": "Not a published list: built so the sweeps reach Harishchandra Ent.: Where You're the Star, the NBN identity under whose text the Runner plays with the grip revealed while tagged. Pay to Win's list, its identity swapped: its Data Raven, Peeping Tom and SYNC Rerouting are what tag the Runner. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only. Engine words Stage 33 (FFG). Engine words Stage 38 (FFG): a Surveillance Sweep for one of its two Game Over, current for current, so its Data Raven's and Intake's traces during a run are bid by the Runner first; Game Over stays here and in two other decks.",
   "style": [
     "fast-advance"
   ],
@@ -83,7 +83,7 @@
     },
     {
       "card": "game_over",
-      "count": 2
+      "count": 1
     },
     {
       "card": "data_raven",
@@ -96,6 +96,10 @@
     {
       "card": "personalized_portal",
       "count": 2
+    },
+    {
+      "card": "surveillance_sweep",
+      "count": 1
     }
   ]
 }

@@ -1,0 +1,47 @@
+{
+  "id": "alexa_belsky",
+  "title": "Alexa Belsky",
+  "unique": true,
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 5,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "ChooseNumber": {
+          "chooser": "Runner",
+          "min": 0,
+          "max": {
+            "Credits": "Runner"
+          },
+          "then": {
+            "Sequence": [
+              {
+                "LoseCreditsAmount": [
+                  "Runner",
+                  "ChosenNumber"
+                ]
+              },
+              {
+                "ShuffleHqIntoRnDKeepingAtRandom": {
+                  "Every": {
+                    "amount": "ChosenNumber",
+                    "every": 2
+                  }
+                }
+              }
+            ]
+          },
+          "text": "The Runner may pay any number of credits to prevent 1 random card in HQ from being shuffled into R&D for every 2[credit] spent"
+        }
+      },
+      "text": "[trash]: Shuffle all cards in HQ into R&D."
+    }
+  ],
+  "built_from": 11055,
+  "is_playable": true
+}

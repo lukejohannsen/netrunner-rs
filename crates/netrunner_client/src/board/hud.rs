@@ -642,6 +642,13 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
             Some(cards) => format!("installed facedown: {}", cards.iter().map(&title).collect::<Vec<_>>().join(", ")),
             None => format!("installed facedown: {} {}", view.runner.installed_facedown_count, if view.runner.installed_facedown_count == 1 { "card" } else { "cards" }),
         }))
+        // The rig turned facedown where it stood (Apocalypse's): blank and
+        // inactive (CR 8.1.4a), but what each card was is open (8.1.4b),
+        // so both players read the names.
+        .chain((!view.runner.rig_facedown.is_empty()).then(|| {
+            let names: Vec<String> = view.runner.rig_facedown.iter().map(|card| title(&card.card)).collect();
+            format!("turned facedown: {}", names.join(", "))
+        }))
         // An event still resolving (Déjà Vu while the Runner chooses from
         // the heap): faceup in the play area, and in the heap once it has
         // resolved (CR 3.7.1).
@@ -1108,6 +1115,28 @@ mod tests {
         view.runner.host_set_aside_cards = None;
         assert_eq!(in_effect(&view, &registry), ["set aside from a host: 2 cards"], "Street Peddler's, counted for the Corp");
         view.runner.host_set_aside_count = 0;
+        view.runner.rig_facedown = ["corroder", "cyberfeeder"]
+            .into_iter()
+            .map(|card| netrunner_core::rules::PublicInstalledRunnerCard {
+                card: CardId(card.into()),
+                install_id: netrunner_core::rules::InstallId(7),
+                current_strength: 0,
+                hosted_on_ice: None,
+                hosted_on_rig_card: None,
+                hosted_cards: Vec::new(),
+                hosted_counters: Vec::new(),
+                hosted_facedown: false,
+                hosted_unseen: 0,
+                turned_facedown: 0,
+                hosted_cards_playable: false,
+                counters: 0,
+                credits: 0,
+                virus_counters: 0,
+                virus_placed_on_turn: None,
+            })
+            .collect();
+        assert_eq!(in_effect(&view, &registry), ["turned facedown: Corroder, Cyberfeeder"], "Apocalypse's rig, named to both players (CR 8.1.4b)");
+        view.runner.rig_facedown.clear();
         view.corp.set_aside = vec![CardId("hedge_fund".into()), CardId("ice_wall".into())];
         assert_eq!(in_effect(&view, &registry), ["set aside from R&D: Hedge Fund, Ice Wall"]);
     }

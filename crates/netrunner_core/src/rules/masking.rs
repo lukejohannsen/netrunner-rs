@@ -331,6 +331,12 @@ pub struct PublicRunnerState {
     /// information the Runner controls (CR 4.6.3), counted for the Corp.
     #[serde(default = "MaskedZone::empty")]
     pub installed_facedown: MaskedZone,
+    /// `RunnerState::rig_facedown`, never masked: what faceup card was
+    /// turned facedown is open information (CR 8.1.4b), so the Corp, who
+    /// saw it in the rig, still knows it, with its counters and the cards
+    /// it hosts as the rig showed them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rig_facedown: Vec<PublicInstalledRunnerCard>,
     /// Never masked: the pile of other identities (`RunnerState::
     /// other_identities`) is every playable identity but the Runner's own,
     /// which says nothing the registry does not.
@@ -1993,6 +1999,7 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         set_aside_facedown: mask_zone(&runner.set_aside_facedown, owner_view),
         set_aside_by_host: runner.set_aside_by_host.as_ref().map(|aside| (aside.host, mask_zone(&aside.cards, owner_view || !aside.facedown))),
         installed_facedown: mask_zone(&runner.installed_facedown, owner_view),
+        rig_facedown: runner.rig_facedown.iter().map(|card| mask_installed_runner_card(state, registry, card, owner_view)).collect(),
         other_identities: runner.other_identities.clone(),
         hosted_identities: runner.hosted_identities.clone(),
         play_area: runner.play_area.clone(),

@@ -22,7 +22,7 @@ use crate::rules::state::{GameState, Side, TraceResume};
 /// generic `RulesError::NotEnoughCredits` rather than a bespoke variant.
 pub(crate) fn submit_corp_bid(state: &mut GameState, registry: &CardRegistry, amount: u32) -> Result<Vec<GameEvent>, RulesError> {
     let trace = state.active_trace.as_ref().ok_or(RulesError::TraceNotAwaitingCorpBid)?;
-    if trace.corp_bid.is_some() {
+    if trace.awaiting() != Side::Corp {
         return Err(RulesError::TraceNotAwaitingCorpBid);
     }
 
@@ -31,8 +31,27 @@ pub(crate) fn submit_corp_bid(state: &mut GameState, registry: &CardRegistry, am
     let trace = state.active_trace.as_mut().expect("checked Some above");
     trace.corp_bid = Some(amount);
     let total_strength = trace.base_strength.saturating_add(amount);
+    let runner_bid = trace.runner_bid;
     events.push(GameEvent::TraceCorpBidSubmitted { corp_bid: amount, total_strength });
+    // Where the Runner spent first (Surveillance Sweep), the Corp's bid is
+    // the last, and the trace resolves on it.
+    if let Some(runner_bid) = runner_bid {
+        events.extend(resolve(state, registry, runner_bid, Vec::new())?);
+    }
     Ok(events)
+}
+
+/// The Runner's bid, `paid` what paying it announced (CR 10.8.6d).
+fn runner_paid(state: &mut GameState, registry: &CardRegistry, amount: u32) -> Result<Vec<GameEvent>, RulesError> {
+    let mut paid = ability::pay_cost(state, registry, Side::Runner, &Cost::Credits(amount), Purpose::Trace, None)?;
+    // The Runner's bid is spent at the trace's asking (CR 10.8.6d), so the
+    // card that began it made them spend (GameNET).
+    if let Some(card) = state.active_trace.as_ref().and_then(|trace| trace.initiating_card.clone())
+        && let Some(took) = ability::took_credits(&paid, Side::Runner, Some(&card))
+    {
+        paid.push(took);
+    }
+    Ok(paid)
 }
 
 /// Resolves `PlayerAction::SubmitRunnerTraceBid`. Requires an active trace
@@ -45,32 +64,49 @@ pub(crate) fn submit_corp_bid(state: &mut GameState, registry: &CardRegistry, am
 /// ResumeSubroutines`), resumes it via `paid_ability::resolve_encounter_ice`
 /// after resolving — whether avoided or not — so any remaining subroutines
 /// on the ICE still fire and the run still advances.
+///
+/// In a trace where the Runner spends first (`TraceState::runner_first`,
+/// Surveillance Sweep), the bid is made before the Corp's: it is paid and
+/// recorded, heard as a bid is, and the trace waits for the Corp's, which
+/// resolves it (`submit_corp_bid`).
 pub(crate) fn submit_runner_bid(
     state: &mut GameState,
     amount: u32,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let trace = state.active_trace.as_ref().ok_or(RulesError::TraceNotAwaitingRunnerBid)?;
-    if trace.corp_bid.is_none() {
+    if trace.awaiting() != Side::Runner {
         return Err(RulesError::TraceNotAwaitingRunnerBid);
     }
+    let first = trace.runner_first;
 
-    let mut paid = ability::pay_cost(state, registry, Side::Runner, &Cost::Credits(amount), Purpose::Trace, None)?;
-    // The Runner's bid is spent at the trace's asking (CR 10.8.6d), so the
-    // card that began it made them spend (GameNET).
-    if let Some(card) = state.active_trace.as_ref().and_then(|trace| trace.initiating_card.clone())
-        && let Some(took) = ability::took_credits(&paid, Side::Runner, Some(&card))
-    {
-        paid.push(took);
+    let paid = runner_paid(state, registry, amount)?;
+    if first {
+        let mut events = paid.clone();
+        state.active_trace.as_mut().expect("checked Some above").runner_bid = Some(amount);
+        let runner_total = crate::rules::continuous::trace_link(state, registry).saturating_add(amount);
+        crate::rules::dispatcher::emit(state, registry, &mut events, GameEvent::TraceRunnerBidSubmitted { runner_bid: amount, total_strength: runner_total })?;
+        events.extend(ability::dispatch_cost_events(state, registry, &paid)?);
+        return Ok(events);
     }
-    let mut events = paid.clone();
+    resolve(state, registry, amount, paid)
+}
 
+/// Both bids are in: the trace is compared and resolved (CR 10.8.6e), and
+/// whatever it interrupted goes on. `paid` is what the Runner's bid
+/// announced, when it was the last bid; the Runner's bid is announced here
+/// then, and was announced as it was made otherwise.
+fn resolve(state: &mut GameState, registry: &CardRegistry, amount: u32, paid: Vec<GameEvent>) -> Result<Vec<GameEvent>, RulesError> {
+    let mut events = paid.clone();
+    let announced = state.active_trace.as_ref().is_some_and(|trace| trace.runner_first);
     let trace = state.active_trace.take().expect("checked Some above");
     let corp_total = trace.base_strength.saturating_add(trace.corp_bid.expect("checked Some above"));
     let runner_total = crate::rules::continuous::trace_link(state, registry).saturating_add(amount);
     // A moment when it spent something (Net Quarantine), through the one
     // door; an occurrence of nothing when it did not.
-    crate::rules::dispatcher::emit(state, registry, &mut events, GameEvent::TraceRunnerBidSubmitted { runner_bid: amount, total_strength: runner_total })?;
+    if !announced {
+        crate::rules::dispatcher::emit(state, registry, &mut events, GameEvent::TraceRunnerBidSubmitted { runner_bid: amount, total_strength: runner_total })?;
+    }
 
     if runner_total >= corp_total {
         events.push(GameEvent::TraceAvoided { corp_total, runner_total });
@@ -174,6 +210,8 @@ mod tests {
             corp_bid,
             effect_on_success: on_success,
             resume: TraceResume::None,
+            runner_first: false,
+            runner_bid: None,
             effect_on_failure: None,
         }
     }
@@ -319,6 +357,8 @@ mod tests {
             corp_bid: Some(0),
             effect_on_success: Effect::EndTheRun,
             resume: TraceResume::ResumeSubroutines,
+            runner_first: false,
+            runner_bid: None,
             effect_on_failure: None,
         });
         let registry = a_runner_with_link(&mut state, 5);
@@ -340,6 +380,8 @@ mod tests {
             corp_bid: Some(0),
             effect_on_success: Effect::EndTheRun,
             resume: TraceResume::ResumeSubroutines,
+            runner_first: false,
+            runner_bid: None,
             effect_on_failure: None,
         });
         let registry = a_runner_with_link(&mut state, 0);

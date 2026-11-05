@@ -1372,6 +1372,8 @@ mod tests {
             corp_bid: None,
             effect_on_success: DslEffect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: crate::rules::state::TraceResume::None,
+            runner_first: false,
+            runner_bid: None,
             effect_on_failure: None,
         });
 

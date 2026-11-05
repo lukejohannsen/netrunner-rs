@@ -984,7 +984,7 @@ fn encode_decision(view: &ClientView, features: &mut Vec<f32>) {
     let owed_by = view
         .active_trace
         .as_ref()
-        .map(|trace| if trace.corp_bid.is_none() { Side::Corp } else { Side::Runner })
+        .map(|trace| trace.awaiting())
         .or(view.pending_paid_choice.as_ref().map(|choice| choice.side))
         .or(chooser)
         .or(view.paid_ability_window.as_ref().map(|window| window.active_priority))
