@@ -197,6 +197,7 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
         CardZoneRef::OwnSetAsideFacedown => "the cards set aside facedown",
         CardZoneRef::OwnInstalledFacedown => "your facedown installed cards",
         CardZoneRef::OtherIdentities => "your other identities",
+        CardZoneRef::Brought => "the cards you brought outside your deck",
         CardZoneRef::OpponentSetAside => "the opponent's cards set aside",
         CardZoneRef::OpponentInstalled => "the opponent's installed cards",
         CardZoneRef::OpponentDiscard => "the opponent's discard pile",
@@ -399,6 +400,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::DerezCard(target) => format!("derez {}", describe_target(target, registry)),
         Effect::ShuffleHqIntoRnDKeepingAtRandom(keep) => format!("shuffle all cards in HQ into R&D but {} at random", describe_amount(keep)),
         Effect::TurnFacedown(target) => format!("turn {} facedown", describe_target(target, registry)),
+        Effect::RezLoweringTotal { by, .. } => format!("rez them, lowering their total rez cost by {}[credit]", describe_amount(by)),
         Effect::BoostStrength { amount, duration: d } => format!("+{amount} strength {}", duration(d)),
         Effect::BoostStrengthAmount { amount, duration: d } => format!("strength +{} {}", describe_amount(amount), duration(d)),
         Effect::BreakSubroutines { count, restrict_to } => {
@@ -695,6 +697,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::TurnFaceupInArchives => "turn it faceup in Archives".to_string(),
         Effect::TurnArchivesFacedown => "turn every card in Archives facedown".to_string(),
         Effect::FlipIdentity => "flip the identity".to_string(),
+        Effect::SwitchIdentity => "switch your identity with it".to_string(),
         Effect::IdentifyMark => "identify your mark".to_string(),
         Effect::SetIdentityCopy(copy) => format!("make copy {} of the identity the one in play", describe_amount(copy)),
         Effect::AddToDeck(DeckEnd::Bottom) => "put it on the bottom of its owner's deck".to_string(),

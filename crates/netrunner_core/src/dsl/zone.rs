@@ -52,6 +52,15 @@ pub enum CardZoneRef {
     /// ability that brings a card in from there names. The Runner may look
     /// at it at any time, so choosing from it shows nothing new.
     OtherIdentities,
+    /// The cards the Runner brought outside the deck (`RunnerState::
+    /// brought`, CR 1.5.3a) — Adam: Compulsive Hacker's directives, of
+    /// which "you start the game with 3 different directive cards
+    /// installed" chooses (1.5.3b). Outside the game and in no zone, as
+    /// `OtherIdentities` is; every card in it is one the registry offers,
+    /// so choosing from it shows nothing new. Composition didn't work:
+    /// `OtherIdentities` is CR 1.5.4a's pile of identities, which DJ
+    /// Fenris and Rebirth read, and a directive is no identity.
+    Brought,
     /// The other player's cards in the set-aside zone (CR 4.8): the Corp's
     /// (`CorpState::set_aside`) named from the Runner's side — Deep Dive's
     /// "Access 1 of those cards" and "the Corp shuffles the set-aside cards
@@ -161,6 +170,7 @@ impl CardZoneRef {
             | CardZoneRef::OwnSetAsideFacedown
             | CardZoneRef::OwnInstalledFacedown
             | CardZoneRef::OtherIdentities
+            | CardZoneRef::Brought
             | CardZoneRef::OpponentSetAside
             | CardZoneRef::OpponentInstalled
             | CardZoneRef::OpponentDiscard
@@ -192,6 +202,7 @@ impl CardZoneRef {
             | CardZoneRef::OwnSetAsideFacedown
             | CardZoneRef::OwnInstalledFacedown
             | CardZoneRef::OtherIdentities
+            | CardZoneRef::Brought
             | CardZoneRef::OpponentSetAside
             | CardZoneRef::OpponentDiscard
             | CardZoneRef::HostedOnSource

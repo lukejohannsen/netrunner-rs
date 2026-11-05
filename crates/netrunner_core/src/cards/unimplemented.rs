@@ -24,8 +24,11 @@
 /// names it. Startup was verified complete on 29 September 2026 (Phase 5
 /// §25 Stage 0): System Gateway, Elevation and Vantage Point, 225 cards.
 /// Standard was, with Downfall Stage 8 (6 October 2026): its last unbuilt
-/// cards were Downfall's.
-pub(crate) const COMPLETE_FORMATS: &[crate::format::NsgFormat] = &[crate::format::NsgFormat::Startup, crate::format::NsgFormat::Standard];
+/// cards were Downfall's. Eternal and Snapshot were, with the FFG pool's
+/// Engine words Stage 39 (5 November 2026): Eternal's last unbuilt cards
+/// were Skorpios Defense Systems, Adam: Compulsive Hacker, Cyber Bureau and
+/// Rebirth, and Snapshot's the three of them it holds.
+pub(crate) const COMPLETE_FORMATS: &[crate::format::NsgFormat] = &[crate::format::NsgFormat::Startup, crate::format::NsgFormat::Standard, crate::format::NsgFormat::Eternal, crate::format::NsgFormat::Snapshot];
 
 /// *Vantage Point* (`vantage_point`): tranche 1 of the NSG plan.
 pub(crate) const VP_UNIMPLEMENTED: &[(&str, &str)] = &[];
@@ -159,7 +162,6 @@ pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// plan. Not in Eternal's or Snapshot's set lists, but most of its cards are
 /// in both pools.
 pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("skorpios_defense_systems_persuasive_power", "Skorpios Defense Systems: Persuasive Power"),
 ];
 
 /// *Kala Ghoda* (`kala_ghoda`): tranche F6 of the FFG plan.
@@ -180,7 +182,6 @@ pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Liberated Mind* (`the_liberated_mind`): tranche F6 of the FFG plan.
 pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("rebirth", "Rebirth"),
 ];
 
 /// *Fear the Masses* (`fear_the_masses`): tranche F6 of the FFG plan.
@@ -189,7 +190,6 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.
 pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("adam_compulsive_hacker", "Adam: Compulsive Hacker"),
 ];
 
 /// *The Valley* (`the_valley`): tranche F7 of the FFG plan.
@@ -302,7 +302,6 @@ pub(crate) const FP_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *NAPD Multiplayer* (`napd_multiplayer`): tranche F12 of the FFG plan.
 pub(crate) const NAPD_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("cyber_bureau_keeping_the_peace", "Cyber Bureau: Keeping the Peace"),
 ];
 
 /// *Magnum Opus* (`magnum_opus`): tranche F12 of the FFG plan.

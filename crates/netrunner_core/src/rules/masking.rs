@@ -342,6 +342,11 @@ pub struct PublicRunnerState {
     /// which says nothing the registry does not.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub other_identities: Vec<CardId>,
+    /// Never masked: the cards brought outside the deck (`RunnerState::
+    /// brought`, Adam's directives) are every playable one, which says
+    /// nothing the registry does not.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub brought: Vec<CardId>,
     /// Never masked: a hosted identity is faceup on its host
     /// (`RunnerState::hosted_identities`, DJ Fenris's).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -2001,6 +2006,7 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         installed_facedown: mask_zone(&runner.installed_facedown, owner_view),
         rig_facedown: runner.rig_facedown.iter().map(|card| mask_installed_runner_card(state, registry, card, owner_view)).collect(),
         other_identities: runner.other_identities.clone(),
+        brought: runner.brought.clone(),
         hosted_identities: runner.hosted_identities.clone(),
         play_area: runner.play_area.clone(),
         in_play: runner.in_play.clone(),

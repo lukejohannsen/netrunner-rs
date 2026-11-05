@@ -967,6 +967,14 @@ pub struct RunnerState {
     /// says nothing the registry does not, so the view carries it whole.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub other_identities: Vec<CardId>,
+    /// The cards brought outside the deck for an identity that says so
+    /// (`CardDefinition::brings`, CR 1.5.3a): Adam's directives, one copy
+    /// of each playable one, of which three begin the game installed and
+    /// the rest stay outside the game (1.5.3b). Seeded at setup, empty in
+    /// every other game. It says nothing the registry does not, so the view
+    /// carries it whole, as it carries `other_identities`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub brought: Vec<CardId>,
     /// Identities hosted on a rig card that gains their text — DJ Fenris's
     /// "DJ Fenris gains the text of hosted identity". A list beside the
     /// rig, as `CorpState::conditions` is beside the table: a hosted

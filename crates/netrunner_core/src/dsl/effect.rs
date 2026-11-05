@@ -1642,6 +1642,19 @@ pub enum Effect {
     /// than swapping the identity card: one card, two sides, and every
     /// side's text gated by `EffectRequirement::IdentityFlipped`.
     FlipIdentity,
+    /// The Runner's identity is switched with the card the resolution acts
+    /// as, an identity in the pile of others the Runner brought (CR
+    /// 1.5.4a) — Rebirth's "Switch your identity with another identity
+    /// from the same faction", the `then` of a selection over
+    /// `CardZoneRef::OtherIdentities`. The identity leaving play goes back
+    /// to the pile (1.5.4b); the one entering it does so front side up
+    /// (1.5.4d), with the recurring credits it prints placed as it becomes
+    /// active (1.10.5b) and nothing the old one hosted. Nothing hears it:
+    /// no card in the pool is about an identity switched. Composition
+    /// didn't work: `FlipIdentity` turns one card over, `HostOtherIdentity`
+    /// hosts an identity on a rig card and leaves the Runner's own in play,
+    /// and the identity in play was a field no effect wrote.
+    SwitchIdentity,
     /// Moves `acting_card` to the top or the **bottom** of its owner's deck
     /// — from the Runner's grip or heap to the stack (Scrounge's "You may
     /// add 1 program from your heap to the bottom of your stack"), from HQ,
@@ -2993,6 +3006,21 @@ pub enum Effect {
     /// card is never rezzed (8.1.1); the one Runner card turned facedown
     /// before, Harbinger, was turned as it was trashed, by the trash.
     TurnFacedown(CardTarget),
+    /// Rezzes each of the Corp's installs `among` admits, in the order they
+    /// were installed, lowering the total of their rez costs by `by` —
+    /// Cyber Bureau: Keeping the Peace's "Rez any number of them, lowering
+    /// the total rez cost among all cards by 20": the `then` of the
+    /// selection that chose them, `among` its `CardFilter::ChosenThisWay`
+    /// written over as the installs chosen (`Effect::with_chosen_installs`).
+    /// Each rez takes as much of what is left of `by` as its cost, so the
+    /// total paid is the total cost less `by` (CR 1.16.2f: a "total"
+    /// modifier is the player's to divide, and no division pays less); a
+    /// rez the Corp cannot afford is left unrezzed (1.16.4b), as
+    /// `RezInstalled`'s are. Composition didn't work: `RezInstalled`'s
+    /// discount is one card's, and a `ForEach` of them would give every
+    /// card the whole 20, since nothing carries what one rez used to the
+    /// next.
+    RezLoweringTotal { among: crate::dsl::CardFilter, by: Amount },
     /// Every card in HQ is shuffled into R&D but this many, chosen at
     /// random with the state's own PRNG — Alexa Belsky's "Shuffle all cards
     /// in HQ into R&D. The Runner may pay any number of credits to prevent
@@ -4794,6 +4822,8 @@ impl Effect {
             // Independent Thinking's "trash up to 5 of your installed
             // cards": each chosen card, trashed by its handle.
             Effect::ForEach { source, filter, effect } => Effect::ForEach { source, filter: filter.with_chosen_installs(installs), effect: Box::new(effect.with_chosen_installs(installs)) },
+            // Cyber Bureau's "rez any number of them": the installs chosen.
+            Effect::RezLoweringTotal { among, by } => Effect::RezLoweringTotal { among: among.with_chosen_installs(installs), by },
             // …and the number of them fixed ahead of the trash, so it
             // rides past whatever a trash parks (a prevention).
             Effect::ChooseNumber { chooser, min, max, of, then, text, secret } => Effect::ChooseNumber { chooser, min, max, of, then: Box::new(then.with_chosen_installs(installs)), text, secret },
@@ -5104,6 +5134,7 @@ impl Effect {
             Effect::GainCreditsAmount(side, a) => Effect::GainCreditsAmount(side, amount(a)),
             Effect::LoseCreditsAmount(side, a) => Effect::LoseCreditsAmount(side, amount(a)),
             Effect::ShuffleHqIntoRnDKeepingAtRandom(a) => Effect::ShuffleHqIntoRnDKeepingAtRandom(amount(a)),
+            Effect::RezLoweringTotal { among, by } => Effect::RezLoweringTotal { among, by: amount(by) },
             Effect::AddAtRandomToBottomOfDeck { side, count } => Effect::AddAtRandomToBottomOfDeck { side, count: amount(count) },
             Effect::DrawCardsAmount(side, a) => Effect::DrawCardsAmount(side, amount(a)),
             Effect::GiveTags(a) => Effect::GiveTags(amount(a)),
@@ -5407,6 +5438,7 @@ impl Effect {
             | Effect::RemoveCurrentlyAccessedCardFromGame
             | Effect::DerezCard(..)
             | Effect::TurnFacedown(..)
+            | Effect::RezLoweringTotal { .. }
             | Effect::ShuffleHqIntoRnDKeepingAtRandom(..)
             | Effect::GainCreditsPerCounter { .. }
             | Effect::SwapInstalledIce(..)
@@ -5434,6 +5466,7 @@ impl Effect {
             | Effect::ResolveSomeOf { .. }
             | Effect::LoseCreditsAmount(..)
             | Effect::FlipIdentity
+            | Effect::SwitchIdentity
             | Effect::SetIdentityCopy(_)
             | Effect::IdentifyMark
             | Effect::AddToDeck(_)

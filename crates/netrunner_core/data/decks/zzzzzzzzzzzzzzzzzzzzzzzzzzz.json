@@ -1,0 +1,101 @@
+{
+  "id": "zzzzzzzzzzzzzzzzzzzzzzzzzzz",
+  "name": "Zzzzzzzzzzzzzzzzzzzzzzzzzzz",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "A published list, whole: buzz66boy's “Open Up” (NetrunnerDB, https://netrunnerdb.com/en/decklist/898a0125-a23f-49e7-bb45-7bdceddd2a39, 11 June 2022), so the sweeps reach Cyber Bureau: Keeping the Peace, the neutral NAPD Multiplayer identity that draws a starting hand of 10 cards, installs up to 5 of them before its first turn ignoring all install costs, rezzes any of those lowering their total rez cost by 20, and flips to Detective's Bureau: Upholding the Law. A neutral Corp deck may take only neutral agendas, and this is the one published Cyber Bureau list whose agendas all are. A Sweep deck rather than a Sample one, so nothing trains on it and no recorded measurement moves. Named to sort after every other deck, so the sweep schedule of those before it does not move. Eternal-legal only: NAPD Multiplayer is in no other pool. Engine words, Stage 39.",
+  "style": [
+    "glacier"
+  ],
+  "identity": "cyber_bureau_keeping_the_peace",
+  "cards": [
+    {
+      "card": "afshar",
+      "count": 2
+    },
+    {
+      "card": "ballista",
+      "count": 3
+    },
+    {
+      "card": "battlement",
+      "count": 2
+    },
+    {
+      "card": "chrysalis",
+      "count": 1
+    },
+    {
+      "card": "conundrum",
+      "count": 1
+    },
+    {
+      "card": "enigma",
+      "count": 2
+    },
+    {
+      "card": "global_food_initiative",
+      "count": 2
+    },
+    {
+      "card": "hedge_fund",
+      "count": 2
+    },
+    {
+      "card": "hortum",
+      "count": 1
+    },
+    {
+      "card": "launch_campaign",
+      "count": 3
+    },
+    {
+      "card": "nasx",
+      "count": 1
+    },
+    {
+      "card": "ngo_front",
+      "count": 2
+    },
+    {
+      "card": "offworld_office",
+      "count": 2
+    },
+    {
+      "card": "palisade",
+      "count": 2
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 2
+    },
+    {
+      "card": "rototurret",
+      "count": 2
+    },
+    {
+      "card": "seamless_launch",
+      "count": 2
+    },
+    {
+      "card": "send_a_message",
+      "count": 1
+    },
+    {
+      "card": "show_of_force",
+      "count": 2
+    },
+    {
+      "card": "superconducting_hub",
+      "count": 2
+    },
+    {
+      "card": "sync_rerouting",
+      "count": 1
+    },
+    {
+      "card": "vanilla",
+      "count": 2
+    }
+  ]
+}

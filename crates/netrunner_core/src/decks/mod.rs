@@ -682,6 +682,13 @@ mod tests {
             // Engine words, Stage 38: Apex: Invasive Predator, on momar's
             // published "Apex Eater", whole.
             ("zzzzzzzzzzzzzzzzzzzzzzzz", &neither),
+            // Engine words, Stage 39: Skorpios Defense Systems, on
+            // Zzzzzzzzzzzzzzzzzzz's list; Adam: Compulsive Hacker, on
+            // ToThBeBe's published "Adam on the edge", whole; Cyber Bureau,
+            // on buzz66boy's published "Open Up", whole.
+            ("zzzzzzzzzzzzzzzzzzzzzzzzz", &neither),
+            ("zzzzzzzzzzzzzzzzzzzzzzzzzz", &neither),
+            ("zzzzzzzzzzzzzzzzzzzzzzzzzzz", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.
