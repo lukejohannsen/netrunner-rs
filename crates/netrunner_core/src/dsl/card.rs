@@ -2334,9 +2334,11 @@ impl CardDefinition {
                 // Full Immersion RecStudio's "can host up to 2 assets and/or
                 // agendas": a Corp asset has cards installed onto it by the
                 // install action (`PlayerAction::InstallCard::host`).
-                (ContinuousKind::MayHost, Scope::InstallingOntoThis(_)) if self.side == Side::Corp && self.card_type == CardType::Asset => {}
+                // Awakening Center's "You can install bioroid ice onto this
+                // upgrade": an upgrade, hosting ice, by the same action.
+                (ContinuousKind::MayHost, Scope::InstallingOntoThis(_)) if self.side == Side::Corp && matches!(self.card_type, CardType::Asset | CardType::Upgrade) => {}
                 (_, Scope::InstallingOntoThis(_)) if !hosted || self.side != Side::Runner => {
-                    return misfit("InstallingOntoThis", "only a Runner's installed card, or a Corp asset that may host, has cards installed onto it");
+                    return misfit("InstallingOntoThis", "only a Runner's installed card, or a Corp asset or upgrade that may host, has cards installed onto it");
                 }
                 // Only ice has an install cost the Corp pays (CR 8.5.16d), and
                 // a piece of ice being installed is priced without its card

@@ -640,6 +640,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 None => breach,
             }
         }
+        Effect::SetHqPile(_) => "the cards chosen are set apart, facedown, as a pile".to_string(),
         Effect::DiscardAtRandom { side, count } => {
             let hand = if *side == Side::Corp { "HQ" } else { "the grip" };
             format!("discard {count} card(s) from {hand} at random")
@@ -811,6 +812,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::AccessRootOfHqOrRnD, _) => "the Runner cannot access cards in the root of HQ or R&D",
                 (Prohibition::AccessRootOfArchives, _) => "the Runner cannot access cards in the root of Archives",
                 (Prohibition::AccessCardsInHq, _) => "the Runner cannot access cards in HQ",
+                (Prohibition::AccessHqAtRandom, _) => "the Corp chooses which cards the Runner accesses from HQ",
                 (Prohibition::SufferDamage, _) => "all damage the Runner would take is prevented",
                 (Prohibition::Advance, _) => "the Corp cannot advance cards",
                 (Prohibition::WinByAgendaPoints, _) => "the Corp cannot win except by flatlining the Runner",
@@ -1337,6 +1339,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::AccessRootOfHqOrRnD => "cannot access cards in the root of HQ or R&D",
             Prohibition::AccessRootOfArchives => "cannot access cards in the root of Archives",
             Prohibition::AccessCardsInHq => "cannot access cards in HQ",
+            Prohibition::AccessHqAtRandom => "accesses the cards of HQ the Corp chooses",
             Prohibition::SufferDamage => "prevents all damage",
             Prohibition::Advance => "cannot advance cards",
             Prohibition::WinByAgendaPoints => "cannot win except by flatlining the Runner",

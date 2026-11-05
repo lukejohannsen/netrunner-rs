@@ -324,6 +324,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::AccessRootOfHqOrRnD => "the Runner cannot access cards in the root of HQ or R&D",
         Prohibition::AccessRootOfArchives => "the Runner cannot access cards in the root of Archives",
         Prohibition::AccessCardsInHq => "the Runner cannot access cards in HQ",
+        Prohibition::AccessHqAtRandom => "the Corp chooses which cards the Runner accesses from HQ",
         Prohibition::SufferDamage => "all damage the Runner would take is prevented",
         Prohibition::Advance => "the Corp cannot advance cards",
         Prohibition::WinByAgendaPoints => "the Corp cannot win except by flatlining the Runner",
@@ -401,10 +402,21 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         let ice = run.ice.get(run.position).and_then(|ice| ice.identity.as_ref()).map_or_else(|| "the ice".to_string(), |identity| title(&identity.card));
         format!("This run: after this breach, back to the encounter with {ice}")
     });
+    // Information Sifting: the Corp's two facedown piles of HQ, the first
+    // of them set apart this run (`hq_pile`): how many each holds, and to
+    // the Corp which cards the first is.
+    let piles = view.active_run.as_ref().and_then(|run| run.hq_pile.as_ref()).map(|pile| {
+        let hq = view.corp.hq_count as u32;
+        let rest = hq.saturating_sub(pile.count);
+        match &pile.cards {
+            Some(cards) => format!("This run: HQ set apart as two piles, the first of {} ({}), the second of {rest}", pile.count, cards.iter().map(&title).collect::<Vec<_>>().join(", ")),
+            None => format!("This run: HQ set apart as two facedown piles, the first of {} cards, the second of {rest}", pile.count),
+        }
+    });
     // Attini: a prohibition a card's standing effect has in force right
     // now (`standing_cannot`) — why an offer to pay has no Accept.
     let standing = view.standing_cannot.iter().map(|standing| format!("{}: {}", title(&standing.source), cannot_words(standing.what)));
-    redirect.into_iter().chain(event_counters).chain(gained_for_the_run).chain(derezzed).chain(run_credits_for).chain(returns_to).chain(breach_returns_to).chain(standing).chain(view.lingering
+    redirect.into_iter().chain(event_counters).chain(gained_for_the_run).chain(derezzed).chain(run_credits_for).chain(returns_to).chain(breach_returns_to).chain(piles).chain(standing).chain(view.lingering
         .iter()
         .filter_map(|effect| {
             let what = match (&effect.what, &effect.on) {

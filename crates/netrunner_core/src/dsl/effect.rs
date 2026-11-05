@@ -2289,6 +2289,20 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         then: Option<Box<Effect>>,
     },
+    /// The cards of HQ the Corp chose are set apart in secret for the run
+    /// (`RunState::hq_pile`) — the `then` of the Corp's selection over HQ,
+    /// written over with the cards selected as the selection resolves
+    /// (`pending_choice`), so a card file writes it empty. Information
+    /// Sifting's "the Corp separates all cards in HQ into 2 facedown
+    /// piles": the selected cards are the first pile and the rest of HQ the
+    /// second (`CardFilter::InHqPile`); and the selection a breach of HQ
+    /// parks under Dedicated Neural Net (`Prohibition::AccessHqAtRandom`),
+    /// whose cards the breach then takes. Nothing outside a run.
+    /// Composition didn't work: a selection's `then` acts as one card, the
+    /// first selected, and these are a pile of cards that must stay hidden
+    /// from the Runner through the Runner's choice that follows — written
+    /// into a parked effect they would have ridden in its view.
+    SetHqPile(Vec<CardId>),
     /// The Runner accesses `count` of the cards in `from` that match
     /// `filter`, one at a time, choosing each, and then `then` resolves —
     /// an access that is not a breach (CR 7.1.9, 7.1.10): Pinhole
@@ -4442,12 +4456,27 @@ pub enum Prohibition {
     /// reason"). Composition didn't work: every prohibition was about an
     /// action or a step, and this is about a zone.
     LeaveTheHeap,
+    /// The Runner's accesses out of HQ are not at random: the Corp chooses
+    /// which cards they access — Dedicated Neural Net's "you choose which
+    /// cards the Runner accesses from HQ for the remainder of this run",
+    /// made by the psi game's `on_differ` until the run ends. Asked as a
+    /// breach of HQ would draw its cards (`run::access::access_server`),
+    /// which then parks the Corp's selection of as many cards as the
+    /// random access limit (CR 7.3.5) and takes them in its place
+    /// (`RunState::hq_pile`). Binds the Runner, whose accesses they are;
+    /// the cards of HQ's root are still theirs to choose. Composition
+    /// didn't work: every other prohibition takes something away, and this
+    /// one hands the choice of what is left to the other player — but a
+    /// "cannot access at random" is the same entry for the same duration,
+    /// so a new `Effect` for it would have been the flag with a reset the
+    /// Continuous Effect Rule forbids.
+    AccessHqAtRandom,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 39] = [
+    pub const ALL: [Prohibition; 40] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -4487,13 +4516,14 @@ impl Prohibition {
         Prohibition::InstallIce,
         Prohibition::SpendClickButToRun,
         Prohibition::LeaveTheHeap,
+        Prohibition::AccessHqAtRandom,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::InstallIce => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::Steal | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessRootOfArchives | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::PlayCurrents | Prohibition::SpendClickButToRun | Prohibition::LeaveTheHeap => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::Steal | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessRootOfArchives | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::PlayCurrents | Prohibition::SpendClickButToRun | Prohibition::LeaveTheHeap | Prohibition::AccessHqAtRandom => Side::Runner,
         }
     }
 
@@ -4504,7 +4534,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::Steal | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessRootOfArchives | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::PlayCurrents | Prohibition::InstallIce | Prohibition::SpendClickButToRun | Prohibition::LeaveTheHeap => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::Steal | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessRootOfArchives | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms | Prohibition::Draw | Prohibition::RezOutermostIce | Prohibition::RezIce | Prohibition::RezSecondIce | Prohibition::PlayCurrents | Prohibition::InstallIce | Prohibition::SpendClickButToRun | Prohibition::LeaveTheHeap | Prohibition::AccessHqAtRandom => None,
         }
     }
 }
@@ -4795,6 +4825,21 @@ impl Effect {
     /// `CardTarget::Install(PLACEHOLDER)` written over as `install`, the card
     /// an `Effect::ForEach` is resolving for, through the shapes Game
     /// Over's is written in; any other effect is returned as it is.
+    /// The cards a Corp selection over HQ chose, written over every
+    /// `SetHqPile` in its `then` (Information Sifting's first pile), through
+    /// the shapes a `then` is written in. Any other effect is returned as
+    /// it is.
+    pub fn with_hq_pile(self, cards: &[CardId]) -> Effect {
+        let boxed = |effect: Box<Effect>| Box::new(effect.with_hq_pile(cards));
+        match self {
+            Effect::SetHqPile(_) => Effect::SetHqPile(cards.to_vec()),
+            Effect::Sequence(effects) => Effect::Sequence(effects.into_iter().map(|e| e.with_hq_pile(cards)).collect()),
+            Effect::AsThisCard(effect) => Effect::AsThisCard(boxed(effect)),
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
+            other => other,
+        }
+    }
+
     pub fn with_each_install(self, install: crate::rules::InstallId) -> Effect {
         let boxed = |effect: Box<Effect>| Box::new(effect.with_each_install(install));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_each_install(install)).collect();
@@ -5285,7 +5330,7 @@ impl Effect {
             | Effect::BreachStartingWith { then: Some(effect), .. }
             | Effect::IncreaseAboutToResolve { then: Some(effect), .. }
             | Effect::InstallFromZoneIgnoringCost { then: Some(effect), .. } => effect.for_each_effect(f),
-            Effect::Access { then: None, .. } | Effect::BreachStartingWith { then: None, .. } => {}
+            Effect::Access { then: None, .. } | Effect::BreachStartingWith { then: None, .. } | Effect::SetHqPile(_) => {}
             Effect::PromptChooseServer { on_success, on_start, .. } => {
                 for effect in [on_success, on_start].into_iter().flatten() {
                     effect.for_each_effect(f);

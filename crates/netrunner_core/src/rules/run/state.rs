@@ -968,6 +968,21 @@ pub struct RunState {
     /// with.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encounter_breach: Option<EncounterBreach>,
+    /// Cards of HQ the Corp set apart in secret during this run, as a
+    /// multiset of names (two copies of a card are the same card in the
+    /// same zone): Information Sifting's "the Corp separates all cards in
+    /// HQ into 2 facedown piles" — these are the first pile, and the cards
+    /// of HQ not among them the second (`CardFilter::InHqPile`) — and
+    /// Dedicated Neural Net's "you choose which cards the Runner accesses
+    /// from HQ", the cards the next breach of HQ takes in place of its
+    /// random ones (`Prohibition::AccessHqAtRandom`), taken as that breach
+    /// begins. Written by `Effect::SetHqPile`, the Corp's selection's
+    /// `then`. On the run because it must outlive the Runner's choice that
+    /// follows it and dies with the run, and never a scratchpad on
+    /// `GameState`; hidden from the Runner but for its size
+    /// (`masking::PublicHqPile`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hq_pile: Option<Vec<CardId>>,
     /// How many times the Runner has encountered ice during this run,
     /// counting the encounter under way — S-Dobrado's "the first time"
     /// and "the second time you encounter a piece of ice during that run"
@@ -1199,6 +1214,7 @@ impl Default for RunState {
             breached: None,
             breaches_after: Vec::new(),
             encounter_breach: None,
+            hq_pile: None,
             encounters: 0,
             ice_passed: 0,
             passed: Vec::new(),

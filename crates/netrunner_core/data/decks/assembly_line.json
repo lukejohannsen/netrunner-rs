@@ -3,7 +3,7 @@
   "name": "Assembly Line",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built in tranche 8 Stage 7d so the sweeps reach Haas-Bioroid: Architects of Tomorrow, System Update 2021's Haas-Bioroid identity, which rezzes a bioroid card for 4[credit] less the first time each turn the Runner passes a rezzed piece of bioroid ice. Retirement Package's frame, whose Eli 1.0, Hákarl 1.0, Ansel 1.0 and Týr are bioroids, with two Ravana 1.0 for its two Pulse, a bioroid code gate that resolves a subroutine on another rezzed bioroid; Endless Loop keeps Pulse. Tranche 8 Stage 11c: two Ichi 1.0 for its two Drafter, a sentry for a sentry, and two Heimdall 1.0 for its two Hákarl 1.0, a bioroid barrier for a bioroid barrier; both stay in other decks. Red Sand Stage 4: two Defense Construct for two Corporate Hospitality. Flashpoint Stage 16 put two Wetwork Refit in for its two Big Deal. Two Rex Campaign take Vaporframe Fabricator's place. Engine words Stage 33 (FFG): a Jeeves Model Bioroids for one Bass CH1R180G4, an asset for an asset that gives a click back the first time each turn three are spent on one action; Bass is kept by two other decks. Engine words Stage 35 (FFG): two Tyr's Hand for its two Tranquility Home Grid, an upgrade for an upgrade, which prevents a subroutine on the deck's bioroid ice from being broken; two tournament lists keep Tranquility Home Grid. Engine words Stage 36 (FFG): two Howler for its Ansel 1.0 and its Týr, ice for ice, whose subroutine installs and rezzes a bioroid from HQ or Archives behind it for the run; Ansel 1.0 and Týr are kept by other decks.",
+  "description": "Not a published list: built in tranche 8 Stage 7d so the sweeps reach Haas-Bioroid: Architects of Tomorrow, System Update 2021's Haas-Bioroid identity, which rezzes a bioroid card for 4[credit] less the first time each turn the Runner passes a rezzed piece of bioroid ice. Retirement Package's frame, whose Eli 1.0, Hákarl 1.0, Ansel 1.0 and Týr are bioroids, with two Ravana 1.0 for its two Pulse, a bioroid code gate that resolves a subroutine on another rezzed bioroid; Endless Loop keeps Pulse. Tranche 8 Stage 11c: two Ichi 1.0 for its two Drafter, a sentry for a sentry, and two Heimdall 1.0 for its two Hákarl 1.0, a bioroid barrier for a bioroid barrier; both stay in other decks. Red Sand Stage 4: two Defense Construct for two Corporate Hospitality. Flashpoint Stage 16 put two Wetwork Refit in for its two Big Deal. Two Rex Campaign take Vaporframe Fabricator's place. Engine words Stage 33 (FFG): a Jeeves Model Bioroids for one Bass CH1R180G4, an asset for an asset that gives a click back the first time each turn three are spent on one action; Bass is kept by two other decks. Engine words Stage 35 (FFG): two Tyr's Hand for its two Tranquility Home Grid, an upgrade for an upgrade, which prevents a subroutine on the deck's bioroid ice from being broken; two tournament lists keep Tranquility Home Grid. Engine words Stage 36 (FFG): two Howler for its Ansel 1.0 and its Týr, ice for ice, whose subroutine installs and rezzes a bioroid from HQ or Archives behind it for the run; Ansel 1.0 and Týr are kept by other decks. Engine words Stage 37 (FFG): an Awakening Center for its BASS-CH1R180G4, a card in the root for a card in the root, which hosts its bioroid ice and rezzes one 7[credit] cheaper for the Runner to encounter past the server's ice; two other decks keep BASS-CH1R180G4.",
   "style": [
     "glacier"
   ],
@@ -54,10 +54,6 @@
       "count": 2
     },
     {
-      "card": "bass_ch1r180g4",
-      "count": 1
-    },
-    {
       "card": "cerebral_overwriter",
       "count": 2
     },
@@ -104,6 +100,10 @@
     {
       "card": "howler",
       "count": 2
+    },
+    {
+      "card": "awakening_center",
+      "count": 1
     }
   ]
 }

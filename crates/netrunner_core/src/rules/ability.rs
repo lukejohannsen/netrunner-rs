@@ -1463,6 +1463,14 @@ pub fn evaluate_effect(
             };
             crate::rules::run::start_encounter_breach(state, registry, *server, rest)
         }
+        // The Corp's secret pile of HQ, kept for the run (Information
+        // Sifting, Dedicated Neural Net). Nothing outside one.
+        Effect::SetHqPile(cards) => {
+            if let Some(run) = state.active_run.as_mut() {
+                run.hq_pile = Some(cards.clone());
+            }
+            Ok(Vec::new())
+        }
         Effect::Access { from, filter, count, then } => crate::rules::run::access_cards(
             state,
             registry,
@@ -6868,8 +6876,11 @@ pub fn check_requirement(
             if installed { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::HostsInstalled(filter) => {
+            // A Corp host's too (Awakening Center's hosted ice).
             let hosts = ctx.acting_install.is_some_and(|host| {
                 state.runner.rig.iter().filter(|card| card.hosted_on_rig_card == Some(host)).any(|card| {
+                    registry.get(&card.card).is_some_and(|definition| card_matches_filter(definition, filter))
+                }) || state.corp.installed.iter().filter(|card| card.host == Some(host)).any(|card| {
                     registry.get(&card.card).is_some_and(|definition| card_matches_filter(definition, filter))
                 })
             });

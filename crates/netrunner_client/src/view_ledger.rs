@@ -217,6 +217,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         subroutine_broken: _,    // engine's: each break is a line of the log and a mark on the ice, and Mercury: Chrome Libertador's bonus access, which it turns off, is an offer the person sees or does not
         reached_success_phase: _, // engine's: whether the run got to the server, which the run's trail and log already draw; Hannah "Wheels" Pilintra's tag it decides is a log line
         breaches_after: _, // engine's: the breaches Divide and Conquer still owes this run; each is the log's "the Runner breached HQ" as it begins, and every access prompt names its server
+        hq_pile: _, // drawn: hud::in_effect ("This run: HQ set apart as two facedown piles, the first of N cards, the second of M"), both clients, the Corp's line naming the cards of the first; the Runner's choice between them is the decision pop-up's two buttons, in the card's words
         encounter_breach: _, // drawn: hud::in_effect ("This run: after this breach, back to the encounter with Kitsune"), both clients; the breach itself is the access prompt, which names its server, and the card it begins with is the Corp's secret until it is accessed
         breached: _, // engine's: a breach of another server is the log's "the Runner breached R&D", and every access prompt names the card's server
         encounters: _, // engine's: a count S-Dobrado reads; each encounter is drawn by board::trail as it happens

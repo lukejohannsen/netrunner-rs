@@ -579,6 +579,12 @@ fn install_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pl
                 for zone in zones {
                     push(card_id, zone, InstallSlot::Ice);
                 }
+                // Onto an upgrade that may host it (Awakening Center's
+                // bioroid ice), in that upgrade's root: hosted, it
+                // protects nothing.
+                for host in state.corp.installed.iter().filter(|host| host.slot == InstallSlot::Root && crate::rules::continuous::may_install_onto(state, registry, card, host.install_id)) {
+                    onto.push(PlayerAction::InstallCard { card_id: card_id.clone(), zone: host.server, slot: InstallSlot::Root, trash_first: false, host: Some(host.install_id) });
+                }
             }
             CardType::Agenda | CardType::Asset => {
                 for zone in &remote_zones {

@@ -606,6 +606,16 @@ pub enum CardFilter {
     /// work: `max` counts cards, and nothing else read what was already
     /// chosen.
     DifferentNames,
+    /// A card of HQ in the pile the Corp set apart this run
+    /// (`RunState::hq_pile`) — Information Sifting's "Choose 1 of the
+    /// piles. Access each card in the chosen pile", the first pile as
+    /// `InHqPile` and the second as `Not(InHqPile)`. Instance-level: the
+    /// pile is a multiset of names, so of two copies of a card with one in
+    /// the pile the earlier in HQ is the one counted in it, and the two
+    /// piles always part HQ between them. Composition didn't work: a pile
+    /// is no zone and no property of a card, and the cards in it are the
+    /// Corp's secret.
+    InHqPile,
     /// A faceup card in Archives — Armed Asset Protection's "if any of
     /// those cards are agendas", of the faceup cards it counts. `Facedown`'s
     /// other half. Composition didn't work: `Not` is read off a definition,
@@ -1026,6 +1036,7 @@ impl CardFilter {
             CardFilter::DiscardedThisDiscardPhase
                 | CardFilter::MatchesOwnersIdentityFaction
                 | CardFilter::DifferentNames
+                | CardFilter::InHqPile
                 | CardFilter::NotSourceCard
                 | CardFilter::NotThisCardsHost
                 | CardFilter::ThisCardsHost
@@ -1365,5 +1376,6 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::SameTypeAsPaidCard | CardFilter::SameTypeAsThisCard => false,
         // Instance-level: the selection in progress.
         CardFilter::DifferentNames => true,
+        CardFilter::InHqPile => true,
     }
 }

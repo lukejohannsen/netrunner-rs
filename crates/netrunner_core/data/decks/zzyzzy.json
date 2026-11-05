@@ -3,7 +3,7 @@
   "name": "Zzyzzy",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Armand \"Geist\" Walker: Tech Lord, The Underway's Criminal identity, who draws a card whenever the Runner uses a [trash] ability. Hit List's list, its identity swapped, with two Shiv, a Faust and a Hyperdriver for two Puffer, a Tapwrm and a Reaver, each kept by Hit List. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only. SanSan Stage 11. SanSan Stage 12 swapped a Tremolo, which four other decks carry, for a Trope. FFG F7 Stage 14 swapped both Faeries for a Crowbar and a Spike. SanSan Stage 28 swapped a Networking, kept elsewhere, for a Muertos Gang Member. Engine words Stage 30 (FFG): a Security Chip (1 influence) for its Jeitinho, which four other decks keep.",
+  "description": "Not a published list: built so the sweeps reach Armand \"Geist\" Walker: Tech Lord, The Underway's Criminal identity, who draws a card whenever the Runner uses a [trash] ability. Hit List's list, its identity swapped, with two Shiv, a Faust and a Hyperdriver for two Puffer, a Tapwrm and a Reaver, each kept by Hit List. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only. SanSan Stage 11. SanSan Stage 12 swapped a Tremolo, which four other decks carry, for a Trope. FFG F7 Stage 14 swapped both Faeries for a Crowbar and a Spike. SanSan Stage 28 swapped a Networking, kept elsewhere, for a Muertos Gang Member. Engine words Stage 30 (FFG): a Security Chip (1 influence) for its Jeitinho, which four other decks keep. Engine words Stage 37 (FFG): two Information Sifting for its two Inside Job, a run event on HQ for a run event, whose breach is replaced by the Corp's two facedown piles of HQ, one of which the Runner accesses; two other decks keep Inside Job.",
   "style": [
     "pressure"
   ],
@@ -31,10 +31,6 @@
     },
     {
       "card": "saci",
-      "count": 2
-    },
-    {
-      "card": "inside_job",
       "count": 2
     },
     {
@@ -148,6 +144,10 @@
     {
       "card": "muertos_gang_member",
       "count": 1
+    },
+    {
+      "card": "information_sifting",
+      "count": 2
     }
   ]
 }

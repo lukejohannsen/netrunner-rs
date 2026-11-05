@@ -666,6 +666,17 @@ fn instance_matches_filter(
             let this = ids.get(position);
             !selected.iter().any(|other| *other != position && ids.get(*other) == this)
         }
+        // Information Sifting's first pile, by name and copy: the earlier
+        // copies of a name in HQ are the ones the pile holds.
+        CardFilter::InHqPile => {
+            let pile = state.active_run.as_ref().and_then(|run| run.hq_pile.as_ref());
+            let hq = &state.corp.hq;
+            owning_side(chooser, zone) == Side::Corp
+                && matches!(zone, CardZoneRef::OwnHq | CardZoneRef::OpponentHand)
+                && pile.zip(hq.get(position)).is_some_and(|(pile, card)| {
+                    hq[..position].iter().filter(|earlier| *earlier == card).count() < pile.iter().filter(|held| *held == card).count()
+                })
+        }
         // The parking card is never "one of your other cards": compared by
         // install, so a second copy of the same card stays eligible.
         CardFilter::NotSourceCard => {
@@ -699,7 +710,12 @@ fn instance_matches_filter(
         // installed on the parking card.
         CardFilter::HostedOnThisCard => {
             let install = zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied());
-            source.is_some() && install.and_then(|install| state.find_rig_install(install)).is_some_and(|card| card.hosted_on_rig_card == source)
+            // Awakening Center's "1 hosted piece of ice": a Corp card
+            // installed onto it.
+            source.is_some()
+                && install.is_some_and(|install| {
+                    state.find_rig_install(install).is_some_and(|card| card.hosted_on_rig_card == source) || state.find_corp_install(install).is_some_and(|card| card.host == source)
+                })
         }
         // Restore's "other copies of that card": the parking card is the
         // install that left the zone, so any card there by its id is
@@ -2157,6 +2173,10 @@ pub(crate) fn resolve_confirm_card_selection(
             (CardZoneRef::OwnHq, [position]) if side == Side::Corp => Box::new(effect.with_swap_position(crate::dsl::SwapHalf::Hq { revealed: reveal }, *position as u32)),
             _ => effect,
         };
+        // The cards a Corp selection over HQ set apart (Information
+        // Sifting's first pile, Dedicated Neural Net's accesses), never
+        // shown to the Runner.
+        let effect = if side == Side::Corp && source == CardZoneRef::OwnHq { Box::new(effect.with_hq_pile(&selected)) } else { effect };
         let acting = selected.first().or(source_card.as_ref());
         // …and the *install* the `then` acts as: the selected install when
         // the selection was over installs (Seamless Launch advances the
@@ -2221,6 +2241,15 @@ pub(crate) fn resolve_confirm_card_selection(
                     effects[0] = Effect::SwapInstalledIce(this, *chosen);
                     Effect::Sequence(effects)
                 })
+            }
+            // Awakening Center's "you may rez 1 hosted piece of ice, paying
+            // 7[credit] less. If you do, …": the rez is the sentence's first
+            // effect, of the install chosen, and the rest follows it.
+            (Effect::Sequence(mut effects), _, [chosen, ..]) if matches!(effects.first(), Some(Effect::RezInstalled { .. })) && !effects.iter().any(|effect| matches!(effect, Effect::HostThisAsCondition { .. })) => {
+                if let Some(Effect::RezInstalled { install, .. }) = effects.first_mut() {
+                    *install = *chosen;
+                }
+                Some(Effect::Sequence(effects))
             }
             // The parking card hosts *itself* on the install it chose —
             // GAMEDRAGON™ Pro picking an icebreaker. Both placeholders are

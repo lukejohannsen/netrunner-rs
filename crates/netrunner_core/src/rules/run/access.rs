@@ -47,6 +47,13 @@ fn begin_breach(state: &mut GameState, server: ServerId) -> (Vec<AccessCandidate
             // card": the first of the breach's accesses out of HQ, the rest
             // at random from what is left.
             let first = state.active_run.as_ref().and_then(|run| run.encounter_breach.as_ref()).and_then(|breach| breach.first.clone());
+            // Dedicated Neural Net's: the cards the Corp chose, taken for
+            // this breach, in the order they were chosen.
+            if let Some(chosen) = state.active_run.as_mut().and_then(|run| run.hq_pile.take()) {
+                let mut pool = state.corp.hq.clone();
+                let from_zone: Vec<CardId> = chosen.into_iter().filter(|card| pool.iter().position(|held| held == card).map(|at| pool.remove(at)).is_some()).collect();
+                return (root_installs_on(state, server), from_zone);
+            }
             if let Some(position) = first.and_then(|first| pool.iter().position(|card| *card == first))
                 && take > 0
             {
@@ -468,6 +475,14 @@ pub(crate) fn access_cards(
         // that leaves R&D before its turn is no longer one (CR 7.4.5).
         CardZoneRef::OpponentDeck => {
             from_zone = admitted.into_iter().rev().filter_map(|position| state.corp.r_and_d.get(position).cloned()).collect();
+            Vec::new()
+        }
+        // Cards of HQ by name, as a breach of HQ draws them: Information
+        // Sifting's "Access each card in the chosen pile" (`CardFilter::
+        // InHqPile`). The zone's own candidate, so a card that leaves HQ
+        // before its turn is no longer one (CR 7.4.5).
+        CardZoneRef::OpponentHand => {
+            from_zone = admitted.into_iter().filter_map(|position| state.corp.hq.get(position).cloned()).collect();
             Vec::new()
         }
         _ => return Err(RulesError::UnresolvedCardTarget),
@@ -970,6 +985,41 @@ pub fn access_server(
         }
     };
 
+    // Dedicated Neural Net's "you choose which cards the Runner accesses
+    // from HQ": once what the beginning triggered is over and the random
+    // access limit is set (CR 7.3.5), the Corp chooses that many cards of
+    // HQ, and the breach waits for them (`RunState::hq_pile`, which
+    // `begin_breach` takes). Nothing to choose when the limit takes all of
+    // HQ or none of it.
+    if server == ServerId::Hq && state.active_run.as_ref().is_some_and(|run| run.hq_pile.is_none()) && continuous::cannot(state, registry, Prohibition::AccessHqAtRandom) {
+        let additional = state.active_run.as_ref().map_or(0, |run| run.additional_hq_access);
+        let take = (1 + additional as usize).min(state.corp.hq.len());
+        if take > 0 && take < state.corp.hq.len() {
+            let card = state
+                .lingering
+                .iter()
+                .find(|effect| effect.what == crate::rules::lingering::Lingering::Cannot(Prohibition::AccessHqAtRandom) && effect.holds(state))
+                .map(|effect| effect.source.clone());
+            state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseCards {
+                side: Side::Corp,
+                source: crate::dsl::CardZoneRef::OwnHq,
+                filter: crate::dsl::CardFilter::Any,
+                min: take as u32,
+                max: take as u32,
+                reveal: false,
+                shuffle_after: false,
+                destination: None,
+                then: Some(Box::new(crate::dsl::Effect::SetHqPile(Vec::new()))),
+                selected: Vec::new(),
+                source_card: card.clone(),
+                prompting_card: card,
+                source_install: None,
+                resume: crate::rules::state::PendingChoiceResume::None,
+            });
+            events.push(GameEvent::PendingChoicePresented { chooser: Side::Corp, option_count: take });
+            return Ok(events);
+        }
+    }
     // Counted before the breach turns them (CR 7.3.2): Nurse Hạnh hears
     // how many were facedown.
     let turned_faceup = if server == ServerId::Archives { state.corp.archives.iter().filter(|archived| archived.facedown).count() as u32 } else { 0 };
