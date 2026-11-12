@@ -43,10 +43,13 @@ jobs:
   # Cold-cache durations from the first run, which is what the timeout is
   # sized against: macos 8m13s, windows 9m43s. By October 2026 Windows took
   # 26 minutes one week and was cancelled at 30 the next, so it has 60.
+  # On 12 November 2026, with the whole pool in and the sweeps playing it,
+  # macOS was cancelled at 30 inside the index sweep with nothing failing
+  # and Windows took 50. Both have 90.
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ matrix.os == 'windows-latest' && 60 || 30 }}
+    timeout-minutes: 90
     strategy:
       # One platform failing is information about that platform; the other
       # should still report.
@@ -73,7 +76,9 @@ jobs:
   # October 2026 its test build alone ran past 36 minutes after clippy's
   # 8, so the job was cancelled every week — and a cancelled job saves no
   # cache, so every run started cold again. Windows has 120 minutes; the
-  # other two keep 45.
+  # other two keep 45. macOS outgrew it the same way: on 12 November 2026
+  # it was cancelled at 45 once and reached the end of its tests at 41
+  # with two steps still to run, so it has 90 and only Linux keeps 45.
   #
   # Linux needs the ALSA and udev headers at build time (bevy_audio and
   # bevy_gilrs link them through pkg-config); Windows and macOS need
@@ -82,7 +87,7 @@ jobs:
   desktop:
     name: desktop (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ matrix.os == 'windows-latest' && 120 || 45 }}
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 120 || matrix.os == 'macos-latest' && 90 || 45 }}
     strategy:
       fail-fast: false
       matrix:
@@ -106,9 +111,13 @@ jobs:
 
   # Non-blocking, on purpose: a new lint landing in beta is something to know
   # about six weeks early, not a reason to stop a PR.
+  #
+  # 20 minutes cancelled it every week from 12 October to 12 November 2026,
+  # mid-suite with nothing failing, so a beta lint that had landed went
+  # unseen for a month. It has 45.
   beta:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

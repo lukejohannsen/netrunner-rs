@@ -464,7 +464,11 @@ fn a_round_is_begun_sat_at_played_and_ended_from_the_pages() {
     // Both sit; the board opens for each on the pairing's sides.
     tap_control(&mut organizer, Control::Sit);
     until(&mut organizer, "the organizer seated", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(ServerState::seeking));
-    assert!(find::<Control>(&mut organizer, |c| *c == Control::CancelSeek).is_some(), "a seat is stood up from");
+    // Waited for, not asserted on the frame the model turned: the page is
+    // redrawn after the server's answer is taken, and on macOS the model
+    // was seeking before the button was there (Platforms, 12 November
+    // 2026, both runs that reached it).
+    until(&mut organizer, "the seat's way out: a seat is stood up from", |app| find::<Control>(app, |c| *c == Control::CancelSeek).is_some());
     tap_control(&mut entrant, Control::Sit);
     until(&mut organizer, "the organizer's board", |app| screen(app) == AppScreen::Game);
     until(&mut entrant, "the entrant's board", |app| screen(app) == AppScreen::Game);
