@@ -3941,9 +3941,9 @@ pub enum EffectDuration {
 
 /// What an `Effect::Prevent` prevents, as the card prints it after the word
 /// "prevent". Only what a card in the pool prints: bad publicity, an expose
-/// and a jack-out are each a variant here and an arm in `rules::prevention`
-/// the day a card needs one (Zaibatsu Loyalty is deferred on expose, which
-/// the engine does not have).
+/// and a jack-out each became a variant here and an arm in `rules::prevention`
+/// the day a card needed one (Zaibatsu Loyalty's expose first, in NSG Stage
+/// 10b; the bad publicity and the jack-out in the Engine words stages).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Preventable {
     /// "Prevent up to 3 meat damage" (`kind: Some(Meat)`), "prevent 1 net
