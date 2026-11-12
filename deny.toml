@@ -96,9 +96,13 @@ multiple-versions = "warn"
 deny = []
 
 [sources]
-# There are no git dependencies today, and a git dependency is a supply-chain
-# surface with no crates.io audit trail. Keep it that way; adding one should
-# be a deliberate edit here.
+# A git dependency is a supply-chain surface with no crates.io audit trail,
+# so each one is a deliberate edit here, with its reason, and is removed
+# when it has served it.
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# sqlx, pinned by rev in the workspace `[patch.crates-io]` (12 November
+# 2026) for the `libsqlite3-sys` 0.39 bound its next release will carry —
+# the fix for RUSTSEC-2026-0459. Goes with the patch section.
+allow-git = ["https://github.com/launchbadge/sqlx"]
