@@ -5639,6 +5639,16 @@ pub(crate) fn is_the_runner(side: &crate::rules::Side) -> bool {
     *side == crate::rules::Side::Runner
 }
 
+/// The server a card names as "this server" — the one the card that prints
+/// it is in — as a card file writes it (`This`), and as it is written in
+/// once a resolution knows which (`Server`). `PromptInstallCorpCard::
+/// not_in_root_of`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ThisServer {
+    This,
+    Server(ServerId),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5794,14 +5804,4 @@ mod tests {
             ]
         );
     }
-}
-
-/// The server a card names as "this server" — the one the card that prints
-/// it is in — as a card file writes it (`This`), and as it is written in
-/// once a resolution knows which (`Server`). `PromptInstallCorpCard::
-/// not_in_root_of`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ThisServer {
-    This,
-    Server(ServerId),
 }
