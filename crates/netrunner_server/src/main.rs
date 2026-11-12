@@ -318,19 +318,6 @@ fn bind_address(host: &str, port: u16) -> String {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::bind_address;
-
-    #[test]
-    fn an_ipv6_host_is_bracketed_and_a_name_is_left_alone() {
-        assert_eq!(bind_address("::", 8080), "[::]:8080");
-        assert_eq!(bind_address("[::1]", 8080), "[::1]:8080");
-        assert_eq!(bind_address("127.0.0.1", 8080), "127.0.0.1:8080");
-        assert_eq!(bind_address("localhost", 8080), "localhost:8080");
-    }
-}
-
 /// `--bots`: the rungs a daemon offers.
 #[derive(Debug, Clone)]
 struct Bots(Vec<netrunner_bots::Level>);
@@ -347,4 +334,17 @@ fn parse_bots(text: &str) -> Result<Bots, String> {
     rungs.sort();
     rungs.dedup();
     Ok(Bots(rungs))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bind_address;
+
+    #[test]
+    fn an_ipv6_host_is_bracketed_and_a_name_is_left_alone() {
+        assert_eq!(bind_address("::", 8080), "[::]:8080");
+        assert_eq!(bind_address("[::1]", 8080), "[::1]:8080");
+        assert_eq!(bind_address("127.0.0.1", 8080), "127.0.0.1:8080");
+        assert_eq!(bind_address("localhost", 8080), "localhost:8080");
+    }
 }
