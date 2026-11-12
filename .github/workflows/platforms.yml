@@ -162,9 +162,12 @@ jobs:
   # because `ort`'s `download-binaries` fetches an ONNX Runtime shared
   # library from a third-party CDN at build time, so this is the one job with
   # a network dependency beyond crates.io.
+  #
+  # Ten minutes on a warm cache and past twenty on a cold one (12 November
+  # 2026, cancelled in its fourth step of six with nothing failing), so 45.
   features:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
