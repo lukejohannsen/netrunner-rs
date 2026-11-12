@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
+use ort::environment::Environment;
 use ort::session::Session;
 use ort::value::Tensor;
 
@@ -101,11 +102,30 @@ struct Batcher {
     max_batch: usize,
 }
 
+/// The process's one ONNX Runtime environment, built on first use.
+///
+/// `ort` 2.0.0-rc.15 takes the environment as an argument where rc.13
+/// made one behind `Session::builder()`, and it builds exactly one per
+/// process: a second `build` is an error even after the first is dropped.
+/// So it is kept here for the life of the process rather than in a
+/// `Batcher`, of which there is one per model path; the lock is what lets
+/// two models loading at once agree on who builds it.
+fn environment() -> Result<Environment, ort::Error> {
+    static ENVIRONMENT: Mutex<Option<Environment>> = Mutex::new(None);
+    let mut slot = ENVIRONMENT.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(environment) = slot.as_ref() {
+        return Ok(environment.clone());
+    }
+    let environment = ort::init().build()?;
+    *slot = Some(environment.clone());
+    Ok(environment)
+}
+
 impl Batcher {
     fn new(model_path: &str) -> Result<Self, OnnxPolicyError> {
         let mut sessions = Vec::with_capacity(MAX_RUNNERS);
         for _ in 0..MAX_RUNNERS {
-            let mut builder = Session::builder()?;
+            let mut builder = Session::builder(&environment()?)?;
             // One thread per session: the parallelism that matters here is
             // across games, and ORT's default pool is sized to the whole
             // machine and spin-waits. Measured worth 1.2% on wall time and
