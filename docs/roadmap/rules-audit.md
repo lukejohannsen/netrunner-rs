@@ -188,7 +188,7 @@ Each is a gap noticed in an entry above and left with its reason; none changes a
 - `Trigger`'s per-variant doc comments still name the audiences the old dispatcher gave them; a Runner-side score area is not a listener (item 1).
 - Two triggers of one card that fire on the same event resolve as one queued entry; separating them needs an index on `DeferredTrigger` (item 1).
 - No declared `ContinuousKind::Cannot`: a standing "cannot" is a lingering effect made by `Effect::Prohibit`, never printed as a continuous one (item 2).
-- Zaibatsu Loyalty is deferred on expose, which the engine does not have (item 4).
+- Zaibatsu Loyalty was deferred on expose, which the engine did not have (item 4); built in NSG Stage 10b (`Preventable::Expose`, October 2026).
 - Heuristic blindnesses owed to Phase 5: the Runner never installs the interrupts (Decoy, Net Shield, Sacrificial Construct), never spends hosted credits on purpose, and the Corp undervalues paying for Byte! (items 4, 5; Masking above).
 - The bad-publicity credits' half of the payment layer is reached only by the Sweep decks (item 5).
 - No view carries a pending access replacement; owed when a card a person plays parks one (item 6).
@@ -202,8 +202,10 @@ Each is a gap noticed in an entry above and left with its reason; none changes a
 10. **Concepts with no home yet, taken as cards need them** (§6.4; new):
     several run-replacement effects and the Runner's choice among them
     (`RunState::access_replacement` is one `Option`), reveal as an event,
-    a set-aside zone (masking: needs an explicit who-may-see rule), expose,
-    facedown Runner installs, the mark (Parhelion Stage 6b: a lingering
+    a set-aside zone (masking: needs an explicit who-may-see rule), expose
+    (built, NSG Stages 10a–10b: `Effect::Expose`, `Preventable::Expose`),
+    facedown Runner installs (built, FFG F2 Stage 15 and Engine words Stage
+    38: `RunnerState::rig_facedown`), the mark (Parhelion Stage 6b: a lingering
     designation, `Lingering::Mark`), charge (composed, Parhelion Stage
     6a: a selection of cards hosting a power counter), per-host card and MU
     limits, agenda points and advancement requirements that change while
