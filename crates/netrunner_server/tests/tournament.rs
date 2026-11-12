@@ -878,6 +878,11 @@ async fn an_operator_calls_a_tournament_off_mid_round() {
     for (index, identity) in people.iter().enumerate() {
         let salt = format!("s{index}");
         send(&mut sockets[index], ClientMessage::Register { tournament: made.id.clone(), corp: corp.clone(), runner: runner.clone(), salt: salt.clone(), statement: statement(identity, server_key, &made.id, &salt, &corp, &runner) }).await;
+        // Each registration's own answer, before the round is begun: the
+        // four come in over four sockets, and the organizer's `BeginRound`
+        // sent ahead of the last of them landing was refused — "a round
+        // needs two entrants at least" — once in the weekly macOS run.
+        next_tournament(&mut sockets[index]).await;
     }
     send(&mut sockets[0], ClientMessage::BeginRound { tournament: made.id.clone() }).await;
     let first = loop {
