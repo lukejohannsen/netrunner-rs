@@ -1486,7 +1486,8 @@ pub fn remove_tag_credits(state: &GameState, registry: &CardRegistry) -> u32 {
 /// What the Corp pays in credits to trash the rig install `install` with
 /// the basic action: the rules' 2[credit] and what the table adds (SYNC:
 /// Everything, Everywhere, flipped), never below nothing. The additional
-/// costs beside it are [`basic_trash_costs`].
+/// costs beside it are `basic_trash_costs`, a crate-private neighbour this
+/// doc cannot link (the docs job denies `private_intra_doc_links`).
 pub fn basic_trash_credits(state: &GameState, registry: &CardRegistry, install: InstallId) -> u32 {
     let Some(card) = state.find_rig_install(install).and_then(|installed| registry.get(&installed.card)) else { return 2 };
     let by = sum(state, registry, Target::Trashing { card, install }, |kind| match kind {
