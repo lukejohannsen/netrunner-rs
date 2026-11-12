@@ -406,7 +406,7 @@ pub fn gained_from_hosted<'a>(registry: &'a CardRegistry, card: &CardId) -> Opti
 }
 
 /// Which card's text, and which of its abilities, the `index`th ability of
-/// a card with the texts `texts` is ([`ability_texts`]): the indices run
+/// a card with the texts `texts` is (`ability_texts`): the indices run
 /// through each card's printed abilities in turn. Over a list rather than
 /// the state, so a client reads the same answer off a view.
 pub fn ability_in<'a>(registry: &CardRegistry, texts: impl IntoIterator<Item = &'a CardId>, index: usize) -> Option<(&'a CardId, usize)> {

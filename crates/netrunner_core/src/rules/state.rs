@@ -742,7 +742,7 @@ pub struct InstalledRunnerCard {
     /// hosted there count down apart. Shorter than `hosted_cards` means 0
     /// for the rest, which is every host but a Personal Workshop. Kept in
     /// step by every door a hosted card leaves through
-    /// ([`InstalledRunnerCard::take_hosted`], `pending_choice::
+    /// (`InstalledRunnerCard::take_hosted`, `pending_choice::
     /// forget_hosted_counters`); a host leaving play takes both. Public, as
     /// the rig is.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
