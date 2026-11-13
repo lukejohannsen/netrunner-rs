@@ -33,8 +33,9 @@ share on pinned binaries, the same games paired by seed, and by `diag precepts`.
   until the card pool is complete and every card reachable** (decided 7 October 2026): the rungs
   move with every bot change, and the bots will be adjusted again once the pool is in, so the
   square is re-taken once, at the end, not after each change. **The pool has been complete since 5
-  November 2026** (every card NetrunnerDB lists is built, #802); "reachable" is unmeasured, because the
-  Fantasy Flight Games sets have never been passed through `scripts/blind_cards.py` — that pass comes first.
+  November 2026** (every card NetrunnerDB lists is built, #802); "reachable" was measured on 13 November
+  2026 (ffg-card-pool.md, "Bot debts"): over the whole pool's Sweep-deck pass on seeds 2 and 3 the planner
+  never uses 138 cards the random seats do, no current on either chair among them, and 35 cards are in no deck.
 - **`LevelKind::{Mcts, Puct}` stay in the code** until a search beats the planner on either chair (§24, §25
   Stage 8); a sixth rung on either chair would need a stronger `elite`, not a handicap (§22).
 

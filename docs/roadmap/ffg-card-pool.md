@@ -1438,6 +1438,118 @@ single-use, none unused, over 638 card files (Downfall Stage 8). The FFG
 pool roughly triples the card count. If a tranche's single-use variants
 approach its card count, stop and build a composition primitive first.
 
+## Bot debts — the whole pool's blind list (13 November 2026)
+
+The first pass of the Fantasy Flight Games sets through
+`scripts/blind_cards.py`, which Phase 5's open list put ahead of
+everything else. Taken as the Sweep-deck pass is (nsg-card-pool.md, "Bot
+debts"): `diag precepts --sweep-decks --deck-styles --games 2508`, one
+game per pairing of the sweeps' schedule, Eternal, random seats then
+planner seats on the same games, **on seeds 2 and 3**. Seed 2 on `main`
+at #807; seed 3 on `main` at #811, whose fix it waited for — its game 58
+was the install the payment search never finished refusing.
+
+**138 cards are strictly blind on both seeds**: the random seats use each
+at least five times in each pass and the planner never does in either.
+Another 97 are blind on one seed only, 66 of them used by the planner on
+the other, which is what one seed's zero is worth. Read as a ratio, as
+§82's re-take was (random at least eight uses a pass on average, the
+planner under 15% as often over both seeds), 202. Of the 2,017 card
+files, 1,864 were used by some seat in some pass.
+
+By mechanism, random's uses on seed 2 / seed 3, the planner 0 / 0:
+
+- **Currents, both chairs (23).** *Corp (12)*: Service Outage (63 / 59),
+  Rolling Brownout (26 / 30), Kill Switch (27 / 24), Death and Taxes
+  (23 / 20), Defective Brainchips (23 / 18), Scarcity of Resources
+  (23 / 18), Housekeeping (11 / 8), Manhunt (12 / 8), Enhanced Login
+  Protocol (9 / 9), Surveillance Sweep (7 / 10), Media Blitz (7 / 9),
+  Cerebral Static (9 / 6). *Runner (11)*: System Seizure (36 / 41),
+  Interdiction (15 / 22), Another Day, Another Paycheck (12 / 16), System
+  Outage (12 / 11), Net Celebrity (10 / 9), Traffic Jam (13 / 5),
+  Employee Strike (7 / 10), Hacktivist Meeting (8 / 8), Government
+  Investigations (5 / 10), Itinerant Protesters (7 / 8), Corporate
+  Scandal (5 / 6). No current is played by the planner on either chair:
+  one mechanism, the largest on the list.
+- **Run events (28).** *Run (17)*: Eye for an Eye (37 / 40), Leave No
+  Trace (30 / 24), Reboot (25 / 26), Rip Deal (18 / 18), Burner (16 / 17),
+  Recon (19 / 13), Credit Crash (12 / 15), Exploratory Romp (8 / 17),
+  Injection Attack (12 / 13), Kompromat (14 / 11), Lean and Mean
+  (13 / 11), Information Sifting (7 / 12), Feint (5 / 13), Always Have a
+  Backup Plan (6 / 11), Compile (7 / 8), Spear Phishing (7 / 8), Divide
+  and Conquer (5 / 9). *Run and sabotage (10)*: Knifed (17 / 16),
+  Chastushka (11 / 21), Embezzle (16 / 16), CBI Raid (11 / 13), Diversion
+  of Funds (12 / 10), Demolition Run (8 / 13), Glut Cipher (12 / 7),
+  Wanton Destruction (10 / 9), Forked (10 / 6), Spooned (7 / 6).
+  *Sabotage, no run (1)*: En Passant (36 / 37).
+- **Other Runner events (7).** Insight (22 / 18), Three Steps Ahead
+  (5 / 11), The Price of Freedom (10 / 7), Black Hat (10 / 6), Push Your
+  Luck (8 / 6), By Any Means (7 / 5), Power to the People (6 / 5).
+- **Corp operations that are not currents (24), and one ambush.** *Gray
+  ops, traces and tags (8)*: Scapenet (75 / 67), Under the Bus (10 / 11),
+  Cerebral Cast (11 / 12), Power Shutdown (10 / 11), SEA Source
+  (11 / 12), Invasion of Privacy (7 / 7), Subcontract (7 / 5),
+  Hard-Hitting News (6 / 6). *Doubles (3)*: Priority Construction
+  (14 / 18), Reclamation Order (15 / 15), Ad Blitz (14 / 12). *The rest
+  (13)*: Trick of Light (24 / 22), Sunset (21 / 24), Transparency
+  Initiative (26 / 17), Biased Reporting (15 / 18), Commercialization
+  (18 / 12), Load Testing (14 / 11), Recruiting Trip (10 / 15),
+  Precognition (8 / 11), The All-Seeing I (10 / 9), Building Blocks
+  (6 / 10), 24/7 News Cycle (8 / 7), Sub Boost (8 / 7), Ark Lockdown
+  (8 / 5). *Ambush*: Breached Dome (46 / 46) — a trap, whose use is the
+  spring; read it as Byte! was (§50) before calling it blind.
+- **Runner resources (24).** Temple of the Liberated Mind (78 / 13),
+  Chatterjee University (24 / 38), The Nihilist (26 / 24), The Helpful AI
+  (20 / 28), Aaron Marrón (37 / 12), Zona Sul Shipping (12 / 20), Miss
+  Bones (13 / 18), Thunder Art Gallery (12 / 18), The Turning Wheel
+  (21 / 9), Charlatan (16 / 13), The Supplier (17 / 11), District 99
+  (15 / 12), Assimilator (17 / 10), Ice Carver (12 / 13), Jarogniew Mercs
+  (7 / 16), Urban Art Vernissage (8 / 13), The Source (7 / 12), Info
+  Bounty (9 / 10), Tallie Perrault (6 / 12), Clan Vengeance (12 / 6),
+  Fester (10 / 7), Maxwell James (9 / 7), Wireless Net Pavilion (8 / 5),
+  Biometric Spoofing (5 / 5).
+- **Runner programs (16).** Expert Schedule Analyzer (31 / 38), Reaver
+  (29 / 29), Banner (18 / 28), Crescentus (24 / 14), Copycat (18 / 17),
+  Grappling Hook (14 / 17), Rook (14 / 13), Gorman Drip v1 (6 / 19),
+  Tracker (10 / 10), Clot (10 / 9), Deep Thought (11 / 8), World Tree
+  (9 / 8), Surfer (8 / 9), Nerve Agent (8 / 6), Hyperdriver (5 / 9), Au
+  Revoir (7 / 5).
+- **Runner hardware (15).** HQ Interface (24 / 16), Skulljack (23 / 16),
+  Dyson Mem Chip (16 / 18), Cyberdelia (16 / 16), LLDS Processor
+  (14 / 18), Time Bomb (15 / 13), Acacia (10 / 16), Dinosaurus (9 / 13),
+  Unregistered S&W '35 (13 / 7), GPI Net Tap (7 / 11), Rotary (6 / 11),
+  Māui (7 / 7), Hijacked Router (7 / 7), Flame-out (5 / 9), Methuselah
+  (5 / 7).
+
+No Corp ice, agenda or upgrade is on the list: every blind Corp card is
+an operation but the one ambush. Only the planner uses Dai V, Myōshu,
+Orca, Scorched Earth and Ultraviolet Clearance (five uses or more on
+both seeds, random none).
+
+**In no deck, so in no pass (35)** — reached by their tests alone, and a
+deck to hold each is owed before any reading of them: Accelerated
+Diagnostics, Account Siphon, Aghora, All-nighter, Blue Sun: Powering the
+Future, CFC Excavation Contract, Chronos Protocol: Selective Mind-mapping,
+Custom Biotics: Engineered for Success, Distract the Masses, Economic
+Warfare, Envelope, Exile: Streethawk, Find the Truth, Fractal Threat
+Matrix, Gagarin Deep Space: Expanding the Horizon, Harmony Medtech:
+Biomedical Pioneer, Hired Help, Hyperloop Extension, Industrial Genomics:
+Growing Solutions, Jinteki Biotech: Life Imagined, MCA Austerity Policy,
+Nasir Meidan: Cyber Explorer, NEXT Design: Guarding the Net, Pālanā
+Foods: Sustainable Growth, Rigging Up, Sadyojata, Salvaged Vanadis
+Armory, Stoneship Chart Room, Sunny Lebeau: Security Specialist, SYNC:
+Everything, Everywhere, The Foundry: Refining the Process, The Professor:
+Keeper of Knowledge, Vamadeva, Watch the World Burn, Zed 2.0. Seven are
+Eternal's banned cards, which no legal deck may hold.
+
+**What the pass cost.** The planner pass is about two and a half hours on
+twenty threads on either seed (9,093 s on seed 2, 8,716 s on seed 3): a
+median game of 39 s on seed 3, 366 of 2,508 over two minutes, 75 over
+five, five over a thousand seconds. Seed 3 was taken with #811's search
+and seed 2 without it, and the totals agree, so the long games are the
+planner's own cost and not that search; which games spend it where is
+unmeasured.
+
 ## How the numbers were taken
 
 ```bash
