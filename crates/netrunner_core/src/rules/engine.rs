@@ -169,13 +169,9 @@ fn settle_payment(
             Ok((next, events))
         }
         Err(RulesError::PaymentChoiceNeeded { side, amount, question }) => {
-            let mut failure = None;
-            let answerable = question.answers().into_iter().any(|number| {
-                let mut further = answers.clone();
-                further.push(number);
-                completes(base, registry, action, further, &mut failure)
-            });
-            match (answerable, failure) {
+            let mut search = Search::default();
+            let answerable = some_answer_completes(base, registry, action, &answers, &question, answers.len(), &mut search);
+            match (answerable, search.failure) {
                 (true, _) => Ok(park_payment(base, action.clone(), side, answers, amount, question)),
                 (false, Some(error)) => Err(error),
                 // Nothing to answer with: `payment::plan` never asks with
@@ -187,31 +183,86 @@ fn settle_payment(
     }
 }
 
+/// What a search for a way through a payment's questions has learnt so far.
+#[derive(Default)]
+struct Search {
+    /// The first error met, which is what the action is refused with if no
+    /// way goes through.
+    failure: Option<RulesError>,
+    /// The selections of like cards already tried, each keyed by where its
+    /// run of picks began in the answers and the picks in ascending order.
+    /// Everything reached here failed: a way that goes through ends the
+    /// search.
+    tried: std::collections::BTreeSet<(usize, Vec<u32>)>,
+}
+
 /// Whether `action` goes through once `answers` are given, answering any
-/// further question every way until one way does. `failure` keeps the first
-/// error met, which is what the action is refused with if no way does. The
-/// search is over a handful of numbers and a question or two, or a card or
-/// two out of a grip, and the first way tried nearly always does; it runs
-/// only when a payment has actually asked.
+/// further question every way until one way does. The search is over a
+/// handful of numbers and a question or two, or a card or two out of a
+/// grip, and the first way tried nearly always does; it runs only when a
+/// payment has actually asked.
 fn completes(
     base: &GameState,
     registry: &CardRegistry,
     action: &PlayerAction,
     answers: Vec<u32>,
-    failure: &mut Option<RulesError>,
+    picks_from: usize,
+    search: &mut Search,
 ) -> bool {
     match replay_with(base, registry, action, &answers) {
         Ok(_) => true,
-        Err(RulesError::PaymentChoiceNeeded { question, .. }) => question.answers().into_iter().any(|number| {
-            let mut further = answers.clone();
-            further.push(number);
-            completes(base, registry, action, further, failure)
-        }),
+        Err(RulesError::PaymentChoiceNeeded { question, .. }) => some_answer_completes(base, registry, action, &answers, &question, picks_from, search),
         Err(error) => {
-            failure.get_or_insert(error);
+            search.failure.get_or_insert(error);
             false
         }
     }
+}
+
+/// Whether some answer to `question`, asked after `answers`, sees `action`
+/// through.
+///
+/// **An install's picks of like cards are searched as selections, not as
+/// orders** (`Ask::Install`): `answers[picks_from..]` is the run of picks
+/// the search itself has made in a row, and a selection reached a second
+/// time, picked in another order, is not replayed. The picks name
+/// positions that stand still — `rules::install_trash` collects them all
+/// before it trashes any — so the same cards picked in two orders are the
+/// same cards, and the search takes it that the order they are trashed in
+/// never decides whether what follows can be paid. It is the one question
+/// with no bound on its depth: "trash first" asks about every installed
+/// program, and searched as orders an install the Runner could not afford
+/// (Torch at 9[c] with 1[c], eight programs in the rig) replayed some
+/// 110,000 orders to learn so — every time the action was merely *listed*,
+/// which is where a planner's game stopped for good (blind-list pass,
+/// seed 3, game 58; 13 November 2026). As selections it is 256. A cost's
+/// cards (`Ask::Card`) are a fixed two or three and are left as they were.
+/// Answers given before the search began are never reordered: they are
+/// the payer's.
+fn some_answer_completes(
+    base: &GameState,
+    registry: &CardRegistry,
+    action: &PlayerAction,
+    answers: &[u32],
+    question: &crate::rules::payment::Ask,
+    picks_from: usize,
+    search: &mut Search,
+) -> bool {
+    let picking = matches!(question, crate::rules::payment::Ask::Install(_));
+    question.answers().into_iter().any(|number| {
+        let mut further = answers.to_vec();
+        further.push(number);
+        let pick = picking && number != crate::rules::install_trash::STOP;
+        if pick {
+            let mut selection = further[picks_from..].to_vec();
+            selection.sort_unstable();
+            if !search.tried.insert((picks_from, selection)) {
+                return false;
+            }
+        }
+        let picks_from = if pick { picks_from } else { further.len() };
+        completes(base, registry, action, further, picks_from, search)
+    })
 }
 
 fn replay_with(

@@ -1508,6 +1508,32 @@ mod system_gateway {
         assert_eq!(after.runner.resources.credits, Credits(16), "Gordian Blade's 4[c], once");
     }
 
+    /// An install the Runner cannot pay for is refused however many
+    /// programs "trash first" could ask about, and refused at once: the
+    /// search for a way through tries each selection of programs once
+    /// (1,024 of them here), where every order they could be picked in was
+    /// some 9.8 million replays — a test that would not come back. The
+    /// position is the blind-list pass's, seed 3, game 58: Torch at 9[c]
+    /// with 1[c] and eight programs, which stopped the planner for good the
+    /// moment the action was listed.
+    #[test]
+    fn an_unaffordable_trash_first_install_is_refused_without_trying_every_order() {
+        let registry = sg_registry();
+        let mut state = runner_turn(1, 4);
+        state.runner.grip = vec![CardId("gordian_blade".to_string())];
+        state.runner.rig = (0..10)
+            .map(|copy| crate::rules::InstalledRunnerCard { install_id: crate::rules::InstallId(2_000_000 + copy), card: CardId("consume".to_string()), ..Default::default() })
+            .collect();
+        let trashing = PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()), trash_first: true, host: None };
+        assert!(matches!(apply_action(&state, &registry, trashing.clone()), Err(RulesError::NotEnoughCredits { .. })));
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&trashing));
+
+        // And one it can pay for still asks, with every program a choice.
+        state.runner.resources.credits = Credits(4);
+        let (asked, _) = apply_action(&state, &registry, trashing).expect("asks");
+        assert_eq!(parked_install_question(&asked).eligible.len(), 10);
+    }
+
     /// CR 3.9.3b: the Runner trashes "one or more installed programs such
     /// that the total memory cost … including the new program will not
     /// exceed their memory limit" — as many as it takes, and never more
