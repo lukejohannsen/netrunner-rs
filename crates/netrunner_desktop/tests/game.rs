@@ -2466,9 +2466,16 @@ fn a_drawn_card_flies_from_rnd_to_the_hand_and_lands_and_speed_zero_flies_nothin
     assert_eq!(pickable, Pickable::IGNORE, "a click through a card in flight lands on the board");
     assert!(app.world().get::<GlobalZIndex>(entity).is_some());
     // Its card is hidden while it is in the air, with the flight's
-    // places matched by the same walk.
-    let hidden = app.world_mut().query::<(&Arriving, &Visibility, &Click)>().iter(app.world()).map(|(_, v, c)| (*v, c.clone())).collect::<Vec<_>>();
-    assert!(hidden.iter().any(|(v, c)| *v == Visibility::Hidden && matches!(c, Click::Target(Target::HandCard(_)))), "{hidden:?}");
+    // places matched by the same walk. Waited for, not asserted on the
+    // frame the flight appeared: Ubuntu's Platforms job found the flight
+    // in the air and no card marked at all, once in three runs on 12
+    // November 2026. The marker goes on the hand card the board last
+    // drew, so a board redrawn on that frame would leave it for the next;
+    // that is the reading, not something a local run has reproduced.
+    let hidden_hand_card = |app: &mut App| {
+        app.world_mut().query::<(&Arriving, &Visibility, &Click)>().iter(app.world()).any(|(_, v, c)| *v == Visibility::Hidden && matches!(c, Click::Target(Target::HandCard(_))))
+    };
+    wait_for(&mut app, "the hand card the flight lands on to be hidden", hidden_hand_card);
     // And lands: the copy goes and the card is shown.
     wait_for(&mut app, "the flight to land", |app| flights(app).is_empty());
     app.update();
