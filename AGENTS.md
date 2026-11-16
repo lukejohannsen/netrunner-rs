@@ -271,6 +271,7 @@ One rustdoc lint is allowed, and it is a domain collision rather than laziness: 
 - `cargo run --release -p netrunner_cli -- bench --bots random,planner,puct --games 12 --seed 1`: Rate every seating of a set of bots on the Glicko-2 benchmark ladder (`--report` for JSON, `--bots puct,puct-onnx --model X` to place a trained policy on it).
 
 ### Testing & Quality
+- `scripts/gate.sh`: The merge bar as one command — CI's pull-request checks plus the desktop crate, cheapest first; done is this exiting 0 (see Reviewing a change).
 - `cargo test --workspace`: Run unit and integration tests across all crates.
 - `cargo test -p netrunner_core`: Test engine rule logic and DSL card parsing.
 - `cargo clippy --workspace --all-targets`: Run the linter across the workspace.
@@ -365,6 +366,67 @@ work. Use `gh` to open a PR when a change wants review before it lands, when it
 is large enough that the diff is the discussion, or when the user asks. PR title
 and body follow the commit rules above — the body is the commit body, since that
 is where the numbers are. `gh` needs `gh auth login` first, which is interactive.
+
+---
+
+## Reviewing a change
+
+**Done is `scripts/gate.sh` exiting 0, run by whoever claims done — never read off a summary that says it passed.** It is the Testing Rule's bar with the desktop crate in, plus the rest of what the required `ci` check runs on a pull request. CI adds a clean checkout, `main`'s run on the combined tree after the merge, and, weekly and gating nothing, the 256-seed sweeps and everything in `platforms.yml`.
+
+### Checked by machine
+
+Each row goes red when the invariant breaks. **Gate only** marks what CI's pull-request jobs do not run, because the desktop crate is not in them.
+
+| Invariant | What fails |
+|---|---|
+| No warning in any target | `ci.yml` `clippy` (`-D warnings`); the gate's clippy step adds the desktop crate |
+| `Cargo.lock` agrees with the manifests | `--locked` on every cargo command in `ci.yml` and the gate |
+| Advisories, licences, bans, sources (`deny.toml`) | `ci.yml` `deny` |
+| No secret in the history | `ci.yml` `secrets` (gitleaks); the gate's scan reads commits only |
+| Workflows pinned, scoped and injection-free | `ci.yml` `workflows` (zizmor, actionlint) |
+| Every embedded card file parses and passes `CardDefinition::validate` | `every_embedded_card_parses_and_validates` (`crates/netrunner_core/src/cards/embedded.rs:86`) |
+| A misspelled `CardDefinition` key is an error | `a_misspelled_field_is_rejected_rather_than_silently_defaulted` (`embedded.rs:176`) |
+| A card file's printed numbers are NetrunnerDB's | `printed_values_agree_with_the_netrunnerdb_catalog` (`embedded.rs:222`) |
+| Every printed card of a tracked set is built or excepted with its reason | `every_system_gateway_card_is_implemented_or_explicitly_excluded` (`embedded.rs:360`), `every_nsg_pack_card_is_implemented_or_explicitly_excluded` (`embedded.rs:415`) |
+| A sample-deck card's clauses are quotes of its printed text (Linked Clause Rule) | `printed_clauses_are_quoted_from_the_card` (`embedded.rs:521`) |
+| A chosen number reaches every `Amount` in its `then` | `a_chosen_number_reaches_every_amount_a_card_writes` (`embedded.rs:98`) |
+| Every sample deck is legal, and every matchup has a published format | `every_sample_deck_is_legal` (`crates/netrunner_core/src/decks/mod.rs:830`) |
+| A `CR <number>` names a rule in `rules/` | `every_cited_rule_is_in_the_committed_comprehensive_rules` (`crates/netrunner_core/tests/rules_citations.rs:102`) |
+| An event a card can hear went through `dispatch_event` | `dispatcher::audit::check`, called by `engine::apply_action_once` in every debug-build test and the 32-seed sweeps (not the `--release` deep sweeps); itself held by `an_event_a_card_could_hear_that_was_never_dispatched_fails_the_action` (`crates/netrunner_core/src/rules/dispatcher.rs:808`) |
+| `turn_log::file_in_archives` is the one way into Archives | `archives_has_one_door` (`crates/netrunner_core/src/rules/turn_log.rs:1888`), a scan of the crate's source |
+| `ActionSpace` grows by appending; every card fits its caps | `action_space_size_is_stable` and `every_card_fits_the_action_space_caps` (`crates/netrunner_core/src/rules/action_mask.rs:1611`, `:1715`); `action_space_size_constant_is_pinned` (`crates/netrunner_gym/src/python.rs:212`) |
+| Only an applied action consumes `MAX_STEPS`; a refused submit changes nothing | `polling_step_while_awaiting_never_consumes_budget`, `a_rejected_submit_leaves_the_state_and_the_awaiting_side_untouched` (`crates/netrunner_session/tests/session_test.rs:86`, `:97`) |
+| A recorded match replays to the state it ended in | `a_recorded_history_round_trips_through_jsonl_and_replays_to_the_same_state` (`session_test.rs:128`) |
+| No view, spectator's view or log entry names a card it conceals | `no_client_view_or_log_entry_ever_names_a_card_it_conceals` (`crates/netrunner_session/tests/no_deadlock_sweep.rs:242`), `ci.yml` `sweeps` |
+| No reachable state without a legal action; the rules-coverage gate; every matchup finishes | `no_panics_or_deadlocks_across_many_seeds_system_gateway`, `every_sample_deck_matchup_finishes` (`crates/netrunner_single_player/tests/system_gateway_delivery.rs:188`, `:284`), `view_based_agents_never_reach_a_state_with_no_legal_action` (`no_deadlock_sweep.rs:106`), `ci.yml` `sweeps` at 32 seeds; the rare actions only at 256 (`deep-sweep.yml`) |
+| Every field a seat receives is drawn, engine's or OWED | compile error in `every_field_of_the_view_is_accounted_for` (`crates/netrunner_client/src/view_ledger.rs:43`) under `--all-targets` |
+| A new `GameEvent`, `Trigger` or `PlayerAction` is classified | compile error: no wildcard arm in `listeners::moments`, `turn_log::concealed`, `board::affordance::affordance_of` |
+| A new screen has a backdrop slot | compile error: no wildcard arm in `AppScreen::asset_key` (`crates/netrunner_desktop/src/screens/mod.rs:102`) — **gate only** |
+| `PlayerAction`, `ClientView` and `GameEvent` serialize | compile error: `netrunner_protocol`'s `ClientMessage` and `ServerMessage` derive both and carry them |
+| Every committed desktop asset has a well-formed credits row, and every row a file | `crates/netrunner_desktop/tests/credits.rs:45`, `:61` — **gate only** |
+| Every screen's backdrop slot and every board-art key is in its README | `the_guide_lists_every_screen` (`crates/netrunner_desktop/src/backdrop.rs:150`), `the_guide_lists_every_key` (`crates/netrunner_desktop/src/board_art.rs:635`) — **gate only** |
+
+### Checked by nobody but review
+
+Nothing mechanical fails on these; the reviewer reads for them.
+
+1. **`netrunner_core` depends on exactly `serde`, `serde_json`, `thiserror`**, and no I/O or rendering crate reaches it or the server (§1, Claude Code Context Strategy). `deny.toml`'s `[bans] deny` is empty and no test reads the manifest.
+2. **No card rule in Rust, and no audience in Rust** (§1, Listener Rule). No scan looks for a card id or a card-shaped `match` in `rules/`.
+3. **One match loop and one `MAX_STEPS`** (Session Rule). There is one today; nothing stops a second.
+4. **The "never add" rules:** no `*_this_turn`/`*_last_turn` field or requirement (Turn History Rule), no `Trigger` variant for a condition on the event (Listener Rule), no standing-effect field on `CardDefinition` (Continuous Effect Rule), no scratchpad on `GameState` (State Hygiene Rule), no affordability sum or pool drained in a handler (Payment Rule). Only Archives has a source scan (`archives_has_one_door`); the fields these rules already allow (`servers_run_this_turn`, `installed_this_turn`) would be such a scan's allowlist.
+5. **A new paying site states its `payment::Purpose`** (Payment Rule): one left at `Other` compiles and passes.
+6. **A new `Effect` or `EffectRequirement` variant says why composition failed, and the ratio is watched** (DSL Growth Rule). `scripts/pool_status.py` reports the ratio and always exits 0.
+7. **The Linked Clause Rule past today's cards.** The gate reads only cards in a sample deck, and its walk ends in `_ => {}`, so a new `Effect` variant that nests choices is not walked until someone adds its arm.
+8. **`deny_unknown_fields` on the DSL structs.** The misspelled-key test covers `CardDefinition`'s own fields; a nested struct that loses the attribute passes.
+9. **`AppScreen::ALL` lists every screen.** It is written by hand, so a screen left off it compiles and escapes `the_guide_lists_every_screen` (`asset_key` still forces a slot).
+10. **Engine code returns `Result<T, RulesError>` rather than panicking** (Code Style). No `clippy::unwrap_used` or `panic` lint is on.
+11. **"Null Signal Games", never "NISEI"** (Code Style). Unchecked, and card titles (Caprice Nisei) mean a plain grep is not the check.
+12. **The desktop conventions** (§5): a screen writes `nav::Navigate`, never `NextState`; nothing spawns outside the screen root; colours come from the theme; animations from `board::diff`. Board screenshots on a virtual compositor before a board PR.
+13. **Engine-level work: both sweeps at 256 seeds, and a measured effect's before/after on pinned binaries** (Testing Rule, Merging). `deep-sweep.yml` is weekly and gates nothing; `scripts/coverage_identical.py` is run by hand.
+14. **`rules/` changes only through `scripts/rules_sync.py`** (Rules Reference). `rules-watch.yml` compares the live page weekly; a hand edit fails nothing.
+15. **An asset's owner was asked and its licence read** (§5). `credits.rs` checks a row's shape, not its truth.
+16. **The settings file never holds an API key.** The guard is that the key's type is not a field of `Settings`. `the_settings_file_never_holds_a_key` (`crates/netrunner_client/src/settings.rs:627`) never puts its key in the settings, so a key field added to `LlmProfile` would pass it.
+17. **Git Hygiene and the roadmap:** branch names, one commit per branch, the subject's style, `--no-ff` merges, status in `ROADMAP.md` only, doc comments that record a decision. `.gitignore` keeps `/data/` and `/target` out; nothing else is checked.
 
 ---
 
