@@ -87,6 +87,14 @@ pub struct PreceptsArgs {
     /// set's Sweep decks alone hold are dealt, and so the only one whose
     /// blind list can name them.
     pub sweep_decks: bool,
+    /// Play only the games of the pass in which one of these decks is
+    /// dealt (`--only-decks`), each on the index — and so the seed and
+    /// the pairing — it has in the whole pass. A card's uses are all in
+    /// the games its decks are dealt in, so its count over these games is
+    /// its count over the pass, at a fraction of the pass's cost: the
+    /// whole pool's planner pass is two and a half hours a seed, and the
+    /// 300 games nine decks are dealt in are a few minutes.
+    pub only_decks: Vec<String>,
     pub report: Option<PathBuf>,
 }
 
@@ -1041,8 +1049,16 @@ pub fn run(args: &PreceptsArgs, config: &Config) -> Result<(), Box<dyn std::erro
         args.seed
     );
 
+    let dealt = |game: &u32| {
+        let (corp_deck, runner_deck) = &matchups[*game as usize % matchups.len()];
+        args.only_decks.is_empty() || args.only_decks.iter().any(|id| *id == corp_deck.id || *id == runner_deck.id)
+    };
+    let indices: Vec<u32> = (0..args.games).filter(dealt).collect();
+    if !args.only_decks.is_empty() {
+        println!("only the {} games that deal {}", indices.len(), args.only_decks.join(", "));
+    }
     let games: Vec<GamePrecepts> = pool.install(|| {
-        (0..args.games)
+        indices
             .into_par_iter()
             .map(|game| play(game, args, &registry, &matchups, config))
             .collect::<Result<Vec<_>, String>>()

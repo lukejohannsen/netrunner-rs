@@ -61,6 +61,7 @@ use netrunner_core::rules::{
 };
 
 pub mod corp;
+mod currents;
 pub mod fundamentals;
 pub mod identities;
 pub mod read;
@@ -1638,6 +1639,10 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
         Side::Corp => corp::score(state, registry, w, horizon, &mut score),
         Side::Runner => runner::score(state, registry, w, horizon, &mut score),
     }
+    // What a current in play adds to both players' prices while it
+    // lasts (Phase 5 §83). After the chair's own terms, and nothing on a
+    // board with no current, so the sum's order is the one pinned.
+    score += currents::value(state, registry, side, w, horizon);
     if w.click_weight != 0.0 {
         score += f64::from(own.clicks.0) * w.click_weight;
     }
