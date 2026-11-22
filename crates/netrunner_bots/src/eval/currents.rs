@@ -76,6 +76,16 @@ pub(super) struct Toll {
     /// Cards out of HQ (Hacktivist Meeting's "trash 1 card from HQ at
     /// random" to rez).
     pub corp_cards: f64,
+    /// The part of `runner_credits` that is the installs in the grip. The
+    /// Runner's own chair leaves it out: `runner::held_price` already
+    /// prices a held install on the table as it is, current and all, so
+    /// read here too it was charged twice (found in review of §83).
+    pub runner_held_installs: f64,
+    /// The part of `corp_credits` and of `corp_clicks` that is installed
+    /// agendas' added advancements. The Corp's own chair leaves it out
+    /// for the same reason: its terms ask
+    /// `continuous::advancement_requirement` of the table as it is.
+    pub corp_advances: f64,
 }
 
 fn definition<'a>(registry: &'a CardRegistry, id: &CardId) -> Option<&'a CardDefinition> {
@@ -187,6 +197,8 @@ pub(super) fn toll(state: &GameState, registry: &CardRegistry, horizon: u32) -> 
     // The cards each player holds, and the cards it will draw while the
     // current lasts at what its deck averages.
     let mean = |cards: &[CardId]| if cards.is_empty() { 0.0 } else { added(&with, &bare, registry, cards).sum::<f64>() / cards.len() as f64 };
+    let installs: Vec<CardId> = state.runner.grip.iter().filter(|id| registry.get(id).is_some_and(|def| !matches!(def.card_type, CardType::Event))).cloned().collect();
+    toll.runner_held_installs = added(&with, &bare, registry, &installs).sum();
     toll.runner_credits += added(&with, &bare, registry, &state.runner.grip).sum::<f64>() + mean(&state.runner.stack) * DRAWS_A_TURN * life;
     toll.corp_credits += added(&with, &bare, registry, &state.corp.hq).sum::<f64>() + mean(&state.corp.r_and_d) * DRAWS_A_TURN * life;
 
@@ -196,9 +208,12 @@ pub(super) fn toll(state: &GameState, registry: &CardRegistry, horizon: u32) -> 
             let more = f64::from(with - bare);
             toll.corp_credits += more;
             toll.corp_clicks += more;
+            toll.corp_advances += more;
         }
         // A card out of HQ to rez what is not ice (Hacktivist Meeting).
-        if !installed.rezzed && installed.slot != InstallSlot::Ice {
+        // An agenda is never rezzed, so it never pays.
+        let agenda = registry.get(&installed.card).is_some_and(|def| def.card_type == CardType::Agenda);
+        if !installed.rezzed && installed.slot != InstallSlot::Ice && !agenda {
             let cards = |state: &GameState| -> f64 {
                 continuous::rez_costs(state, registry, installed.install_id)
                     .iter()
@@ -229,12 +244,12 @@ pub(super) fn value(state: &GameState, registry: &CardRegistry, side: Side, w: &
     match side {
         Side::Corp => {
             toll.runner_credits * w.opponent_credit_weight + toll.runner_clicks * w.click_weight
-                - toll.corp_credits * w.future_credit_weight
-                - (toll.corp_clicks + toll.corp_cards) * w.click_weight
+                - (toll.corp_credits - toll.corp_advances) * w.future_credit_weight
+                - (toll.corp_clicks - toll.corp_advances + toll.corp_cards) * w.click_weight
         }
         Side::Runner => {
             (toll.corp_credits + toll.corp_cards) * w.opponent_credit_weight + toll.corp_clicks * w.click_weight
-                - toll.runner_credits * w.future_credit_weight
+                - (toll.runner_credits - toll.runner_held_installs) * w.future_credit_weight
                 - toll.runner_clicks * w.click_weight
         }
     }
@@ -318,7 +333,24 @@ mod tests {
         state.runner.stack = vec![id("daily_casts"), id("corroder"), id("corroder"), id("corroder")];
         let toll = toll(&state, &pool, 9).expect("priced");
         assert!((toll.runner_credits - (2.0 + 0.5 * f64::from(CURRENT_LIFE))).abs() < 1e-9, "{toll:?}");
+        assert_eq!(toll.runner_held_installs, 2.0);
         assert_eq!(toll.corp_credits, 0.0);
+    }
+
+    /// The Runner's own chair reads a held install's price on the table
+    /// as it is (`runner::held_price`), so the current's value to the
+    /// Runner charges the draws to come and not the grip a second time;
+    /// the Corp, which has no such term for the Runner's grip, reads all
+    /// of it.
+    #[test]
+    fn a_held_install_is_not_charged_twice_on_its_own_chair() {
+        let pool = pool();
+        let mut state = GameState::new(0);
+        corp_current(&mut state, "scarcity_of_resources");
+        state.runner.grip = vec![id("daily_casts")];
+        let w = Weights::default().at_the_guides_rate();
+        assert_eq!(value(&state, &pool, Side::Runner, &w, 9), 0.0, "nothing to draw, and the grip is the held term's");
+        assert!((value(&state, &pool, Side::Corp, &w, 9) - 2.0 * w.opponent_credit_weight).abs() < 1e-9);
     }
 
     /// Rolling Brownout: "the play cost of each operation and event is
@@ -361,6 +393,7 @@ mod tests {
             install(1, "pad_campaign", InstallSlot::Root, false),
             install(2, "pad_campaign", InstallSlot::Root, true),
             install(3, "ice_wall", InstallSlot::Ice, false),
+            install(4, "hostile_takeover", InstallSlot::Root, false),
         ];
         assert_eq!(toll(&state, &pool, 9), Some(Toll { corp_cards: 1.0, ..Toll::default() }));
     }
@@ -378,6 +411,6 @@ mod tests {
         state.corp.installed = vec![InstalledCard { card: id("hostile_takeover"), install_id: InstallId(1), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() }];
         assert_eq!(toll(&state, &pool, 9), Some(Toll::default()), "no copy scored, nothing added");
         state.corp.scored_agendas = vec![ScoredAgenda { card: id("hostile_takeover"), install_id: InstallId(7), agenda_counters: 0, scored_on_turn: 0, installed_on_scoring_turn: false, advanced_on_scoring_turn: false, as_agenda: None }];
-        assert_eq!(toll(&state, &pool, 9), Some(Toll { corp_credits: 1.0, corp_clicks: 1.0, ..Toll::default() }));
+        assert_eq!(toll(&state, &pool, 9), Some(Toll { corp_credits: 1.0, corp_clicks: 1.0, corp_advances: 1.0, ..Toll::default() }));
     }
 }

@@ -1015,8 +1015,9 @@ pub enum DiagAction {
         sweep_decks: bool,
         /// Play only the games of the pass that deal one of these decks
         /// (ids, comma-separated), each on the index it has in the whole
-        /// pass: a card's uses over these games are its uses over the
-        /// pass, so a reading of a few decks' cards need not play it all.
+        /// pass: a card whose every deck is named is used over these
+        /// games as often as over the pass, so a reading of a few decks'
+        /// cards need not play it all.
         #[arg(long, value_delimiter = ',')]
         only_decks: Vec<String>,
         /// Worker threads. All cores if omitted.
