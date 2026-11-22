@@ -412,5 +412,11 @@ mod tests {
         assert_eq!(toll(&state, &pool, 9), Some(Toll::default()), "no copy scored, nothing added");
         state.corp.scored_agendas = vec![ScoredAgenda { card: id("hostile_takeover"), install_id: InstallId(7), agenda_counters: 0, scored_on_turn: 0, installed_on_scoring_turn: false, advanced_on_scoring_turn: false, as_agenda: None }];
         assert_eq!(toll(&state, &pool, 9), Some(Toll { corp_credits: 1.0, corp_clicks: 1.0, corp_advances: 1.0, ..Toll::default() }));
+        // The Corp's own terms already ask the requirement of the table as
+        // it is, so its chair reads nothing more here; the Runner's reads
+        // the click and the credit.
+        let w = Weights::default().at_the_guides_rate();
+        assert_eq!(value(&state, &pool, Side::Corp, &w, 9), 0.0);
+        assert!((value(&state, &pool, Side::Runner, &w, 9) - (w.opponent_credit_weight + w.click_weight)).abs() < 1e-9);
     }
 }

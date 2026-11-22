@@ -37,9 +37,10 @@ share on pinned binaries, the same games paired by seed, and by `diag precepts`.
   2026 (ffg-card-pool.md, "Bot debts"): over the whole pool's Sweep-deck pass on seeds 2 and 3 the planner
   never uses 138 cards the random seats do, no current on either chair among them, and 35 cards are in no deck.
 - **The currents, stages 2–4** (§83 was stage 1; ffg-card-pool.md, "Bot debts"): nineteen of the 23 are still
-  never played. Stage 2 — a current that fires a trigger: Manhunt and Kill Switch are heard by
-  `identities::lockdowns_on_the_next_run` and priced at nothing, because `identities::paid` has no arm for
-  `Effect::Trace`. Then the currents that forbid (Interdiction) or change what a card is, and the three §83
+  never played. Stage 2 — a current that fires a trigger: Manhunt is heard by
+  `identities::lockdowns_on_the_next_run` and Kill Switch's access trigger by the `OnAccessed` reading, both
+  priced at nothing because `identities::paid` has no arm for `Effect::Trace`; Kill Switch's "or scored"
+  trigger (`OnAgendaScored`) is heard by nothing. Then the currents that forbid (Interdiction) or change what a card is, and the three §83
   reads too small to play: Rolling Brownout (it taxes the Corp's own operations), Traffic Jam (a copy of a
   scored agenda still in HQ or R&D is not read) and Hacktivist Meeting (installs still to come are not read).
 - **A planner game overflows its stack on seed 6** (found in §83, 22 November 2026, on `main`): `diag precepts
