@@ -1293,8 +1293,10 @@ pub(crate) fn hosts_memory(state: &GameState, registry: &CardRegistry, host: Ins
 /// its printed play cost and what the table adds (Tailgate's own "lowered
 /// by 1[credit] for each piece of ice protecting HQ"), never below 0. The
 /// one question, for the play and for the offer, as `install_cost_of` is
-/// for an install.
-pub(crate) fn play_cost_of(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> u32 {
+/// for an install. Public for the bots, as `install_cost_of` is: what a
+/// current adds to a play is this with the current against this without
+/// it (Rolling Brownout, Phase 5 §83).
+pub fn play_cost_of(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> u32 {
     (card.cost as i32 + sum(state, registry, Target::Card(card), |kind| match kind {
         ContinuousKind::PlayCost(number) => Some(number),
         _ => None,
@@ -1421,8 +1423,9 @@ pub(crate) fn score_costs(state: &GameState, registry: &CardRegistry, install: I
 
 /// Every additional cost to rez the Corp install `install` (Hacktivist
 /// Meeting), each with the card that imposes it and that card's install,
-/// as [`score_costs`] has them: the payer is the Corp.
-pub(crate) fn rez_costs(state: &GameState, registry: &CardRegistry, install: InstallId) -> Vec<(Cost, CardId, Option<InstallId>)> {
+/// as [`score_costs`] has them: the payer is the Corp. Public for the
+/// bots, which read what a current adds to a rez (Phase 5 §83).
+pub fn rez_costs(state: &GameState, registry: &CardRegistry, install: InstallId) -> Vec<(Cost, CardId, Option<InstallId>)> {
     let Some(target) = Target::corp_install(state, registry, install) else { return Vec::new() };
     let mut costs = Vec::new();
     for_each_applying(state, registry, target, |kind| matches!(kind, ContinuousKind::AdditionalRezCost(_)), |effect, source, _| {

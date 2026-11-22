@@ -1471,6 +1471,10 @@ By mechanism, random's uses on seed 2 / seed 3, the planner 0 / 0:
   Investigations (5 / 10), Itinerant Protesters (7 / 8), Corporate
   Scandal (5 / 6). No current is played by the planner on either chair:
   one mechanism, the largest on the list.
+  **Since Phase 5 §83 (22 November 2026)** the planner plays four: Service
+  Outage (23 / 33), Scarcity of Resources (9 / 15), Net Celebrity (10 / 8)
+  and Enhanced Login Protocol (2 / 2); Rolling Brownout, Traffic Jam and
+  Hacktivist Meeting are read and stay unplayed, and sixteen are not read.
 - **Run events (28).** *Run (17)*: Eye for an Eye (37 / 40), Leave No
   Trace (30 / 24), Reboot (25 / 26), Rip Deal (18 / 18), Burner (16 / 17),
   Recon (19 / 13), Credit Crash (12 / 15), Exploratory Romp (8 / 17),
